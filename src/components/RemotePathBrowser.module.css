@@ -1,0 +1,146 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  width: 480px;
+  max-width: calc(100vw - 48px);
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.dialogTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+}
+
+.dialogCloseBtn {
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.dialogCloseBtn:hover { background: var(--bg-hover); color: var(--text); }
+
+.browserNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.upBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.upBtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.upBtn:disabled { opacity: 0.3; cursor: default; }
+
+.browserPath {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+
+.dialogBody {
+  flex: 1;
+  min-height: 80px;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+  padding: var(--space-3) var(--space-2);
+}
+
+.error {
+  font-size: var(--font-size-sm);
+  color: var(--error);
+  padding: var(--space-2);
+}
+
+.entry {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-md);
+  color: var(--text);
+  width: 100%;
+  text-align: left;
+  transition: background-color var(--transition);
+}
+
+.entry:hover { background: var(--bg-hover); }
+
+.folderIcon { color: var(--accent); flex-shrink: 0; }
+
+.dialogFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.currentPath {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-xs);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}

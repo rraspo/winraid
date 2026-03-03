@@ -1,0 +1,123 @@
+/* =============================================================================
+   Design tokens — all CSS custom properties live here.
+   Theme is applied by setting [data-theme] on <html> in App.jsx.
+   Dark is the default; light overrides only what changes.
+   ============================================================================= */
+
+/* Dark theme (default) */
+:root,
+[data-theme="dark"] {
+  /* Surfaces */
+  --bg:           #0F1419;
+  --bg-base:      #0F1419;
+  --bg-panel:     #161E27;
+  --bg-card:      #1C2733;
+  --bg-hover:     rgba(255, 255, 255, 0.04);
+  --bg-active:    rgba(255, 255, 255, 0.08);
+  --bg-input:     rgba(255, 255, 255, 0.05);
+
+  /* Borders */
+  --border:        rgba(255, 255, 255, 0.06);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --border-input:  rgba(255, 255, 255, 0.10);
+
+  /* Text */
+  --text:         #E6EDF3;
+  --text-muted:   #7D8590;
+  --text-faint:   #3D4450;
+  --text-on-accent: #FFFFFF;
+
+  /* Scrollbar */
+  --scrollbar-thumb:       rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+}
+
+/* Light theme overrides */
+[data-theme="light"] {
+  /* Surfaces */
+  --bg:           #F6F8FA;
+  --bg-base:      #F6F8FA;
+  --bg-panel:     #FFFFFF;
+  --bg-card:      #EFF1F3;
+  --bg-hover:     rgba(0, 0, 0, 0.04);
+  --bg-active:    rgba(0, 0, 0, 0.08);
+  --bg-input:     rgba(0, 0, 0, 0.04);
+
+  /* Borders */
+  --border:        rgba(0, 0, 0, 0.08);
+  --border-strong: rgba(0, 0, 0, 0.16);
+  --border-input:  rgba(0, 0, 0, 0.12);
+
+  /* Text */
+  --text:        #1C2128;
+  --text-muted:  #57606A;
+  --text-faint:  #B0BAC4;
+
+  /* Scrollbar */
+  --scrollbar-thumb:       rgba(0, 0, 0, 0.14);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.26);
+}
+
+/* Theme-invariant tokens */
+:root {
+  /* Accent */
+  --accent:           #FF6B35;
+  --accent-dark:      #CC4F1F;
+  --accent-glow:      rgba(255, 107, 53, 0.18);
+  --accent-subtle:    rgba(255, 107, 53, 0.10);
+
+  /* State */
+  --success:          #3DD68C;
+  --success-subtle:   rgba(61, 214, 140, 0.12);
+  --error:            #FF4D4D;
+  --error-subtle:     rgba(255, 77, 77, 0.12);
+  --warning:          #FFB547;
+  --warning-subtle:   rgba(255, 181, 71, 0.12);
+  --info:             #58A6FF;
+  --info-subtle:      rgba(88, 166, 255, 0.12);
+
+  /* Spacing — 4px base grid */
+  --space-1:   4px;
+  --space-2:   8px;
+  --space-3:   12px;
+  --space-4:   16px;
+  --space-5:   20px;
+  --space-6:   24px;
+  --space-8:   32px;
+  --space-10:  40px;
+  --space-12:  48px;
+
+  /* Border radius */
+  --radius-xs: 2px;   /* status dots */
+  --radius-sm: 4px;   /* badges, tags */
+  --radius-md: 6px;   /* buttons, inputs */
+  --radius-lg: 8px;   /* cards, modals */
+  --radius-xl: 12px;  /* large panels */
+
+  /* Typography */
+  --font-size-xs:  10px;
+  --font-size-sm:  11px;
+  --font-size-md:  13px;
+  --font-size-base: 14px;
+  --font-size-lg:  16px;
+  --font-size-xl:  20px;
+  --font-size-2xl: 24px;
+
+  --font-weight-regular:  400;
+  --font-weight-medium:   500;
+  --font-weight-semibold: 600;
+  --font-weight-bold:     700;
+
+  --line-height-tight:  1.25;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.7;
+
+  /* Motion */
+  --transition:      150ms ease;
+  --transition-slow: 300ms ease;
+
+  /* Layout */
+  --sidebar-width:    200px;
+  --statusbar-height: 28px;
+  --header-height:    48px;
+}
