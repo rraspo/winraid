@@ -1,0 +1,73 @@
+# ---- Node / npm -------------------------------------------------------------
+node_modules/
+npm-debug.log*
+.pnpm-debug.log*
+package-lock.json
+
+# ---- Vite / electron-vite build output --------------------------------------
+out/
+.vite/
+
+# ---- electron-builder distributables ----------------------------------------
+dist/
+release/
+*.exe
+*.msi
+*.blockmap
+latest.yml
+latest-mac.yml
+latest-linux.yml
+
+# ---- Python (legacy winraid/ module) ----------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# ---- PyInstaller ------------------------------------------------------------
+build/
+*.spec
+
+# ---- Virtual environments ---------------------------------------------------
+venv/
+.venv/
+env/
+
+# ---- Runtime data (never commit credentials or state) -----------------------
+config.json
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# ---- Logs -------------------------------------------------------------------
+*.log
+logs/
+
+# ---- OS ---------------------------------------------------------------------
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# ---- Editor / IDE -----------------------------------------------------------
+.idea/
+.vscode/
+*.suo
+*.user
+*.swp
+*~
+
+# ---- Secrets / env ----------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Temp -------------------------------------------------------------------
+*.tmp
+*.bak
+*.orig

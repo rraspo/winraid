@@ -1,0 +1,29 @@
+.anchor {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Rendered at document.body via portal — never clipped */
+.bubble {
+  position: fixed;
+  z-index: 9999;
+  max-width: 260px;
+  padding: 7px 11px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-xs);
+  font-weight: 400;
+  line-height: 1.5;
+  color: var(--text-muted);
+  pointer-events: none;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Static mode: right of anchor, vertically centered */
+.bubbleStatic {
+  transform: translateY(-50%);
+}
+

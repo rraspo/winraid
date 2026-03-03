@@ -1,0 +1,44 @@
+.track {
+  width: 100%;
+  height: 4px;
+  background-color: var(--bg-hover);
+  border-radius: 2px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 2px;
+  background-color: var(--accent);
+  transition: width 200ms ease;
+  /* Subtle shimmer on active transfer */
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.15) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+.fill.active {
+  animation: shimmer 1.4s linear infinite;
+}
+
+.fill.done {
+  background-color: var(--success);
+  background-image: none;
+  animation: none;
+}
+
+.fill.error {
+  background-color: var(--error);
+  background-image: none;
+  animation: none;
+}
+
+@keyframes shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

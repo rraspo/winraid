@@ -1,0 +1,212 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ---- View header ---- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-5);
+  height: var(--header-height);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: var(--bg-active);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-muted);
+}
+
+.headerActions {
+  margin-left: auto;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.clearBtn {
+  padding: 5px 12px;
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.clearBtn:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ---- Single scroll wrapper — handles both axes ---- */
+.scrollWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ---- Column headers — sticky inside scrollWrapper ---- */
+.thead {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.th {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--space-2);
+  height: 100%;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  overflow: hidden;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.thSortable {
+  cursor: pointer;
+}
+
+.thSortable:hover {
+  color: var(--text);
+}
+
+.thLabel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sortIcon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+/* ---- Column resize handle ---- */
+.resizeHandle {
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  cursor: col-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background-color 120ms;
+}
+
+.resizeHandle:hover,
+.resizing {
+  background: var(--accent);
+}
+
+/* ---- Rows ---- */
+.tr {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+  transition: background-color var(--transition);
+}
+
+.tr:hover { background: var(--bg-hover); }
+
+.td {
+  padding: 0 var(--space-2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+/* ---- File cell ---- */
+.fileCell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+}
+
+.filename {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filepath {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.errorMsg {
+  font-size: var(--font-size-xs);
+  color: var(--error);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Misc cell content ---- */
+.time {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.retryBtn {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--error-subtle);
+  color: var(--error);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  transition: background-color var(--transition);
+}
+
+.retryBtn:hover { background: var(--error); color: #fff; }
+
+/* ---- Empty state ---- */
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: var(--font-size-md);
+}

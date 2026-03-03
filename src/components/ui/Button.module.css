@@ -1,0 +1,77 @@
+/* =============================================================================
+   Button — shared primitive. Import via src/components/ui/Button.jsx
+   ============================================================================= */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: var(--radius-md);
+  font-family: inherit;
+  font-weight: var(--font-weight-medium);
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition:
+    background-color var(--transition),
+    color var(--transition),
+    border-color var(--transition),
+    opacity var(--transition);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ── Sizes ─────────────────────────────────────────────────────────────────── */
+
+/* Standard — footer, dialogs */
+.md { padding: 8px 18px; font-size: var(--font-size-md); }
+
+/* Inline / toolbar — beside toggles, in test rows */
+.sm { padding: 5px 14px; font-size: var(--font-size-sm); }
+
+/* Compact — sits beside a text input, matches its height */
+.compact { padding: 7px 12px; font-size: var(--font-size-md); }
+
+/* ── Variants ───────────────────────────────────────────────────────────────── */
+
+.primary {
+  background: var(--accent);
+  color: #fff;
+}
+.primary:hover:not(:disabled) {
+  background: var(--accent-dark, color-mix(in srgb, var(--accent) 80%, #000));
+}
+
+.secondary {
+  background: var(--bg-card);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.secondary:hover:not(:disabled) { background: var(--bg-hover); }
+
+.danger {
+  background: var(--error-subtle);
+  color: var(--error);
+}
+.danger:hover:not(:disabled) {
+  background: var(--error);
+  color: #fff;
+}
+
+/* Ghost — transparent with a subtle border; turns solid on hover */
+.ghost {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border);
+}
+.ghost:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+}

@@ -1,0 +1,32 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1.6;
+}
+
+.PENDING {
+  color: var(--warning);
+  background-color: var(--warning-subtle);
+}
+
+.TRANSFERRING {
+  color: var(--accent);
+  background-color: var(--accent-subtle);
+}
+
+.DONE {
+  color: var(--success);
+  background-color: var(--success-subtle);
+}
+
+.ERROR {
+  color: var(--error);
+  background-color: var(--error-subtle);
+}

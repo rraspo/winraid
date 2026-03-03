@@ -1,0 +1,27 @@
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg);
+  color: var(--text);
+}
+
+/* Horizontal row: sidebar + content */
+.body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  /* min-height: 0 is critical — without it, a flex child's natural height
+     bleeds past the parent and causes overflow that clip: hidden can't catch */
+  min-height: 0;
+}
+
+/* Main content region — fills remaining space next to the sidebar */
+.content {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  /* Prevent content from pushing past its flex lane */
+  min-width: 0;
+}

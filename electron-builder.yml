@@ -1,0 +1,42 @@
+appId: com.winraid.app
+productName: WinRaid
+copyright: WinRaid
+
+directories:
+  buildResources: assets
+  output: release
+
+# Include only the built output and package manifest.
+# electron-builder pulls in production node_modules automatically based on "dependencies".
+files:
+  - out/**
+  - assets/**
+  - package.json
+  - "!**/node_gyp_bins/**"
+
+# Tell Electron where the bundled main entry is.
+extraMetadata:
+  main: out/main/index.js
+
+asar: true
+asarUnpack:
+  - node_modules/ssh2/**
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/winraid_icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+
+# Auto-updater publishes to GitHub Releases.
+# Set GH_TOKEN env var before running dist.
+publish:
+  provider: github
+  releaseType: release
