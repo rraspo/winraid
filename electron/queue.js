@@ -145,6 +145,16 @@ export function retryJob(id) {
   log('info', `Retrying job ${id.slice(0, 8)} (attempt ${job.retries})`)
 }
 
+/**
+ * Returns true if a non-ERROR job already exists for this source path.
+ * Used to skip re-enqueuing files that are already known to the queue
+ * when the watcher scans existing files on startup.
+ * @param {string} srcPath
+ */
+export function hasActiveJob(srcPath) {
+  return jobs().some((j) => j.srcPath === srcPath && j.status !== STATUS.ERROR)
+}
+
 /** Remove all DONE jobs from the store. */
 export function clearDone() {
   const before = _jobs.length

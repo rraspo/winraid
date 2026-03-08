@@ -13,11 +13,12 @@ const STABLE_INTERVAL_MS = 500    // pause between size polls
 // ---------------------------------------------------------------------------
 // Module state
 // ---------------------------------------------------------------------------
-let watcher     = null
-let paused      = false
-let onFileReady = null          // (filePath: string) => void
-let statusCb    = null          // (status: object) => void
-let inFlight    = 0             // number of waitForStable coroutines running
+let watcher        = null
+let paused         = false
+let onFileReady    = null          // (filePath: string, meta: object) => void
+let statusCb       = null          // (status: object) => void
+let inFlight       = 0             // number of waitForStable coroutines running
+let isInitialPhase = false         // true between watcher start and 'ready' event
 
 // Map<filePath, timeoutId> — pending debounce timers per path
 const debounceMap = new Map()
@@ -28,17 +29,25 @@ const debounceMap = new Map()
 
 /**
  * Start watching `folder` recursively.
- * When a file is stable and ready to transfer, `callback(filePath)` is called.
+ * When a file is stable and ready to transfer, `callback(filePath, { isInitial })` is called.
  *
- * @param {string} folder   - Absolute path to the local watch folder
- * @param {(path: string) => void} callback
- * @param {string} onStatus - Validates status to use callback
+ * @param {string}   folder    - Absolute path to the local watch folder
+ * @param {Function} callback  - (filePath, { isInitial: boolean }) => void
+ * @param {Function} onStatus  - (status: object) => void
+ * @param {{ queueExisting?: boolean }} options
+ *   queueExisting: if true, emit 'add' for files already in the folder on startup
+ *                  and mark them isInitial=true so callers can dedup against the queue.
  */
-export function startWatcher(folder, callback, onStatus) {
+export function startWatcher(folder, callback, onStatus, options = {}) {
   stopWatcher()
-  onFileReady = callback
-  statusCb    = onStatus ?? null
-  paused      = false
+  onFileReady    = callback
+  statusCb       = onStatus ?? null
+  paused         = false
+
+  // When queueExisting is enabled we let chokidar scan existing files, then
+  // clear the flag once 'ready' fires so subsequent live events are not initial.
+  const ignoreInitial = !(options.queueExisting ?? false)
+  isInitialPhase = !ignoreInitial
 
   // chokidar 4.x: `ignored` must be a function; `awaitWriteFinish` was removed.
   // We handle stability ourselves with size-polling in waitForStable().
@@ -49,11 +58,12 @@ export function startWatcher(folder, callback, onStatus) {
       return name.startsWith('.') || name.endsWith('.tmp') || name.endsWith('.part')
     },
     persistent: true,
-    ignoreInitial: true,  // don't queue files that already existed when we started
+    ignoreInitial,
   })
 
-  watcher.on('add',    (filePath) => onFsEvent(filePath))
-  watcher.on('change', (filePath) => onFsEvent(filePath))
+  watcher.on('add',    (filePath) => onFsEvent(filePath, isInitialPhase))
+  watcher.on('change', (filePath) => onFsEvent(filePath, false))
+  watcher.on('ready',  ()         => { isInitialPhase = false })
   watcher.on('error',  (err)      => log('error', `Watcher error: ${err.message}`))
 
   log('info', `Watching: ${folder}`)
@@ -67,10 +77,11 @@ export function stopWatcher() {
   }
   for (const t of debounceMap.values()) clearTimeout(t)
   debounceMap.clear()
-  onFileReady = null
-  statusCb    = null
-  inFlight    = 0
-  paused      = false
+  onFileReady    = null
+  statusCb       = null
+  inFlight       = 0
+  paused         = false
+  isInitialPhase = false
   log('info', 'Watcher stopped.')
 }
 
@@ -90,7 +101,7 @@ export function resumeWatcher() {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function onFsEvent(filePath) {
+function onFsEvent(filePath, isInitial = false) {
   if (paused) return
 
   // Reset the debounce timer on every new event for this path.
@@ -104,7 +115,7 @@ function onFsEvent(filePath) {
     debounceMap.delete(filePath)
     inFlight++
     statusCb?.({ state: 'enqueueing', file: basename(filePath) })
-    waitForStable(filePath).finally(() => {
+    waitForStable(filePath, isInitial).finally(() => {
       inFlight = Math.max(0, inFlight - 1)
       if (inFlight === 0) statusCb?.({ state: 'watching' })
     })
@@ -117,7 +128,7 @@ function onFsEvent(filePath) {
  * Polls the file size until it has been stable for STABLE_POLLS consecutive
  * reads, then calls the registered onFileReady callback.
  */
-async function waitForStable(filePath) {
+async function waitForStable(filePath, isInitial = false) {
   let lastSize   = -1
   let stableRuns = 0
 
@@ -144,7 +155,7 @@ async function waitForStable(filePath) {
 
   if (!paused && onFileReady) {
     log('info', `File ready: ${filePath}`)
-    onFileReady(filePath)
+    onFileReady(filePath, { isInitial })
   }
 }
 

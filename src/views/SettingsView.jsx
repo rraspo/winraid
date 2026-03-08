@@ -50,6 +50,7 @@ const HINTS = {
   testConn:     'Open a live SSH connection to verify your credentials.',
   browseRemote: 'Browse the remote filesystem to pick the destination folder visually.',
   verifyClean:  'Walk the local watch folder and check each file against the NAS over SFTP. Files confirmed on the NAS are deleted locally.',
+  queueExisting: 'When the watcher starts, scan the watch folder for files that appeared while it was stopped. Files already in the queue (pending or done) are skipped — only genuinely new arrivals are queued. Takes effect on next watcher start.',
   startWatcher: 'Begin monitoring the watch folder for new files. Runs in the background even when the window is hidden to the tray.',
   stopWatcher:  'Pause file monitoring. Already-queued transfers still complete; new files are ignored until resumed.',
   save:         'Write all settings to disk. If the watch folder changed, the watcher restarts automatically.',
@@ -64,6 +65,7 @@ const DEFAULT_FORM = {
   operation:      'copy',
   folderMode:     'flat',
   extensions:     [],   // string[]
+  watcher: { queueExisting: true },
   sftp: { host: '', port: 22, username: '', password: '', keyPath: '', remotePath: '' },
   smb:  { host: '', share: '', username: '', password: '', remotePath: '' },
 }
@@ -94,6 +96,7 @@ export default function SettingsView() {
         operation:      cfg.operation      ?? 'copy',
         folderMode:     cfg.folderMode     ?? 'flat',
         extensions:     cfg.extensions     ?? [],
+        watcher: { ...DEFAULT_FORM.watcher, ...cfg.watcher },
         sftp: { ...DEFAULT_FORM.sftp, ...cfg.sftp },
         smb:  { ...DEFAULT_FORM.smb,  ...cfg.smb  },
       })
@@ -127,6 +130,7 @@ export default function SettingsView() {
       await window.winraid.config.set('operation',      form.operation)
       await window.winraid.config.set('folderMode',     form.folderMode)
       await window.winraid.config.set('extensions',     form.extensions)
+      await window.winraid.config.set('watcher',        form.watcher)
       await window.winraid.config.set('sftp', { ...form.sftp, port: Number(form.sftp.port) || 22 })
       await window.winraid.config.set('smb',  form.smb)
       setSaveMsg({ type: 'ok', text: 'Settings saved.' })
@@ -220,6 +224,19 @@ export default function SettingsView() {
   return (
     <div className={styles.container}>
       <div className={styles.scrollBody}>
+
+        {/* Watcher */}
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>Watcher</div>
+          <div className={styles.sectionBody}>
+            <Field label="Queue existing files" hint={HINTS.queueExisting}>
+              <Switch
+                checked={form.watcher.queueExisting}
+                onChange={(v) => setNested('watcher', 'queueExisting', v)}
+              />
+            </Field>
+          </div>
+        </section>
 
         {/* Source */}
         <section className={styles.section}>
@@ -460,11 +477,17 @@ function VerifyConfirmDialog({ localFolder, remotePath, onConfirm, onClose }) {
           <button className={styles.dialogCloseBtn} onClick={onClose}>✕</button>
         </div>
         <div className={styles.dialogBody}>
-          <p className={styles.verifyConfirmText}>
-            Each file inside <strong>{localFolder}</strong> will be checked against{' '}
-            <strong>{remotePath || '(remote path not set)'}</strong> via SFTP.
-            Files confirmed on the NAS will be deleted locally.
-          </p>
+          <div className={styles.verifyConfirmText}>
+            Each file and folder inside
+            <div className={styles.verifyPathRow}>
+              <span className={styles.verifyPathValue}>{localFolder || '(not set)'}</span>
+            </div>
+            will be checked against
+            <div className={styles.verifyPathRow}>
+              <span className={styles.verifyPathValue}>{remotePath || '(not set)'}</span>
+            </div>
+            via SFTP. Files confirmed on the NAS will be deleted locally.
+          </div>
         </div>
         <div className={styles.dialogFooter}>
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
@@ -561,6 +584,21 @@ function VerifyResultDialog({ result, localFolder, onClose }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Switch — pill toggle for boolean settings
+// ---------------------------------------------------------------------------
+function Switch({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      className={[styles.switch, checked ? styles.switchOn : null].filter(Boolean).join(' ')}
+      onClick={() => onChange(!checked)}
+    />
   )
 }
 

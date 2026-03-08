@@ -47,6 +47,9 @@ const DEFAULTS = {
     sources:   [],   // string[] — remote paths on the NAS to pull down
     localDest: '',   // local folder to receive the backup
   },
+  watcher: {
+    queueExisting: true,  // scan for files added while the watcher was stopped
+  },
 }
 
 // ---------------------------------------------------------------------------

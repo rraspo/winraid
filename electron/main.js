@@ -11,7 +11,7 @@ import {
   powerMonitor,
 } from 'electron'
 import { join, basename, relative, dirname, resolve, sep } from 'path'
-import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync } from 'fs'
+import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, utimesSync } from 'fs'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, log } from './logger.js'
 
@@ -343,8 +343,10 @@ function registerIPC() {
   })
 
   ipcMain.handle('watcher:start', async (_e, folder) => {
+    const { getConfig } = await import('./config.js')
+    const watcherOpts = { queueExisting: getConfig('watcher.queueExisting') ?? true }
     const w = await getWatcher()
-    w.startWatcher(folder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder, ...s }))
+    w.startWatcher(folder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder, ...s }), watcherOpts)
     sendToRenderer('watcher:status', { watching: true, folder, state: 'watching' })
     isPaused = false
     rebuildTrayMenu()
@@ -917,18 +919,26 @@ function registerIPC() {
             continue
           }
 
-          // Incremental: skip files where local size and mtime both match remote
+          // Incremental: skip files where local size and mtime both match remote.
+          // When the server omits mtime (returns 0), fall back to size-only comparison.
+          // Use 1-second tolerance for servers/filesystems that round mtime to 2s boundaries.
           try {
             const st = statSync(localPath)
-            if (st.size === size && Math.floor(st.mtimeMs / 1000) === mtime) {
+            const localSec  = Math.floor(st.mtimeMs / 1000)
+            const sizeMatch  = st.size === size
+            const mtimeMatch = mtime === 0 || Math.abs(localSec - mtime) <= 1
+            if (sizeMatch && mtimeMatch) {
               stats.skipped++
               sendToRenderer('backup:progress', { file: relPath, status: 'skipped', stats })
               continue
             }
+            log('info', `Backup: re-downloading ${relPath} — local(size=${st.size} mtime=${localSec}) remote(size=${size} mtime=${mtime})`)
           } catch { /* file doesn't exist locally — proceed to download */ }
 
           try {
             await backupDownloadFile(sftp, remotePath, localPath)
+            // Preserve remote mtime so the incremental skip logic works on the next run
+            try { utimesSync(localPath, new Date(), new Date(mtime * 1000)) } catch { /* best effort */ }
             stats.files++
             stats.bytes += size
             log('info', `Backup: downloaded ${relPath}`)
@@ -1023,7 +1033,7 @@ function registerIPC() {
 // ---------------------------------------------------------------------------
 // File-detected callback
 // ---------------------------------------------------------------------------
-async function onFileDetected(filePath) {
+async function onFileDetected(filePath, { isInitial = false } = {}) {
   const { getConfig } = await import('./config.js')
   const cfg = getConfig()
 
@@ -1032,6 +1042,12 @@ async function onFileDetected(filePath) {
     : relative(cfg.localFolder, filePath).replace(/\\/g, '/')
 
   const q = await getQueue()
+
+  // On the initial folder scan (watcher start with queueExisting enabled),
+  // skip files that already have an active job — they are leftovers from a
+  // previous session (PENDING, TRANSFERRING, or already DONE).
+  if (isInitial && q.hasActiveJob(filePath)) return
+
   const jobId = q.enqueue(filePath, { relPath, operation: cfg.operation })
   sendToRenderer('queue:updated', { type: 'added', jobId })
 
@@ -1105,8 +1121,9 @@ app.whenReady().then(async () => {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
     if (cfg.localFolder) {
+      const watcherOpts = { queueExisting: cfg.watcher?.queueExisting ?? true }
       const w = await getWatcher()
-      w.startWatcher(cfg.localFolder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, ...s }))
+      w.startWatcher(cfg.localFolder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, ...s }), watcherOpts)
       sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, state: 'watching' })
     }
   } catch { /* config not set — watcher will not auto-start */ }
