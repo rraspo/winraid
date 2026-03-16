@@ -34,6 +34,111 @@
   letter-spacing: -0.01em;
 }
 
+/* ---- Connection switcher ---- */
+.connSection {
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  flex-shrink: 0;
+}
+
+.connHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.connLabel {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.connAdd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.connAdd:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-muted);
+}
+
+.connList {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.connItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  width: 100%;
+  text-align: left;
+  transition: background-color var(--transition);
+}
+
+.connItem:hover {
+  background-color: var(--bg-hover);
+}
+
+.connItemActive {
+  background-color: var(--accent-subtle);
+}
+
+.connItemActive .connName {
+  color: var(--accent);
+}
+
+.connDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--border-strong);
+}
+
+.connDot_watching {
+  background: var(--success);
+  box-shadow: 0 0 0 2px var(--success-subtle);
+}
+
+.connDot_transferring {
+  background: var(--warning);
+  box-shadow: 0 0 0 2px var(--warning-subtle);
+}
+
+.connDot_idle {
+  background: var(--border-strong);
+}
+
+.connName {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.connDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 var(--space-2) var(--space-1);
+  flex-shrink: 0;
+}
+
 /* ---- Nav ---- */
 .nav {
   flex: 1;
