@@ -12,8 +12,9 @@
   --bg-base:      #0F1419;
   --bg-panel:     #161E27;
   --bg-card:      #1C2733;
+  --bg-surface:   #192431;
   --bg-hover:     rgba(255, 255, 255, 0.04);
-  --bg-active:    rgba(255, 255, 255, 0.08);
+  --bg-active:    rgba(91, 164, 245, 0.12);
   --bg-input:     rgba(255, 255, 255, 0.05);
 
   /* Borders */
@@ -22,51 +23,59 @@
   --border-input:  rgba(255, 255, 255, 0.10);
 
   /* Text */
-  --text:         #E6EDF3;
-  --text-muted:   #7D8590;
-  --text-faint:   #3D4450;
+  --text:           #E6EDF3;
+  --text-muted:     #7D8590;
+  --text-faint:     #3D4450;
   --text-on-accent: #FFFFFF;
+
+  /* Accent / Primary — blue adapted for dark surfaces */
+  --accent:        #5BA4F5;
+  --accent-dark:   #82BBFF;
+  --accent-glow:   rgba(91, 164, 245, 0.20);
+  --accent-subtle: rgba(91, 164, 245, 0.10);
 
   /* Scrollbar */
   --scrollbar-thumb:       rgba(255, 255, 255, 0.12);
   --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
 }
 
-/* Light theme overrides */
+/* Light theme overrides — Material Design 3 blue palette */
 [data-theme="light"] {
   /* Surfaces */
-  --bg:           #F6F8FA;
-  --bg-base:      #F6F8FA;
-  --bg-panel:     #FFFFFF;
-  --bg-card:      #EFF1F3;
-  --bg-hover:     rgba(0, 0, 0, 0.04);
-  --bg-active:    rgba(0, 0, 0, 0.08);
-  --bg-input:     rgba(0, 0, 0, 0.04);
+  --bg:           #F8F9FF;   /* surface */
+  --bg-base:      #F8F9FF;
+  --bg-panel:     #EFF4FF;   /* surface-container-low — sidebar, panels */
+  --bg-card:      #FFFFFF;   /* surface-container-lowest — card backgrounds */
+  --bg-surface:   #E5EEFF;   /* surface-container */
+  --bg-hover:     rgba(0, 79, 150, 0.05);
+  --bg-active:    #D3E4FE;   /* surface-container-highest — active nav */
+  --bg-input:     rgba(0, 40, 120, 0.04);
 
   /* Borders */
-  --border:        rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.16);
-  --border-input:  rgba(0, 0, 0, 0.12);
+  --border:        rgba(193, 198, 212, 0.7);
+  --border-strong: rgba(113, 119, 131, 0.45);
+  --border-input:  rgba(0, 40, 120, 0.16);
 
   /* Text */
-  --text:        #1C2128;
-  --text-muted:  #57606A;
-  --text-faint:  #B0BAC4;
+  --text:           #0B1C30;   /* on-surface */
+  --text-muted:     #414752;   /* on-surface-variant */
+  --text-faint:     #717783;   /* outline */
+  --text-on-accent: #FFFFFF;
+
+  /* Accent / Primary — deep blue for light surfaces */
+  --accent:        #004F96;
+  --accent-dark:   #0067C0;
+  --accent-glow:   rgba(0, 79, 150, 0.14);
+  --accent-subtle: rgba(0, 79, 150, 0.08);
 
   /* Scrollbar */
-  --scrollbar-thumb:       rgba(0, 0, 0, 0.14);
-  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.26);
+  --scrollbar-thumb:       rgba(0, 40, 120, 0.14);
+  --scrollbar-thumb-hover: rgba(0, 40, 120, 0.26);
 }
 
 /* Theme-invariant tokens */
 :root {
-  /* Accent */
-  --accent:           #FF6B35;
-  --accent-dark:      #CC4F1F;
-  --accent-glow:      rgba(255, 107, 53, 0.18);
-  --accent-subtle:    rgba(255, 107, 53, 0.10);
-
-  /* State */
+  /* State colors */
   --success:          #3DD68C;
   --success-subtle:   rgba(61, 214, 140, 0.12);
   --error:            #FF4D4D;
@@ -88,28 +97,28 @@
   --space-12:  48px;
 
   /* Border radius */
-  --radius-xs: 2px;   /* status dots */
-  --radius-sm: 4px;   /* badges, tags */
-  --radius-md: 6px;   /* buttons, inputs */
-  --radius-lg: 8px;   /* cards, modals */
-  --radius-xl: 12px;  /* large panels */
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
 
   /* Typography */
-  --font-size-xs:  10px;
-  --font-size-sm:  11px;
-  --font-size-md:  13px;
+  --font-size-xs:   10px;
+  --font-size-sm:   11px;
+  --font-size-md:   13px;
   --font-size-base: 14px;
-  --font-size-lg:  16px;
-  --font-size-xl:  20px;
-  --font-size-2xl: 24px;
+  --font-size-lg:   16px;
+  --font-size-xl:   20px;
+  --font-size-2xl:  24px;
 
   --font-weight-regular:  400;
   --font-weight-medium:   500;
   --font-weight-semibold: 600;
   --font-weight-bold:     700;
 
-  --line-height-tight:  1.25;
-  --line-height-normal: 1.5;
+  --line-height-tight:   1.25;
+  --line-height-normal:  1.5;
   --line-height-relaxed: 1.7;
 
   /* Motion */
@@ -117,7 +126,7 @@
   --transition-slow: 300ms ease;
 
   /* Layout */
-  --sidebar-width:    200px;
-  --statusbar-height: 28px;
-  --header-height:    48px;
+  --sidebar-width:    220px;
+  --statusbar-height: 26px;
+  --header-height:    52px;
 }

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>WinRaid Sync - Activity &amp; Queue</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "error-container": "#ffdad6",
+                        "on-error": "#ffffff",
+                        "inverse-surface": "#213145",
+                        "on-tertiary": "#ffffff",
+                        "surface-bright": "#f8f9ff",
+                        "surface-container-low": "#eff4ff",
+                        "surface-container-highest": "#d3e4fe",
+                        "on-secondary": "#ffffff",
+                        "surface-variant": "#d3e4fe",
+                        "surface-dim": "#cbdbf5",
+                        "outline": "#717783",
+                        "on-primary-fixed": "#001c3b",
+                        "primary-fixed-dim": "#a6c8ff",
+                        "outline-variant": "#c1c6d4",
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed-variant": "#004787",
+                        "secondary": "#515f74",
+                        "on-surface": "#0b1c30",
+                        "inverse-primary": "#a6c8ff",
+                        "on-secondary-fixed-variant": "#3a485b",
+                        "tertiary-fixed": "#dae2fd",
+                        "primary-fixed": "#d5e3ff",
+                        "tertiary": "#474e64",
+                        "tertiary-fixed-dim": "#bec6e0",
+                        "surface-container-high": "#dce9ff",
+                        "primary-container": "#0067c0",
+                        "surface-tint": "#005eb1",
+                        "primary": "#004f96",
+                        "on-primary-container": "#dbe7ff",
+                        "on-error-container": "#93000a",
+                        "inverse-on-surface": "#eaf1ff",
+                        "error": "#ba1a1a",
+                        "on-secondary-fixed": "#0d1c2e",
+                        "background": "#f8f9ff",
+                        "surface": "#f8f9ff",
+                        "secondary-container": "#d5e3fc",
+                        "on-tertiary-fixed-variant": "#3f465c",
+                        "on-primary": "#ffffff",
+                        "on-background": "#0b1c30",
+                        "on-tertiary-fixed": "#131b2e",
+                        "tertiary-container": "#5e667d",
+                        "secondary-fixed-dim": "#b9c7df",
+                        "on-surface-variant": "#414752",
+                        "surface-container": "#e5eeff",
+                        "on-secondary-container": "#57657a",
+                        "secondary-fixed": "#d5e3fc",
+                        "on-tertiary-container": "#dee5ff"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .glass-panel {
+            background: rgba(239, 244, 255, 0.8);
+            backdrop-filter: blur(20px);
+        }
+        .primary-gradient {
+            background: linear-gradient(135deg, #004f96 0%, #0067c0 100%);
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9ff;
+            color: #0b1c30;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="h-16 flex items-center justify-between px-6 bg-surface border-b border-outline-variant/15 sticky top-0 z-50">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary text-2xl" data-icon="sync">sync</span>
+<h1 class="text-headline-sm font-semibold tracking-tight text-on-surface">WinRaid Sync</h1>
+</div>
+<div class="flex items-center gap-4">
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors">
+<span class="material-symbols-outlined" data-icon="cloud_done">cloud_done</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-surface-container rounded-lg transition-colors">
+<span class="material-symbols-outlined" data-icon="account_circle">account_circle</span>
+</button>
+</div>
+</header>
+<main class="flex-1 max-w-7xl mx-auto w-full p-6 md:p-10 space-y-10">
+<!-- SECTION 1: File Scanner (The Worker) -->
+<section>
+<div class="flex items-end justify-between mb-6">
+<div>
+<span class="text-[0.65rem] font-bold tracking-[0.05em] uppercase text-on-surface-variant/70">System Process</span>
+<h2 class="text-2xl font-semibold text-on-surface">File Scanner</h2>
+</div>
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-container-high text-on-secondary-container hover:brightness-105 transition-all rounded font-medium text-sm">
+<span class="material-symbols-outlined text-lg" data-icon="pause_circle">pause_circle</span>
+                    Pause Scanner
+                </button>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+<!-- Scanner Status Bento Card -->
+<div class="md:col-span-2 p-6 bg-surface-container-lowest rounded-xl border border-outline-variant/10 shadow-[0_4px_24px_rgba(11,28,48,0.04)] flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-[#1a936f] animate-pulse"></div>
+<span class="text-sm font-medium text-[#1a936f]">Discovery Active</span>
+</div>
+<span class="material-symbols-outlined text-on-surface-variant/30" data-icon="radar">radar</span>
+</div>
+<div class="mt-8">
+<div class="text-4xl font-bold tracking-tighter text-on-surface">48.2 TB</div>
+<div class="text-sm text-on-surface-variant">Total Managed Capacity</div>
+</div>
+</div>
+<!-- Stats Cards -->
+<div class="p-6 bg-surface-container-low rounded-xl border border-outline-variant/10 flex flex-col justify-center">
+<div class="text-[0.65rem] font-bold tracking-[0.05em] uppercase text-on-surface-variant mb-1">Files Scanned</div>
+<div class="text-2xl font-semibold text-on-surface">1,248,502</div>
+<div class="mt-2 h-1 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-primary w-3/4"></div>
+</div>
+</div>
+<div class="p-6 bg-surface-container-low rounded-xl border border-outline-variant/10 flex flex-col justify-center">
+<div class="text-[0.65rem] font-bold tracking-[0.05em] uppercase text-on-surface-variant mb-1">Folders Watched</div>
+<div class="text-2xl font-semibold text-on-surface">14,209</div>
+<div class="mt-2 text-xs text-on-surface-variant flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="history">history</span>
+                        Last Scan: 2m ago
+                    </div>
+</div>
+</div>
+</section>
+<!-- SECTION 2: Transfer Queue (The Engine) -->
+<section>
+<div class="flex items-end justify-between mb-6">
+<div class="flex items-center gap-4">
+<div>
+<span class="text-[0.65rem] font-bold tracking-[0.05em] uppercase text-on-surface-variant/70">Execution Engine</span>
+<h2 class="text-2xl font-semibold text-on-surface">Transfer Queue</h2>
+</div>
+<div class="px-2 py-1 bg-primary-container/10 border border-primary/20 rounded text-xs font-bold text-primary">
+                        128 ITEMS REMAINING
+                    </div>
+</div>
+<button class="flex items-center gap-2 px-5 py-2.5 primary-gradient text-white shadow-lg shadow-primary/20 hover:brightness-110 transition-all rounded font-medium text-sm">
+<span class="material-symbols-outlined text-lg" data-icon="pause">pause</span>
+                    Pause Queue
+                </button>
+</div>
+<!-- Queue Header (Low Opacity) -->
+<div class="grid grid-cols-12 px-6 py-3 text-[0.65rem] font-bold tracking-[0.05em] uppercase text-on-surface-variant/50">
+<div class="col-span-5">File Name / Path</div>
+<div class="col-span-3 text-center">Destination</div>
+<div class="col-span-2 text-right">Size / Priority</div>
+<div class="col-span-2 text-right">Actions</div>
+</div>
+<!-- Queue List -->
+<div class="space-y-1">
+<!-- Active Item -->
+<div class="grid grid-cols-12 items-center px-6 py-5 bg-surface-container-highest/30 rounded-lg border border-primary/10 transition-all hover:bg-surface-container-highest/50">
+<div class="col-span-5 flex items-center gap-4">
+<div class="w-10 h-10 rounded flex items-center justify-center bg-primary/10 text-primary">
+<span class="material-symbols-outlined" data-icon="video_file">video_file</span>
+</div>
+<div class="truncate">
+<div class="font-medium text-on-surface truncate">Project_Nebula_Master_Final.mkv</div>
+<div class="text-xs text-on-surface-variant truncate">/Volumes/Work/Exports/2024/03/</div>
+</div>
+</div>
+<div class="col-span-3 flex justify-center">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container rounded-full border border-outline-variant/20">
+<span class="material-symbols-outlined text-sm" data-icon="dns">dns</span>
+<span class="text-xs font-medium text-on-secondary-container">TrueNAS Scale</span>
+</div>
+</div>
+<div class="col-span-2 text-right">
+<div class="text-sm font-semibold text-on-surface">14.2 GB</div>
+<div class="text-[0.65rem] font-bold text-primary uppercase">Critical</div>
+</div>
+<div class="col-span-2 flex justify-end gap-2">
+<button class="p-2 text-error hover:bg-error-container/20 rounded-lg transition-colors">
+<span class="material-symbols-outlined" data-icon="cancel">cancel</span>
+</button>
+</div>
+</div>
+<!-- Queued Item 1 -->
+<div class="grid grid-cols-12 items-center px-6 py-5 bg-surface-container-lowest rounded-lg transition-all hover:bg-surface-container-low group">
+<div class="col-span-5 flex items-center gap-4">
+<div class="w-10 h-10 rounded flex items-center justify-center bg-surface-container text-on-surface-variant group-hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="description">description</span>
+</div>
+<div class="truncate">
+<div class="font-medium text-on-surface truncate">Legal_Archive_2023_Full.zip</div>
+<div class="text-xs text-on-surface-variant truncate">/User/Admin/Documents/Archives/</div>
+</div>
+</div>
+<div class="col-span-3 flex justify-center">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container rounded-full border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm" data-icon="cloud">cloud</span>
+<span class="text-xs font-medium text-on-secondary-container">S3 Glacier</span>
+</div>
+</div>
+<div class="col-span-2 text-right">
+<div class="text-sm font-semibold text-on-surface">2.8 GB</div>
+<div class="text-[0.65rem] font-bold text-on-surface-variant/40 uppercase">Normal</div>
+</div>
+<div class="col-span-2 flex justify-end gap-2">
+<button class="p-2 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors">
+<span class="material-symbols-outlined" data-icon="cancel">cancel</span>
+</button>
+</div>
+</div>
+<!-- Queued Item 2 -->
+<div class="grid grid-cols-12 items-center px-6 py-5 bg-surface-container-low/50 rounded-lg transition-all hover:bg-surface-container-low group">
+<div class="col-span-5 flex items-center gap-4">
+<div class="w-10 h-10 rounded flex items-center justify-center bg-surface-container text-on-surface-variant group-hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="image">image</span>
+</div>
+<div class="truncate">
+<div class="font-medium text-on-surface truncate">RAW_Shoot_Day_04_All.tar</div>
+<div class="text-xs text-on-surface-variant truncate">/RAID/Photography/2024/March/</div>
+</div>
+</div>
+<div class="col-span-3 flex justify-center">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container rounded-full border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm" data-icon="storage">storage</span>
+<span class="text-xs font-medium text-on-secondary-container">Local Backup B</span>
+</div>
+</div>
+<div class="col-span-2 text-right">
+<div class="text-sm font-semibold text-on-surface">428.1 GB</div>
+<div class="text-[0.65rem] font-bold text-tertiary uppercase">Low</div>
+</div>
+<div class="col-span-2 flex justify-end gap-2">
+<button class="p-2 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors">
+<span class="material-symbols-outlined" data-icon="cancel">cancel</span>
+</button>
+</div>
+</div>
+<!-- Queued Item 3 -->
+<div class="grid grid-cols-12 items-center px-6 py-5 bg-surface-container-lowest rounded-lg transition-all hover:bg-surface-container-low group">
+<div class="col-span-5 flex items-center gap-4">
+<div class="w-10 h-10 rounded flex items-center justify-center bg-surface-container text-on-surface-variant group-hover:bg-surface-container-high transition-colors">
+<span class="material-symbols-outlined" data-icon="settings_system_daydream">settings_system_daydream</span>
+</div>
+<div class="truncate">
+<div class="font-medium text-on-surface truncate">System_Snapshot_v2.iso</div>
+<div class="text-xs text-on-surface-variant truncate">/Boot/Images/Backup/</div>
+</div>
+</div>
+<div class="col-span-3 flex justify-center">
+<div class="flex items-center gap-2 px-3 py-1 bg-surface-container rounded-full border border-outline-variant/10">
+<span class="material-symbols-outlined text-sm" data-icon="dns">dns</span>
+<span class="text-xs font-medium text-on-secondary-container">TrueNAS Scale</span>
+</div>
+</div>
+<div class="col-span-2 text-right">
+<div class="text-sm font-semibold text-on-surface">8.4 GB</div>
+<div class="text-[0.65rem] font-bold text-on-surface-variant/40 uppercase">Normal</div>
+</div>
+<div class="col-span-2 flex justify-end gap-2">
+<button class="p-2 text-on-surface-variant hover:text-error hover:bg-error-container/20 rounded-lg transition-colors">
+<span class="material-symbols-outlined" data-icon="cancel">cancel</span>
+</button>
+</div>
+</div>
+</div>
+<!-- More indicator -->
+<div class="mt-4 flex justify-center">
+<button class="px-6 py-2 text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:text-primary transition-colors flex items-center gap-2">
+                    Show 124 More Items
+                    <span class="material-symbols-outlined text-sm" data-icon="expand_more">expand_more</span>
+</button>
+</div>
+</section>
+</main>
+<!-- BottomNavBar -->
+<nav class="h-20 bg-surface border-t border-outline-variant/15 px-4 sticky bottom-0 z-50">
+<div class="max-w-4xl mx-auto h-full flex items-center justify-between">
+<button class="flex flex-col items-center justify-center flex-1 gap-1 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="dashboard">dashboard</span>
+<span class="text-[0.65rem] font-medium">Overview</span>
+</button>
+<button class="flex flex-col items-center justify-center flex-1 gap-1 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="folder_shared">folder_shared</span>
+<span class="text-[0.65rem] font-medium">Sync Folders</span>
+</button>
+<button class="flex flex-col items-center justify-center flex-1 gap-1 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="cloud_queue">cloud_queue</span>
+<span class="text-[0.65rem] font-medium">Remote Storage</span>
+</button>
+<button class="flex flex-col items-center justify-center flex-1 gap-1 text-primary relative">
+<div class="absolute -top-1 w-12 h-1 bg-primary rounded-full"></div>
+<span class="material-symbols-outlined text-2xl" data-icon="reorder" style="font-variation-settings: 'FILL' 1;">reorder</span>
+<span class="text-[0.65rem] font-bold">Activity</span>
+</button>
+<button class="flex flex-col items-center justify-center flex-1 gap-1 text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-2xl" data-icon="settings">settings</span>
+<span class="text-[0.65rem] font-medium">Settings</span>
+</button>
+</div>
+</nav>
+</body></html>
