@@ -50,6 +50,11 @@ const DEFAULTS = {
   watcher: {
     queueExisting: true,  // scan for files added while the watcher was stopped
   },
+  // Named connection profiles. The active connection's credentials are
+  // synced to the top-level sftp/smb/connectionType fields so the rest
+  // of the backend needs no changes.
+  connections:        [],
+  activeConnectionId: null,
 }
 
 // ---------------------------------------------------------------------------
