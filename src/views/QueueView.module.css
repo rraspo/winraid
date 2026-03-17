@@ -3,164 +3,141 @@
   flex-direction: column;
   height: 100%;
   overflow: hidden;
+  background: var(--bg);
 }
 
-/* ---- View header ---- */
+/* ---- Header ---- */
 .header {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: 0 var(--space-5);
-  height: var(--header-height);
-  border-bottom: 1px solid var(--border);
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
   flex-shrink: 0;
 }
 
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .title {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  color: var(--text);
+  letter-spacing: -0.02em;
 }
 
-.count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  padding: 1px 6px;
-  border-radius: 10px;
-  background: var(--bg-active);
+.countBadge {
+  padding: 3px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-subtle);
+  border: 1px solid var(--accent-glow);
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-muted);
-}
-
-.headerActions {
-  margin-left: auto;
-  display: flex;
-  gap: var(--space-2);
+  font-weight: var(--font-weight-bold);
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .clearBtn {
-  padding: 5px 12px;
+  padding: 5px var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--bg-card);
-  border: 1px solid var(--border-strong);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--text-muted);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  transition: background-color var(--transition), color var(--transition);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  transition: color var(--transition), background-color var(--transition);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .clearBtn:hover { background: var(--bg-hover); color: var(--text); }
 
-/* ---- Single scroll wrapper — handles both axes ---- */
-.scrollWrapper {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-}
-
-/* ---- Column headers — sticky inside scrollWrapper ---- */
-.thead {
-  display: flex;
+/* ---- Column header row ---- */
+.colHeader {
+  display: grid;
+  grid-template-columns: 32px 1fr 120px 80px 70px 64px;
   align-items: center;
+  padding: 0 var(--space-4);
   height: 32px;
-  background: var(--bg-panel);
+  border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 1;
-}
-
-.th {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 var(--space-2);
-  height: 100%;
+  background: var(--bg-panel);
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-muted);
+  font-weight: var(--font-weight-bold);
+  color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  overflow: hidden;
-  white-space: nowrap;
-  user-select: none;
-}
-
-.thSortable {
-  cursor: pointer;
-}
-
-.thSortable:hover {
-  color: var(--text);
-}
-
-.thLabel {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.sortIcon {
   flex-shrink: 0;
-  display: flex;
+}
+
+.colFile    { padding-left: var(--space-3); }
+.colStatus  { text-align: center; }
+.colSize    { text-align: right; }
+.colTime    { text-align: right; }
+.colActions { }
+
+/* ---- List ---- */
+.list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ---- Row ---- */
+.row {
+  display: grid;
+  grid-template-columns: 32px 1fr 120px 80px 70px 64px;
   align-items: center;
-  color: var(--accent);
-}
-
-/* ---- Column resize handle ---- */
-.resizeHandle {
-  position: absolute;
-  right: 0;
-  top: 0;
-  height: 100%;
-  width: 4px;
-  cursor: col-resize;
-  touch-action: none;
-  background: transparent;
-  transition: background-color 120ms;
-}
-
-.resizeHandle:hover,
-.resizing {
-  background: var(--accent);
-}
-
-/* ---- Rows ---- */
-.tr {
-  display: flex;
-  align-items: center;
+  padding: 0 var(--space-4);
+  min-height: 56px;
   border-bottom: 1px solid var(--border);
   transition: background-color var(--transition);
+  background: var(--bg);
 }
 
-.tr:hover { background: var(--bg-hover); }
+.row:hover { background: var(--bg-hover); }
 
-.td {
-  padding: 0 var(--space-2);
-  overflow: hidden;
+.rowActive {
+  background: var(--bg-active);
+  border-bottom-color: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+
+.rowActive:hover { background: var(--bg-active); }
+
+/* ---- File icon ---- */
+.fileIconWrap {
   display: flex;
   align-items: center;
-  height: 100%;
+  justify-content: center;
+  color: var(--text-faint);
+  flex-shrink: 0;
 }
 
-/* ---- File cell ---- */
-.fileCell {
+.rowActive .fileIconWrap { color: var(--accent); }
+
+/* ---- File info ---- */
+.fileInfo {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
+  padding: var(--space-2) var(--space-3);
 }
 
 .filename {
   font-size: var(--font-size-md);
   font-weight: var(--font-weight-medium);
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -172,7 +149,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
 }
 
 .errorMsg {
@@ -183,30 +160,123 @@
   white-space: nowrap;
 }
 
-/* ---- Misc cell content ---- */
-.time {
-  font-size: var(--font-size-sm);
+/* Progress bar inline */
+.progressTrack {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent-subtle);
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 300ms ease;
+}
+
+/* ---- Status badge ---- */
+.statusCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.statusBadge {
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.status_pending {
+  background: var(--bg-surface);
   color: var(--text-muted);
 }
 
-.retryBtn {
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--error-subtle);
-  color: var(--error);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  transition: background-color var(--transition);
+.status_transferring {
+  background: var(--accent-subtle);
+  color: var(--accent);
 }
 
-.retryBtn:hover { background: var(--error); color: #fff; }
+.status_done {
+  background: var(--success-subtle);
+  color: var(--success);
+}
+
+.status_error {
+  background: var(--error-subtle);
+  color: var(--error);
+}
+
+/* ---- Size / Time cells ---- */
+.sizeCell {
+  text-align: right;
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  padding-right: var(--space-2);
+}
+
+.timeCell {
+  text-align: right;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  padding-right: var(--space-2);
+}
+
+/* ---- Actions ---- */
+.actionsCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.retryBtn,
+.cancelBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-md);
+  color: var(--text-faint);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.retryBtn:hover {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+.cancelBtn:hover {
+  color: var(--error);
+  background: var(--error-subtle);
+}
 
 /* ---- Empty state ---- */
 .empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 200px;
+  gap: var(--space-3);
+  height: 280px;
   color: var(--text-muted);
-  font-size: var(--font-size-md);
+  font-size: var(--font-size-base);
+}
+
+.emptyIcon {
+  color: var(--text-faint);
+  opacity: 0.5;
+}
+
+.emptyHint {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
 }

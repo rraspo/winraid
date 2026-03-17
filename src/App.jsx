@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import Sidebar from './components/Sidebar'
+import Header from './components/Header'
 import StatusBar from './components/StatusBar'
+import ConnectionModal from './components/ConnectionModal'
+import DashboardView from './views/DashboardView'
 import QueueView from './views/QueueView'
 import BrowseView from './views/BrowseView'
 import BackupView from './views/BackupView'
@@ -9,21 +12,22 @@ import LogView from './views/LogView'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
-// View registry — add new top-level views here
+// View registry
 // ---------------------------------------------------------------------------
 const VIEW_COMPONENTS = {
-  queue:    QueueView,
-  browse:   BrowseView,
-  backup:   BackupView,
-  settings: SettingsView,
-  logs:     LogView,
+  dashboard: DashboardView,
+  queue:     QueueView,
+  browse:    BrowseView,
+  backup:    BackupView,
+  settings:  SettingsView,
+  logs:      LogView,
 }
 
 // ---------------------------------------------------------------------------
 // Root component
 // ---------------------------------------------------------------------------
 export default function App() {
-  const [activeView, setActiveView]   = useState('queue')
+  const [activeView, setActiveView]       = useState('dashboard')
   const [watcherStatus, setWatcherStatus] = useState({ watching: false, folder: null })
   const [activeTransfers, setActiveTransfers] = useState(0)
   const [backupRun, setBackupRun] = useState({
@@ -33,28 +37,24 @@ export default function App() {
     lastRun:     null,
   })
 
-  // --- Theme detection -------------------------------------------------------
-  // Applies [data-theme] to <html> so CSS variables cascade everywhere.
-  // Falls back to dark if matchMedia is unsupported.
+  // --- Theme management -------------------------------------------------------
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem('winraid-theme')
+    if (saved === 'dark' || saved === 'light') return saved
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  })
+
   useEffect(() => {
-    const apply = (prefersDark) => {
-      document.documentElement.setAttribute(
-        'data-theme',
-        prefersDark ? 'dark' : 'light'
-      )
-    }
+    document.documentElement.setAttribute('data-theme', theme)
+  }, [theme])
 
-    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
-    if (!mq) {
-      apply(true)  // fallback: dark
-      return
-    }
-
-    apply(mq.matches)
-    const handler = (e) => apply(e.matches)
-    mq.addEventListener('change', handler)
-    return () => mq.removeEventListener('change', handler)
-  }, [])
+  function toggleTheme() {
+    setTheme((t) => {
+      const next = t === 'dark' ? 'light' : 'dark'
+      localStorage.setItem('winraid-theme', next)
+      return next
+    })
+  }
 
   // --- IPC: watcher status ---------------------------------------------------
   useEffect(() => {
@@ -75,7 +75,6 @@ export default function App() {
   }, [])
 
   // --- IPC: active transfer count -------------------------------------------
-  // Tracks how many jobs are currently in-flight for the status bar.
   useEffect(() => {
     if (!window.winraid) return
 
@@ -95,7 +94,24 @@ export default function App() {
     }
   }, [])
 
-  // --- Watcher toggle (from status bar click) --------------------------------
+  // --- Connection modal (shared between sidebar + dashboard) ----------------
+  const [connModal,   setConnModal]   = useState({ open: false, conn: null })
+  const [connVersion, setConnVersion] = useState(0)
+
+  function openConnModal(conn) {
+    // Legacy synthesized entry: treat as new connection pre-filled with flat data
+    const normalised = conn?.id === '__legacy__'
+      ? { ...conn, id: crypto.randomUUID() }
+      : conn ?? null
+    setConnModal({ open: true, conn: normalised })
+  }
+
+  function handleConnSave() {
+    setConnModal({ open: false, conn: null })
+    setConnVersion((v) => v + 1)
+  }
+
+  // --- Watcher toggle -------------------------------------------------------
   async function handleWatcherToggle() {
     if (watcherStatus.watching) {
       await window.winraid?.watcher.stop()
@@ -106,18 +122,43 @@ export default function App() {
   }
 
   // --- Render ----------------------------------------------------------------
-  const ActiveView = VIEW_COMPONENTS[activeView] ?? QueueView
-  const activeViewProps = activeView === 'backup' ? { backupRun, setBackupRun } : {}
+  const ActiveView = VIEW_COMPONENTS[activeView] ?? DashboardView
+  const activeViewProps =
+    activeView === 'backup'    ? { backupRun, setBackupRun } :
+    activeView === 'dashboard' ? { watcherStatus, onNavigate: setActiveView, onEditConnection: openConnModal, connVersion } :
+    {}
 
   return (
     <div className={styles.shell}>
       <div className={styles.body}>
-        <Sidebar activeView={activeView} onNavigate={setActiveView} />
-        <main className={styles.content}>
-          <ActiveView {...activeViewProps} />
-        </main>
+        <Sidebar
+          activeView={activeView}
+          onNavigate={setActiveView}
+          theme={theme}
+          onThemeToggle={toggleTheme}
+          onEditConnection={openConnModal}
+          connVersion={connVersion}
+        />
+        <div className={styles.main}>
+          <Header
+            watcherStatus={watcherStatus}
+            activeTransfers={activeTransfers}
+            onWatcherToggle={handleWatcherToggle}
+          />
+          <main className={styles.content}>
+            <ActiveView {...activeViewProps} />
+          </main>
+          <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} />
+        </div>
       </div>
-      <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} onToggle={handleWatcherToggle} />
+
+      {connModal.open && (
+        <ConnectionModal
+          existing={connModal.conn}
+          onSave={handleConnSave}
+          onClose={() => setConnModal({ open: false, conn: null })}
+        />
+      )}
     </div>
   )
 }
