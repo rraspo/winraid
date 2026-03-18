@@ -37,10 +37,6 @@ function applyToSensitive(obj, fn) {
 // Defaults
 // ---------------------------------------------------------------------------
 const DEFAULTS = {
-  localFolder:    '',
-  operation:      'copy',
-  folderMode:     'flat',
-  extensions:     [],
   backup: {
     sources:   [],   // string[] — remote paths on the NAS to pull down
     localDest: '',   // local folder to receive the backup
@@ -50,6 +46,31 @@ const DEFAULTS = {
   },
   connections:        [],
   activeConnectionId: null,
+}
+
+// ---------------------------------------------------------------------------
+// Migration — move legacy top-level fields into the first connection object
+// ---------------------------------------------------------------------------
+function migrateConfig(cfg) {
+  // If the old top-level localFolder exists and there are connections,
+  // merge the legacy fields into the first connection that lacks them.
+  if (!cfg.localFolder) return cfg
+
+  const conn = (cfg.connections ?? [])[0]
+  if (conn) {
+    if (!conn.localFolder)  conn.localFolder  = cfg.localFolder
+    if (!conn.operation)    conn.operation     = cfg.operation ?? 'copy'
+    if (!conn.folderMode)   conn.folderMode   = cfg.folderMode ?? 'flat'
+    if (!conn.extensions)   conn.extensions    = cfg.extensions ?? []
+  }
+
+  // Remove legacy keys
+  delete cfg.localFolder
+  delete cfg.operation
+  delete cfg.folderMode
+  delete cfg.extensions
+
+  return cfg
 }
 
 // ---------------------------------------------------------------------------
@@ -100,8 +121,12 @@ function load() {
     return _cache
   }
   try {
-    const parsed = deepMerge(DEFAULTS, JSON.parse(readFileSync(file, 'utf8')))
-    _cache = applyToSensitive(parsed, decryptValue)
+    const raw = JSON.parse(readFileSync(file, 'utf8'))
+    const merged = deepMerge(DEFAULTS, raw)
+    const migrated = migrateConfig(merged)
+    _cache = applyToSensitive(migrated, decryptValue)
+    // Persist migration changes so they only run once
+    if (raw.localFolder !== undefined) persist()
   } catch {
     _cache = structuredClone(DEFAULTS)
   }

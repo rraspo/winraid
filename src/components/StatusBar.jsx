@@ -1,15 +1,19 @@
 import styles from './StatusBar.module.css'
 
 export default function StatusBar({ watcherStatus, activeTransfers }) {
-  const { watching, state, file } = watcherStatus
+  // watcherStatus is now a Map<connectionId, { watching, state, file }>
+  const entries = Object.values(watcherStatus ?? {})
+  const anyWatching = entries.some((s) => s.watching)
+  const enqueueing = entries.find((s) => s.state === 'enqueueing')
+  const watchingCount = entries.filter((s) => s.watching).length
 
   let label
-  if (!watching) {
-    label = 'Scanner stopped'
-  } else if (state === 'enqueueing') {
-    label = file ? `Detecting · ${file}` : 'Detecting file…'
+  if (!anyWatching) {
+    label = 'All scanners stopped'
+  } else if (enqueueing) {
+    label = enqueueing.file ? `Detecting · ${enqueueing.file}` : 'Detecting file…'
   } else {
-    label = 'Scanning for changes'
+    label = watchingCount === 1 ? 'Scanning for changes' : `${watchingCount} scanners active`
   }
 
   return (
