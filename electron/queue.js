@@ -53,12 +53,37 @@ function jobs() {
 
 // Atomic write: write to .tmp then rename over the real file.
 // On NTFS, rename over an existing file is atomic.
-function persist() {
+function _persistNow() {
+  if (_jobs === null) return
   const p   = queuePath()
   const tmp = p + '.tmp'
   writeFileSync(tmp, JSON.stringify(_jobs, null, 2), 'utf8')
   renameSync(tmp, p)
 }
+
+// Debounce rapid consecutive persist calls (e.g. progress ticks) so we do not
+// hammer the filesystem on every update. The write is coalesced into a single
+// call after PERSIST_DEBOUNCE_MS of inactivity.
+const PERSIST_DEBOUNCE_MS = 200
+let _persistTimer = null
+
+function persist() {
+  if (_persistTimer !== null) clearTimeout(_persistTimer)
+  _persistTimer = setTimeout(() => {
+    _persistTimer = null
+    _persistNow()
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+// Flush any pending debounced persist immediately before the process exits
+// so the final queue state is not lost on graceful shutdown.
+app.on('before-quit', () => {
+  if (_persistTimer !== null) {
+    clearTimeout(_persistTimer)
+    _persistTimer = null
+    _persistNow()
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Public API — same interface as the previous better-sqlite3 version
@@ -155,10 +180,21 @@ export function hasActiveJob(srcPath) {
   return jobs().some((j) => j.srcPath === srcPath && j.status !== STATUS.ERROR)
 }
 
+/** Remove a single ERROR job by id. */
+export function removeJob(jobId) {
+  const list = jobs()
+  const job = list.find((j) => j.id === jobId)
+  if (!job || job.status !== STATUS.ERROR) return
+  _jobs = list.filter((j) => j.id !== jobId)
+  persist()
+  log('info', `Removed errored job ${jobId} (${job.filename}).`)
+}
+
 /** Remove all DONE jobs from the store. */
 export function clearDone() {
-  const before = _jobs.length
-  _jobs = _jobs.filter((j) => j.status !== STATUS.DONE)
+  const list = jobs()
+  const before = list.length
+  _jobs = list.filter((j) => j.status !== STATUS.DONE)
   persist()
   log('info', `Cleared ${before - _jobs.length} completed job(s).`)
 }

@@ -163,17 +163,19 @@ function markError(job, errorMsg) {
 // ---------------------------------------------------------------------------
 
 async function buildBackend(cfg) {
-  switch (cfg.connectionType) {
+  const conn = (cfg.connections ?? []).find((c) => c.id === cfg.activeConnectionId)
+  if (!conn) throw new Error('No active connection configured.')
+  switch (conn.type) {
     case 'sftp': {
       const { createSftpBackend } = await import('./backends/sftp.js')
-      return createSftpBackend(cfg.sftp)
+      return createSftpBackend(conn.sftp)
     }
     case 'smb': {
       const { createSmbBackend } = await import('./backends/smb.js')
-      return createSmbBackend(cfg.smb)
+      return createSmbBackend(conn.smb)
     }
     default:
-      throw new Error(`Unknown connection type: "${cfg.connectionType}"`)
+      throw new Error(`Unknown connection type: "${conn.type}"`)
   }
 }
 

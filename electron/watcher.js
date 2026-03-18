@@ -135,6 +135,10 @@ async function waitForStable(filePath, isInitial = false) {
   while (stableRuns < STABLE_POLLS) {
     await sleep(STABLE_INTERVAL_MS)
 
+    // If the watcher was paused while we were sleeping, abort without calling
+    // onFileReady. The inFlight decrement happens in the .finally() above.
+    if (paused) return
+
     let currentSize
     try {
       const info = await stat(filePath)

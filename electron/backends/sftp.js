@@ -1,6 +1,7 @@
 import { Client } from 'ssh2'
 import { readFile, stat } from 'fs/promises'
-import { posix } from 'path'
+import { posix, join } from 'path'
+import { homedir } from 'os'
 import { log } from '../logger.js'
 
 // ---------------------------------------------------------------------------
@@ -49,7 +50,8 @@ async function connect(cfg) {
   }
 
   if (cfg.keyPath) {
-    connectOpts.privateKey = await readFile(cfg.keyPath)
+    const resolvedKeyPath = cfg.keyPath.replace(/^~/, homedir())
+    connectOpts.privateKey = await readFile(resolvedKeyPath)
   } else {
     connectOpts.password = cfg.password
   }

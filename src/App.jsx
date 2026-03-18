@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatusBar from './components/StatusBar'
-import ConnectionModal from './components/ConnectionModal'
+import ConnectionView from './views/ConnectionView'
 import DashboardView from './views/DashboardView'
 import QueueView from './views/QueueView'
 import BrowseView from './views/BrowseView'
@@ -75,40 +75,70 @@ export default function App() {
   }, [])
 
   // --- IPC: active transfer count -------------------------------------------
+  // Track the last known status per job so we can detect transitions into and
+  // out of TRANSFERRING without relying on a prevStatus field in the payload.
+  const jobStatusMapRef = useRef(new Map())
+
   useEffect(() => {
     if (!window.winraid) return
 
-    const unsubProgress = window.winraid.queue.onProgress(({ percent }) => {
-      if (percent < 100) setActiveTransfers((n) => Math.max(n, 1))
-    })
+    const unsubUpdated = window.winraid.queue.onUpdated((payload) => {
+      if (payload?.type === 'updated' && payload.job) {
+        const { job } = payload
+        const prevStatus = jobStatusMapRef.current.get(job.id)
+        const nextStatus = job.status
 
-    const unsubUpdated = window.winraid.queue.onUpdated(({ job }) => {
-      if (job?.status && job.status !== 'TRANSFERRING') {
-        setActiveTransfers(0)
+        if (prevStatus !== nextStatus) {
+          jobStatusMapRef.current.set(job.id, nextStatus)
+          if (nextStatus === 'TRANSFERRING') {
+            setActiveTransfers((n) => n + 1)
+          } else if (prevStatus === 'TRANSFERRING') {
+            setActiveTransfers((n) => Math.max(0, n - 1))
+          }
+        }
+      } else if (payload?.type === 'cleared') {
+        // All DONE jobs removed — no active transfers affected, but reset map entries
+        jobStatusMapRef.current.forEach((status, id) => {
+          if (status === 'DONE') jobStatusMapRef.current.delete(id)
+        })
+      } else if (payload?.type === 'removed' && payload.jobId) {
+        jobStatusMapRef.current.delete(payload.jobId)
       }
     })
 
     return () => {
-      unsubProgress()
       unsubUpdated()
     }
   }, [])
 
-  // --- Connection modal (shared between sidebar + dashboard) ----------------
-  const [connModal,   setConnModal]   = useState({ open: false, conn: null })
-  const [connVersion, setConnVersion] = useState(0)
+  // --- Connection state (shared between sidebar + dashboard) ----------------
+  const [connEdit,      setConnEdit]      = useState(null)  // null | { conn }
+  const [connections,   setConnections]   = useState([])
+  const [activeConnId,  setActiveConnId]  = useState(null)
 
-  function openConnModal(conn) {
-    // Legacy synthesized entry: treat as new connection pre-filled with flat data
-    const normalised = conn?.id === '__legacy__'
-      ? { ...conn, id: crypto.randomUUID() }
-      : conn ?? null
-    setConnModal({ open: true, conn: normalised })
+  useEffect(() => {
+    window.winraid?.config.get().then((cfg) => {
+      if (!cfg) return
+      setConnections(cfg.connections ?? [])
+      setActiveConnId(cfg.activeConnectionId ?? null)
+    })
+  }, [])
+
+  async function openConnEdit(conn) {
+    // Immediately mark the clicked connection as active in config and state,
+    // so the sidebar highlights it without waiting for the save action.
+    if (conn && conn.id !== activeConnId) {
+      await window.winraid?.config.set('activeConnectionId', conn.id)
+      setActiveConnId(conn.id)
+    }
+    setConnEdit({ conn: conn ?? null })
   }
 
-  function handleConnSave() {
-    setConnModal({ open: false, conn: null })
-    setConnVersion((v) => v + 1)
+  async function handleConnSave(saved) {
+    setConnEdit(null)
+    const cfg = await window.winraid?.config.get()
+    setConnections(cfg?.connections ?? [])
+    setActiveConnId(cfg?.activeConnectionId ?? null)
   }
 
   // --- Watcher toggle -------------------------------------------------------
@@ -117,7 +147,10 @@ export default function App() {
       await window.winraid?.watcher.stop()
     } else {
       const cfg = await window.winraid?.config.get()
-      if (cfg?.localFolder) await window.winraid?.watcher.start(cfg.localFolder)
+      // localFolder lives on the active connection, not the top-level config
+      const activeConn = (cfg?.connections ?? []).find((c) => c.id === cfg?.activeConnectionId)
+      const folder = activeConn?.localFolder ?? cfg?.localFolder ?? ''
+      if (folder) await window.winraid?.watcher.start(folder)
     }
   }
 
@@ -125,19 +158,25 @@ export default function App() {
   const ActiveView = VIEW_COMPONENTS[activeView] ?? DashboardView
   const activeViewProps =
     activeView === 'backup'    ? { backupRun, setBackupRun } :
-    activeView === 'dashboard' ? { watcherStatus, onNavigate: setActiveView, onEditConnection: openConnModal, connVersion } :
+    activeView === 'dashboard' ? { watcherStatus, onNavigate: setActiveView, onEditConnection: openConnEdit, connections, activeConnId } :
     {}
+
+  // ID of the connection whose form is currently open — used by Sidebar to
+  // highlight the editing row independently of activeConnId.
+  const editingConnId = connEdit !== null ? (connEdit.conn?.id ?? null) : null
 
   return (
     <div className={styles.shell}>
       <div className={styles.body}>
         <Sidebar
-          activeView={activeView}
-          onNavigate={setActiveView}
+          activeView={connEdit !== null ? null : activeView}
+          onNavigate={(view) => { setConnEdit(null); setActiveView(view) }}
           theme={theme}
           onThemeToggle={toggleTheme}
-          onEditConnection={openConnModal}
-          connVersion={connVersion}
+          onEditConnection={openConnEdit}
+          connections={connections}
+          activeConnId={activeConnId}
+          editingConnId={editingConnId}
         />
         <div className={styles.main}>
           <Header
@@ -146,19 +185,20 @@ export default function App() {
             onWatcherToggle={handleWatcherToggle}
           />
           <main className={styles.content}>
-            <ActiveView {...activeViewProps} />
+            {connEdit !== null
+              ? <ConnectionView
+                  key={connEdit.conn?.id ?? 'new'}
+                  existing={connEdit.conn}
+                  onSave={handleConnSave}
+                  onClose={() => setConnEdit(null)}
+                />
+              : <ActiveView {...activeViewProps} />
+            }
           </main>
           <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} />
         </div>
       </div>
 
-      {connModal.open && (
-        <ConnectionModal
-          existing={connModal.conn}
-          onSave={handleConnSave}
-          onClose={() => setConnModal({ open: false, conn: null })}
-        />
-      )}
     </div>
   )
 }

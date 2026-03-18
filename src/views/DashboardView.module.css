@@ -10,17 +10,16 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: var(--space-6) var(--space-8);
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
 }
 
 /* ---- Hero ---- */
 .hero {
   position: relative;
   background: var(--bg-panel);
-  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   padding: var(--space-8) var(--space-8);
   display: flex;
@@ -31,10 +30,7 @@
   flex-shrink: 0;
 }
 
-.heroLeft {
-  position: relative;
-  z-index: 1;
-}
+.heroLeft { position: relative; z-index: 1; }
 
 .heroEyebrow {
   font-size: var(--font-size-xs);
@@ -72,7 +68,6 @@
 
 .heroStat {
   background: var(--bg-card);
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-6);
   display: flex;
@@ -101,7 +96,7 @@
   font-weight: var(--font-weight-medium);
 }
 
-/* Decorative rings — top-right corner */
+/* Decorative rings */
 .heroDeco {
   position: absolute;
   right: -20px;
@@ -113,26 +108,18 @@
   color: var(--accent);
 }
 
-/* ---- Main grid ---- */
+/* ---- Bento grid ---- */
 .grid {
   display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: var(--space-6);
+  grid-template-columns: 1fr 300px;
+  gap: var(--space-8);
   align-items: start;
-}
-
-/* ---- Section card ---- */
-.section {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  overflow: hidden;
 }
 
 .colMain {
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
+  gap: var(--space-8);
 }
 
 .colSide {
@@ -140,19 +127,20 @@
   flex-direction: column;
 }
 
-.activitySection {
-  /* stretch to fill available height */
+/* ---- Content block: flat heading + cards below ---- */
+.contentBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
 }
 
-.sectionHead {
+.blockHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-5) var(--space-5) var(--space-4);
-  border-bottom: 1px solid var(--border);
 }
 
-.sectionTitle {
+.blockTitle {
   font-size: var(--font-size-lg);
   font-weight: var(--font-weight-semibold);
   color: var(--text);
@@ -170,47 +158,55 @@
 
 .viewAllBtn:hover { opacity: 0.7; }
 
-/* ---- Empty card state ---- */
-.emptyCard {
+/* ---- 2-column card grid ---- */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+}
+
+/* ---- Empty row ---- */
+.emptyRow {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-6) var(--space-5);
+  gap: var(--space-2);
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+  padding: var(--space-2) 0;
 }
 
-.emptyCardIcon { color: var(--success); opacity: 0.65; flex-shrink: 0; }
-.emptyCardIconWarn { color: var(--warning); opacity: 0.8; flex-shrink: 0; }
+.emptyRowIcon     { color: var(--success); opacity: 0.65; flex-shrink: 0; }
+.emptyRowIconWarn { color: var(--warning); opacity: 0.8;  flex-shrink: 0; }
 
-/* ---- Transfer list ---- */
-.transferList {
+/* ---- Transfer card — standalone card per job ---- */
+.transferCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
-}
-
-.transferCard {
-  display: flex;
-  align-items: flex-start;
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
   transition: background-color var(--transition);
 }
 
-.transferCard:last-child { border-bottom: none; }
 .transferCard:hover { background: var(--bg-hover); }
 
 .transferCardActive {
-  background: var(--bg-active);
+  background: var(--bg-card);
 }
 
-.transferCardActive:hover { background: var(--bg-active); }
+.transferCardTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
 
 .transferIconWrap {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
   display: flex;
   align-items: center;
@@ -232,52 +228,42 @@
   gap: 3px;
 }
 
-.transferMeta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  min-width: 0;
-}
-
 .transferName {
   font-size: var(--font-size-md);
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  min-width: 0;
 }
 
-.transferStatus {
+.transferSub {
   font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  color: var(--accent);
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-
-.transferPath {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: 'Cascadia Code', 'Consolas', monospace;
 }
 
-.transferSize {
+.transferCardBottom {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.transferMeta {
+  display: flex;
+  justify-content: space-between;
   font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
   color: var(--text-muted);
 }
 
 .progressTrack {
-  height: 3px;
+  height: 4px;
   border-radius: 2px;
-  background: var(--accent-subtle);
+  background: var(--bg-surface);
   overflow: hidden;
-  margin-top: 2px;
 }
 
 .progressFill {
@@ -287,28 +273,47 @@
   transition: width 300ms ease;
 }
 
-/* ---- Connection card ---- */
-.connCard {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  transition: background-color var(--transition);
+.progressFillIdle {
+  background: var(--text-faint);
+  opacity: 0.4;
 }
 
-.connCard:last-child { border-bottom: none; }
-.connCard:hover { background: var(--bg-hover); cursor: pointer; }
-.connCardActive:hover { background: var(--bg-active); }
+/* ---- Connection card — standalone card per connection ---- */
+.connCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  text-align: left;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  transition: background-color var(--transition);
+  cursor: pointer;
+}
+
+.connCard:hover { background: var(--bg-hover); }
 
 .connCardActive {
-  background: var(--bg-active);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-card));
+}
+
+.connCardActive:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+}
+
+.connCardTop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
 .connIconWrap {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-lg);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
   background: var(--accent-subtle);
   color: var(--accent);
   display: flex;
@@ -317,47 +322,58 @@
   flex-shrink: 0;
 }
 
-.connInfo {
+.connCardMeta {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
-  min-width: 0;
 }
 
-.connName {
-  font-size: var(--font-size-base);
+.connCardName {
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   color: var(--text);
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.connOnline {
+.connBadgeActive {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--success);
-  padding: 2px 7px;
-  background: var(--success-subtle);
-  border-radius: var(--radius-sm);
 }
 
-.connHost {
-  font-size: var(--font-size-sm);
-  font-family: 'Cascadia Code', 'Consolas', monospace;
-  color: var(--text-muted);
+.connBadgeIdle {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-faint);
 }
 
-.connType {
+.connTypeBadge {
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-bold);
   letter-spacing: 0.05em;
   color: var(--text-faint);
   flex-shrink: 0;
   align-self: flex-start;
-  margin-top: 2px;
+}
+
+.connCardBottom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: calc(36px + var(--space-3));
+}
+
+.connHost {
+  font-size: var(--font-size-md);
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  color: var(--text-muted);
+  font-style: normal;
 }
 
 .connPath {
@@ -367,9 +383,19 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-style: normal;
 }
 
-/* ---- Activity list ---- */
+/* ---- Activity panel (right column) ---- */
+.activityPanel {
+  background: var(--bg-panel);
+  border-radius: var(--radius-xl);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
 .activityList {
   display: flex;
   flex-direction: column;
@@ -379,13 +405,11 @@
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
+  padding: var(--space-3) 0;
   border-bottom: 1px solid var(--border);
-  transition: background-color var(--transition);
 }
 
 .logEntry:last-child { border-bottom: none; }
-.logEntry:hover { background: var(--bg-hover); }
 
 .logIconWrap {
   width: 28px;
@@ -400,9 +424,9 @@
   color: var(--text-muted);
 }
 
-.log_error .logIconWrap { background: var(--error-subtle); color: var(--error); }
+.log_error .logIconWrap { background: var(--error-subtle);   color: var(--error);   }
 .log_warn  .logIconWrap { background: var(--warning-subtle); color: var(--warning); }
-.log_info  .logIconWrap { background: var(--accent-subtle); color: var(--accent); }
+.log_info  .logIconWrap { background: var(--accent-subtle);  color: var(--accent);  }
 
 .logContent {
   flex: 1;
@@ -414,6 +438,7 @@
 
 .logMsg {
   font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
   color: var(--text);
   line-height: var(--line-height-normal);
   overflow: hidden;
@@ -421,7 +446,7 @@
   white-space: nowrap;
 }
 
-.log_error .logMsg { color: var(--error); }
+.log_error .logMsg { color: var(--error);   }
 .log_warn  .logMsg { color: var(--warning); }
 
 .logTs {
@@ -429,12 +454,12 @@
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-weight: var(--font-weight-medium);
+  font-weight: var(--font-weight-bold);
 }
 
-/* ---- Responsive: collapse grid on narrow window ---- */
-@media (max-width: 700px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
+/* ---- Responsive ---- */
+@media (max-width: 800px) {
+  .grid     { grid-template-columns: 1fr; }
+  .cardGrid { grid-template-columns: 1fr; }
+  .scroll   { padding: var(--space-4); }
 }

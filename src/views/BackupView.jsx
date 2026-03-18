@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Plus, Download, Info } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Tooltip from '../components/ui/Tooltip'
@@ -33,6 +33,7 @@ export default function BackupView({ backupRun, setBackupRun }) {
   const [sftpHost, setSftpHost]   = useState(null)
   const [sftpCfg, setSftpCfg]     = useState(null)
   const [browsingIndex, setBrowsingIndex] = useState(null)
+  const runningRef = useRef(false)
 
   const runStatus  = backupRun?.runStatus   ?? RUN_STATUS.IDLE
   const stats      = backupRun?.stats       ?? null
@@ -47,8 +48,10 @@ export default function BackupView({ backupRun, setBackupRun }) {
         sources:   cfg.backup?.sources   ?? [],
         localDest: cfg.backup?.localDest ?? '',
       })
-      setSftpHost(cfg.sftp?.host ?? null)
-      setSftpCfg(cfg.sftp ?? null)
+      const activeConn = (cfg.connections ?? []).find((c) => c.id === cfg.activeConnectionId) ?? null
+      const isSftp = activeConn?.type === 'sftp'
+      setSftpHost(isSftp ? activeConn?.sftp?.host ?? null : null)
+      setSftpCfg(isSftp ? activeConn?.sftp ?? null : null)
       setLoaded(true)
     }
     load()
@@ -97,6 +100,8 @@ export default function BackupView({ backupRun, setBackupRun }) {
   }
 
   async function handleRun() {
+    if (runningRef.current) return
+    runningRef.current = true
     setBackupRun((s) => ({ ...s, runStatus: RUN_STATUS.RUNNING, stats: null, currentFile: null }))
     setSaveMsg(null)
     try {
@@ -114,6 +119,8 @@ export default function BackupView({ backupRun, setBackupRun }) {
     } catch (err) {
       setBackupRun((s) => ({ ...s, runStatus: RUN_STATUS.ERROR }))
       setSaveMsg({ type: 'error', text: err.message })
+    } finally {
+      runningRef.current = false
     }
   }
 
@@ -144,8 +151,8 @@ export default function BackupView({ backupRun, setBackupRun }) {
         <div className={styles.connNotice}>
           <Info size={13} className={styles.connNoticeIcon} />
           <span>
-            Uses the SSH / SFTP connection configured in Settings
-            {sftpHost ? <> — <code className={styles.connNoticeHost}>{sftpHost}</code></> : ''}
+            Uses the active SFTP connection
+            {sftpHost ? <> — <code className={styles.connNoticeHost}>{sftpHost}</code></> : '. No active SFTP connection configured.'}
           </span>
         </div>
 

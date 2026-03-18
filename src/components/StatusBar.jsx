@@ -5,11 +5,11 @@ export default function StatusBar({ watcherStatus, activeTransfers }) {
 
   let label
   if (!watching) {
-    label = 'Watcher stopped'
+    label = 'Scanner stopped'
   } else if (state === 'enqueueing') {
     label = file ? `Detecting · ${file}` : 'Detecting file…'
   } else {
-    label = 'Watching for changes'
+    label = 'Scanning for changes'
   }
 
   return (
