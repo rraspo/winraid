@@ -238,6 +238,7 @@
 }
 
 .retryBtn,
+.removeBtn,
 .cancelBtn {
   display: flex;
   align-items: center;
@@ -254,6 +255,7 @@
   background: var(--accent-subtle);
 }
 
+.removeBtn:hover,
 .cancelBtn:hover {
   color: var(--error);
   background: var(--error-subtle);
