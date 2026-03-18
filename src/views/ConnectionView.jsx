@@ -448,6 +448,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
         <VerifyResultDialog
           result={verifyResult}
           localFolder={conn.localFolder}
+          connectionId={conn.id}
           onClose={() => setVerifyResult(null)}
         />
       )}
@@ -757,13 +758,13 @@ function VerifyConfirmDialog({ localFolder, onConfirm, onClose }) {
 // ---------------------------------------------------------------------------
 // VerifyResultDialog
 // ---------------------------------------------------------------------------
-function VerifyResultDialog({ result, localFolder, onClose }) {
+function VerifyResultDialog({ result, localFolder, connectionId, onClose }) {
   const [requeued,   setRequeued]   = useState(false)
   const [requeueing, setRequeueing] = useState(false)
 
   async function handleRequeue() {
     setRequeueing(true)
-    await window.winraid?.queue.enqueueBatch(localFolder, result.notFound)
+    await window.winraid?.queue.enqueueBatch(connectionId, localFolder, result.notFound)
     setRequeueing(false)
     setRequeued(true)
   }

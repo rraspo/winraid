@@ -28,7 +28,8 @@ const VIEW_COMPONENTS = {
 // ---------------------------------------------------------------------------
 export default function App() {
   const [activeView, setActiveView]       = useState('dashboard')
-  const [watcherStatus, setWatcherStatus] = useState({ watching: false, folder: null })
+  // Map<connectionId, { watching, folder, state, file }> — per-connection watcher status
+  const [watcherStatus, setWatcherStatus] = useState({})
   const [activeTransfers, setActiveTransfers] = useState(0)
   const [backupRun, setBackupRun] = useState({
     runStatus:   'idle',
@@ -59,7 +60,29 @@ export default function App() {
   // --- IPC: watcher status ---------------------------------------------------
   useEffect(() => {
     if (!window.winraid) return
-    return window.winraid.watcher.onStatus(setWatcherStatus)
+    return window.winraid.watcher.onStatus((status) => {
+      if (status.connectionId) {
+        // Per-connection status update
+        setWatcherStatus((prev) => ({
+          ...prev,
+          [status.connectionId]: {
+            watching: status.watching,
+            folder: status.folder ?? null,
+            state: status.state ?? null,
+            file: status.file ?? null,
+          },
+        }))
+      } else {
+        // Bulk update (e.g. pause/resume all)
+        setWatcherStatus((prev) => {
+          const next = { ...prev }
+          for (const id of Object.keys(next)) {
+            next[id] = { ...next[id], watching: status.watching }
+          }
+          return next
+        })
+      }
+    })
   }, [])
 
   // --- IPC: backup progress --------------------------------------------------
@@ -142,15 +165,13 @@ export default function App() {
   }
 
   // --- Watcher toggle -------------------------------------------------------
-  async function handleWatcherToggle() {
-    if (watcherStatus.watching) {
-      await window.winraid?.watcher.stop()
+  async function handleWatcherToggle(connectionId) {
+    const connId = connectionId ?? activeConnId
+    if (!connId) return
+    if (watcherStatus[connId]?.watching) {
+      await window.winraid?.watcher.stop(connId)
     } else {
-      const cfg = await window.winraid?.config.get()
-      // localFolder lives on the active connection, not the top-level config
-      const activeConn = (cfg?.connections ?? []).find((c) => c.id === cfg?.activeConnectionId)
-      const folder = activeConn?.localFolder ?? cfg?.localFolder ?? ''
-      if (folder) await window.winraid?.watcher.start(folder)
+      await window.winraid?.watcher.start(connId)
     }
   }
 

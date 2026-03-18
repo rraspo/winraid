@@ -236,12 +236,12 @@ function rebuildTrayMenu() {
       click: () => { mainWindow.show(); mainWindow.focus() },
     },
     {
-      label: isPaused ? 'Resume watcher' : 'Pause watcher',
+      label: isPaused ? 'Resume all watchers' : 'Pause all watchers',
       click: async () => {
         isPaused = !isPaused
         const w = await getWatcher()
-        isPaused ? w.pauseWatcher() : w.resumeWatcher()
-        sendToRenderer('watcher:status', { watching: !isPaused })
+        isPaused ? w.pauseAll() : w.resumeAll()
+        sendToRenderer('watcher:status', { connectionId: null, watching: !isPaused })
         rebuildTrayMenu()
       },
     },
@@ -384,7 +384,6 @@ function registerIPC() {
   })
 
   const CONFIG_SET_ALLOWLIST = [
-    'localFolder', 'operation', 'folderMode', 'extensions',
     'backup', 'watcher', 'connections', 'activeConnectionId',
   ]
 
@@ -397,9 +396,18 @@ function registerIPC() {
     setConfig(key, value)
   })
 
-  ipcMain.handle('watcher:start', async (_e, folder) => {
-    if (typeof folder !== 'string' || !folder.trim()) {
-      return { ok: false, error: 'invalid folder' }
+  ipcMain.handle('watcher:start', async (_e, connectionId) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false, error: 'invalid connectionId' }
+    }
+    const { getConfig } = await import('./config.js')
+    const cfg = getConfig()
+    const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+    if (!conn) return { ok: false, error: 'connection not found' }
+
+    const folder = conn.localFolder
+    if (!folder || typeof folder !== 'string' || !folder.trim()) {
+      return { ok: false, error: 'no local folder configured for this connection' }
     }
     try {
       if (!existsSync(folder) || !statSync(folder).isDirectory()) {
@@ -408,26 +416,37 @@ function registerIPC() {
     } catch {
       return { ok: false, error: 'invalid folder' }
     }
-    const { getConfig } = await import('./config.js')
-    const watcherOpts = { queueExisting: getConfig('watcher.queueExisting') ?? true }
+
+    const watcherOpts = { queueExisting: cfg.watcher?.queueExisting ?? true }
     const w = await getWatcher()
-    w.startWatcher(folder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder, ...s }), watcherOpts)
-    sendToRenderer('watcher:status', { watching: true, folder, state: 'watching' })
+    w.startWatcher(
+      connectionId,
+      folder,
+      (filePath, meta) => onFileDetected(connectionId, filePath, meta),
+      (s) => sendToRenderer('watcher:status', { connectionId, watching: true, folder, ...s }),
+      watcherOpts
+    )
+    sendToRenderer('watcher:status', { connectionId, watching: true, folder, state: 'watching' })
     isPaused = false
     rebuildTrayMenu()
   })
 
-  ipcMain.handle('watcher:stop', async () => {
+  ipcMain.handle('watcher:stop', async (_e, connectionId) => {
     const w = await getWatcher()
-    w.stopWatcher()
-    sendToRenderer('watcher:status', { watching: false, folder: null })
+    if (connectionId) {
+      w.stopWatcher(connectionId)
+      sendToRenderer('watcher:status', { connectionId, watching: false, folder: null })
+    } else {
+      w.stopAll()
+      sendToRenderer('watcher:status', { connectionId: null, watching: false, folder: null })
+    }
     isPaused = false
     rebuildTrayMenu()
   })
 
-  ipcMain.handle('queue:list', async () => {
+  ipcMain.handle('queue:list', async (_e, connectionId) => {
     const q = await getQueue()
-    return q.listJobs()
+    return q.listJobs(connectionId ?? null)
   })
 
   ipcMain.handle('queue:retry', async (_e, jobId) => {
@@ -470,14 +489,17 @@ function registerIPC() {
     return { ok: true }
   })
 
-  ipcMain.handle('queue:enqueue-batch', async (_e, localFolder, relPaths) => {
+  ipcMain.handle('queue:enqueue-batch', async (_e, connectionId, localFolder, relPaths) => {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
+    const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+    if (!conn) return { ok: false, error: 'connection not found' }
+
     const q = await getQueue()
     for (const rel of relPaths) {
       const filePath = join(localFolder, ...rel.split('/'))
-      const relPath = cfg.folderMode === 'flat' ? basename(filePath) : rel
-      const jobId = q.enqueue(filePath, { relPath, operation: cfg.operation })
+      const relPath = conn.folderMode === 'flat' ? basename(filePath) : rel
+      const jobId = q.enqueue(filePath, { relPath, operation: conn.operation, connectionId })
       sendToRenderer('queue:updated', { type: 'added', jobId })
     }
     try {
@@ -1166,24 +1188,26 @@ function registerIPC() {
 }
 
 // ---------------------------------------------------------------------------
-// File-detected callback
+// File-detected callback — called per-connection by each watcher instance
 // ---------------------------------------------------------------------------
-async function onFileDetected(filePath, { isInitial = false } = {}) {
+async function onFileDetected(connectionId, filePath, { isInitial = false } = {}) {
   const { getConfig } = await import('./config.js')
   const cfg = getConfig()
+  const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+  if (!conn) return
 
-  const relPath = cfg.folderMode === 'flat'
+  const relPath = conn.folderMode === 'flat'
     ? basename(filePath)
-    : relative(cfg.localFolder, filePath).replace(/\\/g, '/')
+    : relative(conn.localFolder, filePath).replace(/\\/g, '/')
 
   const q = await getQueue()
 
   // On the initial folder scan (watcher start with queueExisting enabled),
   // skip files that already have an active job — they are leftovers from a
   // previous session (PENDING, TRANSFERRING, or already DONE).
-  if (isInitial && q.hasActiveJob(filePath)) return
+  if (isInitial && q.hasActiveJob(filePath, connectionId)) return
 
-  const jobId = q.enqueue(filePath, { relPath, operation: cfg.operation })
+  const jobId = q.enqueue(filePath, { relPath, operation: conn.operation, connectionId })
   sendToRenderer('queue:updated', { type: 'added', jobId })
 
   try {
@@ -1271,17 +1295,30 @@ app.whenReady().then(async () => {
     }
   })
 
-  // Auto-start watcher if a folder was previously configured
+  // Auto-start watchers for all connections that have a localFolder configured
   try {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
-    if (cfg.localFolder) {
-      const watcherOpts = { queueExisting: cfg.watcher?.queueExisting ?? true }
-      const w = await getWatcher()
-      w.startWatcher(cfg.localFolder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, ...s }), watcherOpts)
-      sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, state: 'watching' })
+    const watcherOpts = { queueExisting: cfg.watcher?.queueExisting ?? true }
+    const w = await getWatcher()
+
+    for (const conn of cfg.connections ?? []) {
+      if (!conn.localFolder || !conn.id) continue
+      try {
+        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
+        w.startWatcher(
+          conn.id,
+          conn.localFolder,
+          (filePath, meta) => onFileDetected(conn.id, filePath, meta),
+          (s) => sendToRenderer('watcher:status', { connectionId: conn.id, watching: true, folder: conn.localFolder, ...s }),
+          watcherOpts
+        )
+        sendToRenderer('watcher:status', { connectionId: conn.id, watching: true, folder: conn.localFolder, state: 'watching' })
+      } catch (err) {
+        log('warn', `Auto-start watcher failed for connection ${conn.id}: ${err.message}`)
+      }
     }
-  } catch { /* config not set — watcher will not auto-start */ }
+  } catch { /* config not set — watchers will not auto-start */ }
 })
 
 app.on('second-instance', () => {
