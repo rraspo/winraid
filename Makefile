@@ -1,10 +1,24 @@
 # Version resolution — all parsing done via node (no grep/sed/bash dependency).
-#   make release                       → auto-bumps patch: v0.2.0 → v0.2.1
-#   make release TYPE=patch            → same as above (default)
-#   make release TYPE=minor            → v0.2.0 → v0.3.0
-#   make release TYPE=major            → v0.2.0 → v1.0.0
-#   make release TAG=v1.0.0            → uses supplied tag exactly (escape hatch)
-TYPE        ?= patch
+#   make release              → auto-bumps patch: v0.2.1 → v0.2.2
+#   make release patch        → same as above (default)
+#   make release minor        → v0.2.1 → v0.3.0
+#   make release major        → v0.2.1 → v1.0.0
+#   make release TAG=v1.0.0   → uses supplied tag exactly (escape hatch)
+
+# Detect bump type from positional goal: "make release major" passes "major" as a goal.
+# If major/minor/patch appears as a goal, capture it; otherwise default to patch.
+ifneq ($(filter major,$(MAKECMDGOALS)),)
+TYPE := major
+else ifneq ($(filter minor,$(MAKECMDGOALS)),)
+TYPE := minor
+else
+TYPE := patch
+endif
+
+# No-op targets so "make release major" doesn't error with "No rule to make target 'major'"
+.PHONY: major minor patch
+major minor patch:
+	@rem
 
 # Compute last tag and next tag entirely via node to avoid grep/sed/bash.
 _LAST_TAG   := $(shell node -e "const t=require('child_process').execSync('git tag --sort=-v:refname',{encoding:'utf8'}).split('\n').find(l=>/^v\d+\.\d+\.\d+$$/.test(l))||'';process.stdout.write(t)")
@@ -17,7 +31,7 @@ RELEASE_VER := $(shell node -e "process.stdout.write('$(RELEASE_TAG)'.replace(/^
 
 .PHONY: help
 help:
-	@node -e "console.log(['','  WinRaid - development and release commands','','  Dev','    make dev            Start electron-vite dev server','    make build          Build renderer + main (no installer)','    make lint           Run ESLint on src/ and electron/','','  Release','    make release              Bump patch, build installer, push tag + GitHub Release','    make release TYPE=minor   Bump minor version','    make release TYPE=major   Bump major version','    make release TAG=v1.0.0   Use an explicit tag','    make tag                  Tag + push only (no build, no GH release)','    make dist                 Build installer only (no tag, no publish)','','  Helpers','    make version        Show latest release tag','    make clean          Remove build output (out/ and release/)','    make install        Install npm dependencies','','  Current: $(_LAST_TAG)  Next ($(TYPE)): $(RELEASE_TAG)',''].join('\n'))"
+	@node -e "console.log(['','  WinRaid - development and release commands','','  Dev','    make dev            Start electron-vite dev server','    make build          Build renderer + main (no installer)','    make lint           Run ESLint on src/ and electron/','','  Release','    make release              Bump patch, build + push + GitHub Release','    make release minor        Bump minor version','    make release major        Bump major version','    make release TAG=v1.0.0   Use an explicit tag','    make tag                  Tag + push only (no build, no GH release)','    make dist                 Build installer only (no tag, no publish)','','  Helpers','    make version        Show latest release tag','    make clean          Remove build output (out/ and release/)','    make install        Install npm dependencies','','  Current: $(_LAST_TAG)  Next: $(RELEASE_TAG)',''].join('\n'))"
 
 # ─── Dev ──────────────────────────────────────────────────────────────────────
 
