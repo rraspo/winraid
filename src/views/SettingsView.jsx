@@ -32,7 +32,17 @@ export default function SettingsView() {
       setLoaded(true)
     }
     load()
-    const unsub = window.winraid?.watcher.onStatus((s) => setWatching(s.watching))
+    // Track per-connection watcher state; derive aggregate `watching` flag
+    const watchMap = {}
+    const unsub = window.winraid?.watcher.onStatus((s) => {
+      if (s.connectionId) {
+        watchMap[s.connectionId] = s.watching
+      } else {
+        // Bulk update (pause/resume all)
+        for (const id of Object.keys(watchMap)) watchMap[id] = s.watching
+      }
+      setWatching(Object.values(watchMap).some(Boolean))
+    })
     return () => unsub?.()
   }, [])
 
@@ -56,17 +66,20 @@ export default function SettingsView() {
 
   async function handleWatcherToggle() {
     if (watching) {
+      // Stop all watchers
       await window.winraid?.watcher.stop()
     } else {
       const cfg = await window.winraid?.config.get()
-      // localFolder lives on the active connection; fall back to legacy top-level key
-      const activeConn = (cfg?.connections ?? []).find((c) => c.id === cfg?.activeConnectionId)
-      const folder = activeConn?.localFolder ?? cfg?.localFolder ?? ''
-      if (!folder) {
-        setSaveMsg({ type: 'error', text: 'Configure a watch folder in the active connection settings first.' })
+      const conns = cfg?.connections ?? []
+      const watchable = conns.filter((c) => c.localFolder)
+      if (watchable.length === 0) {
+        setSaveMsg({ type: 'error', text: 'Configure a watch folder in at least one connection first.' })
         return
       }
-      await window.winraid?.watcher.start(folder)
+      // Start watchers for all connections with a localFolder
+      for (const conn of watchable) {
+        await window.winraid?.watcher.start(conn.id)
+      }
     }
   }
 

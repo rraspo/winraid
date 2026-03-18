@@ -93,20 +93,22 @@ app.on('before-quit', () => {
  * Add a new job to the queue.
  *
  * @param {string} srcPath   - Absolute local file path
- * @param {{ relPath?: string, operation?: string }} opts
+ * @param {{ relPath?: string, operation?: string, connectionId?: string }} opts
  * @returns {string} The new job id
  */
 export function enqueue(srcPath, opts = {}) {
-  const id        = randomUUID()
-  const filename  = srcPath.split(/[/\\]/).pop()
-  const relPath   = opts.relPath   ?? filename
-  const operation = opts.operation ?? 'copy'
+  const id           = randomUUID()
+  const filename     = srcPath.split(/[/\\]/).pop()
+  const relPath      = opts.relPath      ?? filename
+  const operation    = opts.operation     ?? 'copy'
+  const connectionId = opts.connectionId ?? null
 
   jobs().push({
     id,
     srcPath,
     filename,
     relPath,
+    connectionId,
     status:    STATUS.PENDING,
     progress:  0,
     errorMsg:  '',
@@ -116,16 +118,20 @@ export function enqueue(srcPath, opts = {}) {
   })
   persist()
 
-  log('info', `Queued: ${filename} (${id.slice(0, 8)})`)
+  log('info', `Queued: ${filename} [${connectionId?.slice(0, 8) ?? '?'}] (${id.slice(0, 8)})`)
   return id
 }
 
 /**
  * Returns all jobs ordered newest-first for display in the queue view.
+ * Optionally filtered by connectionId.
+ * @param {string|null} [connectionId]
  * @returns {object[]}
  */
-export function listJobs() {
-  return [...jobs()].sort((a, b) => b.createdAt - a.createdAt)
+export function listJobs(connectionId = null) {
+  let list = jobs()
+  if (connectionId) list = list.filter((j) => j.connectionId === connectionId)
+  return [...list].sort((a, b) => b.createdAt - a.createdAt)
 }
 
 /**
@@ -171,13 +177,19 @@ export function retryJob(id) {
 }
 
 /**
- * Returns true if a non-ERROR job already exists for this source path.
+ * Returns true if a non-ERROR job already exists for this source path
+ * (scoped to a specific connection when provided).
  * Used to skip re-enqueuing files that are already known to the queue
  * when the watcher scans existing files on startup.
  * @param {string} srcPath
+ * @param {string|null} [connectionId]
  */
-export function hasActiveJob(srcPath) {
-  return jobs().some((j) => j.srcPath === srcPath && j.status !== STATUS.ERROR)
+export function hasActiveJob(srcPath, connectionId = null) {
+  return jobs().some((j) =>
+    j.srcPath === srcPath &&
+    j.status !== STATUS.ERROR &&
+    (!connectionId || j.connectionId === connectionId)
+  )
 }
 
 /** Remove a single ERROR job by id. */
