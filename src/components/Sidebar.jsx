@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
-import { LayoutList, Settings, ScrollText, HardDrive, Download, Sun, Moon, LayoutDashboard, Plus, Server } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { LayoutList, Settings, ScrollText, HardDrive, Download, Sun, Moon, LayoutDashboard, Plus } from 'lucide-react'
 import iconSrc from '../../assets/winraid_icon_64x64.png'
+import ConnectionIcon from './ConnectionIcon'
 import styles from './Sidebar.module.css'
 
 const NAV_TOP = [
@@ -15,41 +16,8 @@ const NAV_BOTTOM = [
   { id: 'settings', label: 'Settings', Icon: Settings   },
 ]
 
-export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, onEditConnection, connVersion }) {
-  const [version,      setVersion]      = useState('')
-  const [connections,  setConnections]  = useState([])
-  const [activeConnId, setActiveConnId] = useState(null)
-
-  const loadConnections = useCallback(async () => {
-    const cfg   = await window.winraid?.config.get() ?? {}
-    const conns = cfg.connections ?? []
-
-    // If no named connections exist but a legacy flat config is set, synthesize
-    // a display entry so both sidebar and dashboard show the same connection.
-    if (conns.length === 0 && (cfg.sftp?.host || cfg.smb?.host)) {
-      const type = cfg.connectionType ?? 'sftp'
-      setConnections([{
-        id:   '__legacy__',
-        name: type === 'sftp' ? cfg.sftp?.host : cfg.smb?.host,
-        type,
-        sftp: cfg.sftp ?? {},
-        smb:  cfg.smb  ?? {},
-      }])
-      setActiveConnId('__legacy__')
-    } else {
-      setConnections(conns)
-      setActiveConnId(cfg.activeConnectionId ?? null)
-    }
-  }, [])
-
-  useEffect(() => {
-    loadConnections()
-  }, [loadConnections])
-
-  // Refresh when a connection is saved via the App-level modal
-  useEffect(() => {
-    if (connVersion > 0) loadConnections()
-  }, [connVersion, loadConnections])
+export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, onEditConnection, connections, activeConnId, editingConnId }) {
+  const [version, setVersion] = useState('')
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -97,18 +65,27 @@ export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, 
               {connections.length === 0 && (
                 <div className={styles.connEmpty}>No connections yet</div>
               )}
-              {connections.map((conn) => (
-                <button
-                  key={conn.id}
-                  className={[styles.connItem, activeConnId === conn.id ? styles.connActive : null]
-                    .filter(Boolean).join(' ')}
-                  onClick={() => onEditConnection(conn)}
-                >
-                  <Server size={13} strokeWidth={1.75} className={styles.connItemIcon} />
-                  <span className={styles.connItemName}>{conn.name}</span>
-                  <span className={styles.connItemType}>{conn.type.toUpperCase()}</span>
-                </button>
-              ))}
+              {connections.map((conn) => {
+                // connEditing — the form for this connection is currently open
+                // connActive  — this is the selected active connection (for watcher)
+                // Both can apply simultaneously if the active connection is also being edited.
+                const isEditing = editingConnId === conn.id
+                const isActive  = activeConnId === conn.id
+                return (
+                  <button
+                    key={conn.id}
+                    className={[
+                      styles.connItem,
+                      isEditing ? styles.connEditing : isActive ? styles.connActive : null,
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => onEditConnection(conn)}
+                  >
+                    <span className={styles.connItemIcon}><ConnectionIcon icon={conn.icon ?? null} size={13} /></span>
+                    <span className={styles.connItemName}>{conn.name}</span>
+                    <span className={styles.connItemType}>{conn.type.toUpperCase()}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Folder, File, Image, ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, TriangleAlert, List, LayoutGrid, MoreHorizontal,
@@ -332,9 +332,9 @@ function ConfirmModal({ remotePath, cfgRemotePath, localFolder, onConfirm, onCan
 // View
 // ---------------------------------------------------------------------------
 export default function BrowseView() {
-  const [cfg, setCfg]                   = useState(null)
-  const [localFolder, setLocalFolder]   = useState('')
-  const [path, setPath]                 = useState('/mnt/user')
+  const [connections, setConnections]   = useState([])
+  const [selectedId, setSelectedId]     = useState(null)
+  const [path, setPath]                 = useState('/')
   const [entries, setEntries]           = useState([])
   const [loading, setLoading]           = useState(false)
   const [error, setError]               = useState('')
@@ -352,13 +352,36 @@ export default function BrowseView() {
 
   useEffect(() => {
     async function load() {
-      const sftp   = await window.winraid?.config.get('sftp')
-      const folder = await window.winraid?.config.get('localFolder')
-      setCfg(sftp   ?? null)
-      setLocalFolder(folder ?? '')
+      const conns    = await window.winraid?.config.get('connections') ?? []
+      const activeId = await window.winraid?.config.get('activeConnectionId')
+      setConnections(conns)
+      const initial = conns.find((c) => c.id === activeId) ?? conns[0] ?? null
+      setSelectedId(initial?.id ?? null)
+      if (initial?.sftp?.remotePath) setPath(initial.sftp.remotePath)
     }
     load()
   }, [])
+
+  // Derive cfg and localFolder from the currently selected connection.
+  // cfg must be memoized — a spread creates a new object every render, which
+  // would cause fetchDir's useCallback to re-create on every render and trigger
+  // the fetchDir useEffect in an infinite loop.
+  const selectedConn = connections.find((c) => c.id === selectedId) ?? null
+  const cfg = useMemo(
+    () => selectedConn ? { ...selectedConn.sftp } : null,
+    [selectedId, connections] // eslint-disable-line react-hooks/exhaustive-deps
+  )
+  const localFolder = selectedConn?.localFolder ?? ''
+
+  function handleSelectConnection(id) {
+    const conn = connections.find((c) => c.id === id)
+    if (!conn) return
+    setSelectedId(id)
+    setEntries([])
+    setError('')
+    setStatus(null)
+    setPath(conn.sftp?.remotePath || '/')
+  }
 
   const fetchDir = useCallback(async (targetPath) => {
     if (!cfg?.host) return
@@ -410,10 +433,14 @@ export default function BrowseView() {
     const res = await window.winraid?.remote.checkout(cfg, remotePath, targetFolder)
     setOpInFlight(false)
     if (res?.ok) {
-      if (newSyncRoot) {
-        const updated = { ...cfg, remotePath: newSyncRoot }
-        await window.winraid?.config.set('sftp', updated)
-        setCfg(updated)
+      if (newSyncRoot && selectedConn) {
+        const updatedConns = connections.map((c) =>
+          c.id === selectedConn.id
+            ? { ...c, sftp: { ...c.sftp, remotePath: newSyncRoot } }
+            : c
+        )
+        await window.winraid?.config.set('connections', updatedConns)
+        setConnections(updatedConns)
       }
       setStatus({ ok: true, msg: `Created ${res.created?.length ?? 0} folder(s) under ${targetFolder}` })
     } else {
@@ -436,10 +463,14 @@ export default function BrowseView() {
   }
 
   async function handleSetRoot(remotePath) {
-    if (!cfg) return
-    const updated = { ...cfg, remotePath }
-    await window.winraid?.config.set('sftp', updated)
-    setCfg(updated)
+    if (!cfg || !selectedConn) return
+    const updatedConns = connections.map((c) =>
+      c.id === selectedConn.id
+        ? { ...c, sftp: { ...c.sftp, remotePath } }
+        : c
+    )
+    await window.winraid?.config.set('connections', updatedConns)
+    setConnections(updatedConns)
     setStatus({ ok: true, msg: `Sync root updated to ${remotePath}` })
   }
 
@@ -507,7 +538,20 @@ export default function BrowseView() {
 
       {/* Header */}
       <div className={styles.header}>
-        <span className={styles.title}>Browse Remote</span>
+        <div className={styles.titleRow}>
+          <span className={styles.title}>Browse Remote</span>
+          {connections.length > 1 && (
+            <select
+              className={styles.connSelect}
+              value={selectedId ?? ''}
+              onChange={(e) => handleSelectConnection(e.target.value)}
+            >
+              {connections.map((c) => (
+                <option key={c.id} value={c.id}>{c.name || c.sftp?.host || c.id}</option>
+              ))}
+            </select>
+          )}
+        </div>
         <div className={styles.headerRight}>
           {!noConfig && (
             <>
@@ -569,10 +613,15 @@ export default function BrowseView() {
         </div>
       </div>
 
-      {noConfig ? (
+      {connections.length === 0 ? (
         <div className={styles.emptyState}>
           <AlertCircle size={28} />
-          <span>No SSH connection configured. Set one up in Settings.</span>
+          <span>No connections configured. Add one in Connections.</span>
+        </div>
+      ) : noConfig ? (
+        <div className={styles.emptyState}>
+          <AlertCircle size={28} />
+          <span>Selected connection has no host configured.</span>
         </div>
       ) : (
         <>

@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  session,
   Tray,
   Menu,
   nativeImage,
@@ -12,6 +13,7 @@ import {
 } from 'electron'
 import { join, basename, relative, dirname, resolve, sep } from 'path'
 import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, utimesSync } from 'fs'
+import { readdir as readdirAsync, stat as statAsync } from 'fs/promises'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, log } from './logger.js'
 
@@ -45,11 +47,44 @@ async function getQueue() {
 }
 
 // ---------------------------------------------------------------------------
+// IPC input validation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates a cfg object received from the renderer before passing it to
+ * any SSH/SFTP operation. Throws a TypeError with a descriptive message if
+ * any required field is missing or malformed.
+ *
+ * @param {unknown} cfg
+ * @throws {TypeError}
+ */
+function validateCfg(cfg) {
+  if (cfg === null || typeof cfg !== 'object' || Array.isArray(cfg)) {
+    throw new TypeError('cfg must be a plain object')
+  }
+  if (typeof cfg.host !== 'string' || cfg.host.trim() === '') {
+    throw new TypeError('cfg.host must be a non-empty string')
+  }
+  const port = Number(cfg.port)
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new TypeError('cfg.port must be an integer between 1 and 65535')
+  }
+  if (typeof cfg.username !== 'string' || cfg.username.trim() === '') {
+    throw new TypeError('cfg.username must be a non-empty string')
+  }
+}
+
+// ---------------------------------------------------------------------------
 // SSH config parser — used by the ssh:scan-configs IPC handler
 // ---------------------------------------------------------------------------
 function parseSshConfig(content, homeDir) {
   const entries = []
-  let current = null
+  // currentGroup holds one entry per non-wildcard token on the Host line.
+  // Subsequent option lines (Hostname, Port, User, IdentityFile) are applied
+  // to every entry in the group so that multi-pattern Host lines like
+  //   Host foo bar baz
+  // produce three separate entries that all share the same options.
+  let currentGroup = []
 
   for (let line of content.split('\n')) {
     line = line.trim()
@@ -61,24 +96,34 @@ function parseSshConfig(content, homeDir) {
     const val = line.slice(spaceIdx).trim()
 
     if (key === 'host') {
-      if (current) entries.push(current)
-      // Skip wildcard-only patterns (*, ?)
-      current = (!val.includes('*') && !val.includes('?'))
-        ? { hostPattern: val, host: val, port: 22, username: '', keyPath: '' }
-        : null
-    } else if (current) {
-      if (key === 'hostname')      current.host = val
-      else if (key === 'port')     current.port = parseInt(val, 10) || 22
-      else if (key === 'user')     current.username = val
-      else if (key === 'identityfile') {
-        // Expand leading ~ to the home directory
-        current.keyPath = val.startsWith('~')
-          ? join(homeDir, val.slice(1).replace(/^[/\\]/, ''))
-          : val
+      // Flush previous group
+      for (const entry of currentGroup) entries.push(entry)
+      currentGroup = []
+
+      // Split on whitespace to support multi-value Host lines (e.g. "Host foo bar")
+      const tokens = val.split(/\s+/).filter(Boolean)
+      for (const token of tokens) {
+        // Skip wildcard-only patterns (*, ?)
+        if (!token.includes('*') && !token.includes('?')) {
+          currentGroup.push({ hostPattern: token, host: token, port: 22, username: '', keyPath: '' })
+        }
+      }
+    } else if (currentGroup.length > 0) {
+      for (const current of currentGroup) {
+        if (key === 'hostname')      current.host = val
+        else if (key === 'port')     current.port = parseInt(val, 10) || 22
+        else if (key === 'user')     current.username = val
+        else if (key === 'identityfile') {
+          // Expand leading ~ to the home directory
+          current.keyPath = val.startsWith('~')
+            ? join(homeDir, val.slice(1).replace(/^[/\\]/, ''))
+            : val
+        }
       }
     }
   }
-  if (current) entries.push(current)
+  // Flush final group
+  for (const entry of currentGroup) entries.push(entry)
 
   return entries
     .filter((e) => e.host && !e.host.includes('*'))
@@ -112,7 +157,7 @@ function createWindow() {
     show: true,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
-      sandbox: false,
+      sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -234,12 +279,13 @@ async function sftpRmRf(sftp, remotePath) {
   )
 }
 
-// Recursively walk a local directory and collect file paths
-function walkLocal(dir, results = []) {
-  for (const name of readdirSync(dir)) {
+// Recursively walk a local directory and collect file paths (async to avoid
+// blocking the main-process event loop on large directory trees).
+async function walkLocal(dir, results = []) {
+  for (const name of await readdirAsync(dir)) {
     const full = join(dir, name)
-    if (statSync(full).isDirectory()) {
-      walkLocal(full, results)
+    if ((await statAsync(full)).isDirectory()) {
+      await walkLocal(full, results)
     } else {
       results.push(full)
     }
@@ -337,12 +383,31 @@ function registerIPC() {
     return key != null ? getConfig(key) : getConfig()
   })
 
+  const CONFIG_SET_ALLOWLIST = [
+    'localFolder', 'operation', 'folderMode', 'extensions',
+    'backup', 'watcher', 'connections', 'activeConnectionId',
+  ]
+
   ipcMain.handle('config:set', async (_e, key, value) => {
+    const topKey = String(key).split('.')[0]
+    if (!CONFIG_SET_ALLOWLIST.includes(topKey)) {
+      return { error: 'forbidden key' }
+    }
     const { setConfig } = await import('./config.js')
     setConfig(key, value)
   })
 
   ipcMain.handle('watcher:start', async (_e, folder) => {
+    if (typeof folder !== 'string' || !folder.trim()) {
+      return { ok: false, error: 'invalid folder' }
+    }
+    try {
+      if (!existsSync(folder) || !statSync(folder).isDirectory()) {
+        return { ok: false, error: 'invalid folder' }
+      }
+    } catch {
+      return { ok: false, error: 'invalid folder' }
+    }
     const { getConfig } = await import('./config.js')
     const watcherOpts = { queueExisting: getConfig('watcher.queueExisting') ?? true }
     const w = await getWatcher()
@@ -371,10 +436,38 @@ function registerIPC() {
     sendToRenderer('queue:updated', { type: 'retry', jobId })
   })
 
+  ipcMain.handle('queue:remove', async (_e, jobId) => {
+    const q = await getQueue()
+    q.removeJob(jobId)
+    sendToRenderer('queue:updated', { type: 'removed', jobId })
+  })
+
   ipcMain.handle('queue:clear-done', async () => {
     const q = await getQueue()
     q.clearDone()
     sendToRenderer('queue:updated', { type: 'cleared' })
+  })
+
+  ipcMain.handle('queue:cancel', async (_e, jobId) => {
+    const q = await getQueue()
+    const jobs = q.listJobs()
+    const job = jobs.find((j) => j.id === jobId)
+    if (!job) return { ok: false, error: 'job not found' }
+
+    if (job.status === q.STATUS.PENDING) {
+      // Remove the job from the queue entirely.
+      q.updateJob(jobId, { status: q.STATUS.ERROR, errorMsg: 'Cancelled' })
+      q.removeJob(jobId)
+      sendToRenderer('queue:updated', { type: 'removed', jobId })
+    } else if (job.status === q.STATUS.TRANSFERRING) {
+      // No active transfer abort mechanism — mark ERROR as best-effort cancel.
+      q.updateJob(jobId, { status: q.STATUS.ERROR, errorMsg: 'Cancelled' })
+      sendToRenderer('queue:updated', {
+        type: 'updated',
+        job: { ...job, status: q.STATUS.ERROR, errorMsg: 'Cancelled' },
+      })
+    }
+    return { ok: true }
   })
 
   ipcMain.handle('queue:enqueue-batch', async (_e, localFolder, relPaths) => {
@@ -417,6 +510,12 @@ function registerIPC() {
   // -- Local filesystem -------------------------------------------------------
   ipcMain.handle('local:clear-folder', (_e, folderPath) => {
     try {
+      const homeDir     = app.getPath('home')
+      const resolved    = resolve(folderPath)
+      const homePrefix  = homeDir.endsWith(sep) ? homeDir : homeDir + sep
+      if (resolved === homeDir || !resolved.startsWith(homePrefix)) {
+        return { ok: false, error: 'Path is outside the user home directory.' }
+      }
       rmSync(folderPath, { recursive: true, force: true })
       mkdirSync(folderPath, { recursive: true })
       return { ok: true }
@@ -433,6 +532,7 @@ function registerIPC() {
   // -- SSH: test connection ---------------------------------------------------
   ipcMain.handle('ssh:test', async (_e, cfg) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
 
       let privateKey
@@ -502,6 +602,7 @@ function registerIPC() {
   // -- Remote browser: list directory ----------------------------------------
   ipcMain.handle('remote:list', async (_e, cfg, remotePath) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
       let privateKey
       if (cfg.keyPath) {
@@ -554,6 +655,7 @@ function registerIPC() {
   // -- Remote browser: check out folder structure locally --------------------
   ipcMain.handle('remote:checkout', async (_e, cfg, remotePath, localRoot) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
       let privateKey
       if (cfg.keyPath) {
@@ -609,6 +711,7 @@ function registerIPC() {
   // -- Remote browser: read file content ------------------------------------
   ipcMain.handle('remote:read-file', async (_e, cfg, remotePath) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
       let privateKey
       if (cfg.keyPath) {
@@ -649,6 +752,7 @@ function registerIPC() {
   // -- Remote browser: delete file or directory tree ------------------------
   ipcMain.handle('remote:delete', async (_e, cfg, remotePath, isDir) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
       let privateKey
       if (cfg.keyPath) {
@@ -698,6 +802,7 @@ function registerIPC() {
   // -- Remote browser: move / rename ----------------------------------------
   ipcMain.handle('remote:move', async (_e, cfg, srcPath, dstPath) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
       let privateKey
       if (cfg.keyPath) {
@@ -738,9 +843,19 @@ function registerIPC() {
   // -- Remote: verify local files exist on NAS, then delete them locally -----
   ipcMain.handle('remote:verify-clean', async (_e, cfg, localFolder) => {
     try {
+      validateCfg(cfg)
+      // Guard: localFolder must be inside the user home directory and must not
+      // be the home directory itself, to prevent accidental mass deletion.
+      const homeDir    = app.getPath('home')
+      const resolvedLF = resolve(localFolder)
+      const homePrefix = homeDir.endsWith(sep) ? homeDir : homeDir + sep
+      if (resolvedLF === homeDir || !resolvedLF.startsWith(homePrefix)) {
+        return { ok: false, error: 'Path is outside the user home directory.' }
+      }
+
       let localFiles
       try {
-        localFiles = walkLocal(localFolder)
+        localFiles = await walkLocal(localFolder)
       } catch (e) {
         return { ok: false, error: `Cannot read local folder: ${e.message}` }
       }
@@ -809,6 +924,7 @@ function registerIPC() {
   // -- Remote browser: write file content -----------------------------------
   ipcMain.handle('remote:write-file', async (_e, cfg, remotePath, content) => {
     try {
+      validateCfg(cfg)
       const { Client } = await import('ssh2')
       let privateKey
       if (cfg.keyPath) {
@@ -851,9 +967,28 @@ function registerIPC() {
     _backupAbort = false
     const stats = { files: 0, skipped: 0, bytes: 0, totalBytes: 0, errors: [] }
 
-    // Reuse the shared SFTP connection settings from the main config
+    // Validate the renderer-supplied localDest against the user home directory.
+    // A renderer passing a broad path (e.g. C:\) would make the per-file
+    // traversal guard inside the loop trivially pass for any file, so we
+    // require localDest to be a subdirectory of home before proceeding.
+    if (typeof cfg.localDest !== 'string' || !cfg.localDest.trim()) {
+      return { ok: false, error: 'invalid destination' }
+    }
+    const homeDir      = app.getPath('home')
+    const homePrefix   = homeDir.endsWith(sep) ? homeDir : homeDir + sep
+    const resolvedDest = resolve(cfg.localDest)
+    if (resolvedDest === homeDir || !resolvedDest.startsWith(homePrefix)) {
+      return { ok: false, error: 'invalid destination' }
+    }
+
+    // Reuse the active connection's SFTP settings
     const { getConfig } = await import('./config.js')
-    const sftpCfg = getConfig('sftp')
+    const appCfg = getConfig()
+    const activeConn = (appCfg.connections ?? []).find((c) => c.id === appCfg.activeConnectionId)
+    if (!activeConn || activeConn.type !== 'sftp') {
+      return { ok: false, error: 'No active SFTP connection configured.' }
+    }
+    const sftpCfg = activeConn.sftp
 
     const { Client } = await import('ssh2')
     let privateKey
@@ -1096,6 +1231,26 @@ async function initAutoUpdater() {
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
+  // Inject a Content Security Policy for the renderer via the session layer.
+  // Only applied in packaged builds — dev mode uses Vite HMR which injects
+  // inline scripts that would be blocked by a strict script-src directive.
+  if (app.isPackaged) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [
+            "default-src 'self'; " +
+            "script-src 'self'; " +
+            "style-src 'self' 'unsafe-inline'; " +
+            "img-src 'self' data: https://cdn.jsdelivr.net; " +
+            "connect-src 'self' https://cdn.jsdelivr.net https://raw.githubusercontent.com",
+          ],
+        },
+      })
+    })
+  }
+
   createWindow()
 
   // Tray is optional — a missing icon asset must not crash the app
