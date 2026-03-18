@@ -63,15 +63,20 @@ async function tick() {
 // ---------------------------------------------------------------------------
 
 async function processJob(job) {
-  log('info', `Transferring: ${job.filename}`)
+  log('info', `Transferring: ${job.filename} [${job.connectionId?.slice(0, 8) ?? '?'}]`)
 
   markTransferring(job)
 
   const cfg = getConfig()
-  let backend
+  const conn = resolveConnection(cfg, job.connectionId)
+  if (!conn) {
+    markError(job, 'Connection not found or deleted.')
+    return
+  }
 
+  let backend
   try {
-    backend = await buildBackend(cfg)
+    backend = await buildBackend(conn)
   } catch (err) {
     markError(job, `Backend init failed: ${err.message}`)
     return
@@ -88,7 +93,7 @@ async function processJob(job) {
     //  - operation is 'move' (explicit move-and-delete), OR
     //  - folderMode is 'mirror_clean' (copy-then-clean-local, regardless of operation)
     // NOTE: mirror_clean NEVER touches remote files — it only cleans the local side.
-    const shouldDeleteLocal = cfg.operation === 'move' || cfg.folderMode === 'mirror_clean'
+    const shouldDeleteLocal = conn.operation === 'move' || conn.folderMode === 'mirror_clean'
     if (shouldDeleteLocal) {
       await unlink(job.srcPath).catch((err) =>
         log('warn', `Could not delete local source after transfer: ${err.message}`)
@@ -96,8 +101,8 @@ async function processJob(job) {
     }
 
     // mirror_clean: also prune empty ancestor directories on the local watch tree
-    if (cfg.folderMode === 'mirror_clean') {
-      await removeEmptyDirs(cfg.localFolder, job.srcPath)
+    if (conn.folderMode === 'mirror_clean') {
+      await removeEmptyDirs(conn.localFolder, job.srcPath)
     }
   } catch (err) {
     markError(job, err.message ?? String(err))
@@ -159,12 +164,19 @@ function markError(job, errorMsg) {
 }
 
 // ---------------------------------------------------------------------------
+// Connection resolver — looks up a connection by id from the config
+// ---------------------------------------------------------------------------
+
+function resolveConnection(cfg, connectionId) {
+  if (!connectionId) return null
+  return (cfg.connections ?? []).find((c) => c.id === connectionId) ?? null
+}
+
+// ---------------------------------------------------------------------------
 // Backend factory
 // ---------------------------------------------------------------------------
 
-async function buildBackend(cfg) {
-  const conn = (cfg.connections ?? []).find((c) => c.id === cfg.activeConnectionId)
-  if (!conn) throw new Error('No active connection configured.')
+async function buildBackend(conn) {
   switch (conn.type) {
     case 'sftp': {
       const { createSftpBackend } = await import('./backends/sftp.js')
