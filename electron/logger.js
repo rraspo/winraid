@@ -14,9 +14,10 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync, createWriteStream } from 'fs'
 
-let _send    = null
-let _stream  = null
-let _logPath = null
+let _send      = null
+let _stream    = null
+let _logPath   = null
+let _openDate  = null   // YYYY-MM-DD string for the currently open stream
 
 /** Called once from main.js after the BrowserWindow is created. */
 export function initLogger(sendFn) {
@@ -25,9 +26,11 @@ export function initLogger(sendFn) {
   const dir  = join(app.getPath('userData'), 'logs')
   mkdirSync(dir, { recursive: true })
 
-  const date = new Date().toISOString().slice(0, 10)   // YYYY-MM-DD
-  _logPath   = join(dir, `${date}.log`)
+  _openDate  = new Date().toISOString().slice(0, 10)   // YYYY-MM-DD
+  _logPath   = join(dir, `${_openDate}.log`)
   _stream    = createWriteStream(_logPath, { flags: 'a', encoding: 'utf8' })
+
+  app.on('before-quit', () => _stream?.end())
 }
 
 /** Absolute path to today's log file (null until initLogger is called). */
@@ -41,9 +44,23 @@ export function getLogPath() {
  */
 export function log(level, message) {
   const ts      = Date.now()
-  const time    = new Date(ts).toTimeString().slice(0, 8)  // HH:MM:SS
+  const now     = new Date(ts)
+  const time    = now.toTimeString().slice(0, 8)  // HH:MM:SS
   const entry   = { level, message, ts }
   const consoleFn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log
+
+  // Midnight rotation: if the calendar date has advanced since the stream was
+  // opened, close the old stream and open a new one for today's date.
+  if (_stream && _openDate) {
+    const today = now.toISOString().slice(0, 10)
+    if (today !== _openDate) {
+      _stream.end()
+      const dir  = join(app.getPath('userData'), 'logs')
+      _openDate  = today
+      _logPath   = join(dir, `${today}.log`)
+      _stream    = createWriteStream(_logPath, { flags: 'a', encoding: 'utf8' })
+    }
+  }
 
   consoleFn(`[winraid/${level}] ${message}`)
   _stream?.write(`[${time}] [${level.toUpperCase().padEnd(5)}] ${message}\n`)

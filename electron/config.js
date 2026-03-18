@@ -3,12 +3,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 
 // ---------------------------------------------------------------------------
-// Credential encryption — sftp.password and smb.password are encrypted on
-// disk using the OS keychain (DPAPI on Windows) via Electron safeStorage.
-// In-memory cache always holds plaintext. Values are prefixed with 'enc:'
-// so plain-text configs from older versions are still readable.
+// Credential encryption — connection passwords are encrypted on disk using
+// the OS keychain (DPAPI on Windows) via Electron safeStorage.
+// In-memory cache always holds plaintext.
 // ---------------------------------------------------------------------------
-const SENSITIVE = ['sftp.password', 'smb.password']
+const SENSITIVE_CONN_PATHS = ['sftp.password', 'smb.password']
 
 function encryptValue(v) {
   if (!v || !safeStorage.isEncryptionAvailable()) return v
@@ -23,11 +22,13 @@ function decryptValue(v) {
 
 function applyToSensitive(obj, fn) {
   const result = structuredClone(obj)
-  for (const path of SENSITIVE) {
-    const parts = path.split('.')
-    let node = result
-    for (let i = 0; i < parts.length - 1; i++) node = node?.[parts[i]]
-    if (node && parts.at(-1) in node) node[parts.at(-1)] = fn(node[parts.at(-1)])
+  for (const conn of result.connections ?? []) {
+    for (const path of SENSITIVE_CONN_PATHS) {
+      const parts = path.split('.')
+      let node = conn
+      for (let i = 0; i < parts.length - 1; i++) node = node?.[parts[i]]
+      if (node && parts.at(-1) in node) node[parts.at(-1)] = fn(node[parts.at(-1)])
+    }
   }
   return result
 }
@@ -37,22 +38,16 @@ function applyToSensitive(obj, fn) {
 // ---------------------------------------------------------------------------
 const DEFAULTS = {
   localFolder:    '',
-  connectionType: 'sftp',
   operation:      'copy',
   folderMode:     'flat',
   extensions:     [],
-  sftp: { host: '', port: 22, username: '', password: '', keyPath: '', remotePath: '' },
-  smb:  { host: '', share: '', username: '', password: '', remotePath: '' },
   backup: {
     sources:   [],   // string[] — remote paths on the NAS to pull down
     localDest: '',   // local folder to receive the backup
   },
   watcher: {
-    queueExisting: true,  // scan for files added while the watcher was stopped
+    queueExisting: true,  // scan for files added while the scanner was stopped
   },
-  // Named connection profiles. The active connection's credentials are
-  // synced to the top-level sftp/smb/connectionType fields so the rest
-  // of the backend needs no changes.
   connections:        [],
   activeConnectionId: null,
 }

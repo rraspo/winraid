@@ -8,7 +8,7 @@ export default function Header({ watcherStatus, activeTransfers, onWatcherToggle
 
   let statusLabel
   if (!watching) {
-    statusLabel = 'Watcher stopped'
+    statusLabel = 'Scanner stopped'
   } else if (state === 'enqueueing') {
     statusLabel = file ? `Detecting · ${file}` : 'Detecting file…'
   } else {
@@ -35,7 +35,7 @@ export default function Header({ watcherStatus, activeTransfers, onWatcherToggle
         <button
           className={[styles.watcherBtn, watching ? styles.watcherBtnStop : styles.watcherBtnStart].join(' ')}
           onClick={onWatcherToggle}
-          title={watching ? 'Stop watcher' : 'Start watcher'}
+          title={watching ? 'Stop scanner' : 'Start scanner'}
         >
           {watching
             ? <><Square size={11} fill="currentColor" /> Stop</>

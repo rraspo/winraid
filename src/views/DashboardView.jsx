@@ -3,16 +3,21 @@ import {
   File, Video, Image, FileText, Archive,
   HardDrive, AlertCircle, CheckCircle, Clock,
 } from 'lucide-react'
+import ConnectionIcon from '../components/ConnectionIcon'
 import styles from './DashboardView.module.css'
+
+// Stable monotonic counter for log entry React keys.
+// Each new entry gets a unique key that never changes after assignment.
+let _logKeyCounter = 0
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 function relativeTime(ts) {
   const s = Math.floor((Date.now() - ts) / 1000)
-  if (s < 5)    return 'just now'
-  if (s < 60)   return `${s}s ago`
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
+  if (s < 5)     return 'just now'
+  if (s < 60)    return `${s}s ago`
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`
   return `${Math.floor(s / 86400)}d ago`
 }
@@ -26,24 +31,19 @@ function formatSize(bytes) {
 
 function getFileIcon(filename) {
   const ext = filename?.split('.').pop()?.toLowerCase() ?? ''
-  if (['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'm4v'].includes(ext))
-    return <Video size={20} />
-  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'raw', 'tiff', 'bmp'].includes(ext))
-    return <Image size={20} />
-  if (['pdf', 'doc', 'docx', 'txt', 'md', 'xlsx', 'csv'].includes(ext))
-    return <FileText size={20} />
-  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(ext))
-    return <Archive size={20} />
+  if (['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'm4v'].includes(ext))   return <Video size={20} />
+  if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'raw', 'tiff', 'bmp'].includes(ext)) return <Image size={20} />
+  if (['pdf', 'doc', 'docx', 'txt', 'md', 'xlsx', 'csv'].includes(ext))   return <FileText size={20} />
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(ext))             return <Archive size={20} />
   return <File size={20} />
 }
 
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function DashboardView({ watcherStatus, onNavigate, onEditConnection, connVersion }) {
-  const [jobs, setJobs]           = useState([])
+export default function DashboardView({ watcherStatus, onNavigate, onEditConnection, connections, activeConnId }) {
+  const [jobs,       setJobs]       = useState([])
   const [logEntries, setLogEntries] = useState([])
-  const [cfg, setCfg]             = useState(null)
 
   const { watching, state } = watcherStatus ?? {}
 
@@ -55,43 +55,29 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
   useEffect(() => {
     refreshJobs()
     window.winraid?.log.tail(12).then((lines) => {
-      if (lines?.length) setLogEntries([...lines].reverse())
-    })
-    window.winraid?.config.get().then((c) => {
-      if (c) setCfg(c)
+      if (lines?.length) {
+        setLogEntries(
+          [...lines].reverse().map((e) => ({ ...e, key: `log-${++_logKeyCounter}` }))
+        )
+      }
     })
 
-    function refreshCfg() {
-      window.winraid?.config.get().then((c) => { if (c) setCfg(c) })
-    }
-    window.addEventListener('focus', refreshCfg)
-    refreshCfg()
-
-    const unsubUpdated = window.winraid?.queue.onUpdated(() => refreshJobs())
+    const unsubUpdated  = window.winraid?.queue.onUpdated(() => refreshJobs())
     const unsubProgress = window.winraid?.queue.onProgress(({ jobId, percent }) => {
       setJobs((prev) =>
-        prev.map((j) =>
-          j.id === jobId ? { ...j, progress: percent / 100, status: 'TRANSFERRING' } : j
-        )
+        prev.map((j) => j.id === jobId ? { ...j, progress: percent / 100, status: 'TRANSFERRING' } : j)
       )
     })
     const unsubLog = window.winraid?.log.onEntry((entry) => {
-      setLogEntries((prev) => [{ ...entry, key: `${entry.ts}-${Math.random()}` }, ...prev].slice(0, 12))
+      setLogEntries((prev) => [{ ...entry, key: `log-${++_logKeyCounter}` }, ...prev].slice(0, 12))
     })
 
     return () => {
-      window.removeEventListener('focus', refreshCfg)
       unsubUpdated?.()
       unsubProgress?.()
       unsubLog?.()
     }
   }, [refreshJobs])
-
-  useEffect(() => {
-    if (connVersion > 0) {
-      window.winraid?.config.get().then((c) => { if (c) setCfg(c) })
-    }
-  }, [connVersion])
 
   // Derived stats
   const activeJobs  = jobs.filter((j) => j.status === 'TRANSFERRING')
@@ -101,25 +87,15 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
 
   const visibleQueue = [...activeJobs, ...pendingJobs].slice(0, 4)
 
-  const isHealthy = watching && errorJobs.length === 0
   const hasErrors = errorJobs.length > 0
 
-  // Build the same connection list the sidebar uses:
-  // named connections array, falling back to flat fields when empty.
-  const namedConns   = cfg?.connections ?? []
-  const activeConnId = cfg?.activeConnectionId ?? null
-  const displayConns = namedConns.length > 0 ? namedConns : (() => {
-    const type = cfg?.connectionType ?? 'sftp'
-    const host = type === 'sftp' ? cfg?.sftp?.host : cfg?.smb?.host
-    if (!host) return []
-    return [{ id: '__legacy__', name: host, type, sftp: cfg?.sftp ?? {}, smb: cfg?.smb ?? {} }]
-  })()
+  const displayConns = connections ?? []
 
   return (
     <div className={styles.container}>
       <div className={styles.scroll}>
 
-        {/* Hero — system health */}
+        {/* Hero */}
         <section className={styles.hero}>
           <div className={styles.heroLeft}>
             <p className={styles.heroEyebrow}>System Health</p>
@@ -130,8 +106,8 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
               {hasErrors
                 ? `${errorJobs.length} transfer error${errorJobs.length !== 1 ? 's' : ''}`
                 : watching
-                  ? state === 'enqueueing' ? 'Detecting file…' : 'Watching for changes'
-                  : 'Watcher is stopped'}
+                  ? state === 'enqueueing' ? 'Detecting file…' : 'Scanning for changes'
+                  : 'Scanner is stopped'}
             </h2>
             <p className={styles.heroSub}>
               {activeJobs.length > 0
@@ -157,7 +133,6 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
             </div>
           </div>
 
-          {/* Decorative rings */}
           <div className={styles.heroDeco} aria-hidden>
             <svg viewBox="0 0 100 100" fill="none">
               <circle cx="50" cy="50" r="40" stroke="currentColor" strokeWidth="0.5" />
@@ -167,16 +142,16 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
           </div>
         </section>
 
-        {/* Main grid */}
+        {/* Bento grid */}
         <div className={styles.grid}>
 
           {/* Left column */}
           <div className={styles.colMain}>
 
-            {/* Active transfers */}
-            <div className={styles.section}>
-              <div className={styles.sectionHead}>
-                <h3 className={styles.sectionTitle}>Active Transfers</h3>
+            {/* Active Transfers */}
+            <div className={styles.contentBlock}>
+              <div className={styles.blockHeader}>
+                <h3 className={styles.blockTitle}>Active Transfers</h3>
                 {(activeJobs.length + pendingJobs.length) > 0 && (
                   <button className={styles.viewAllBtn} onClick={() => onNavigate('queue')}>
                     View all
@@ -185,12 +160,12 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
               </div>
 
               {visibleQueue.length === 0 ? (
-                <div className={styles.emptyCard}>
-                  <CheckCircle size={20} className={styles.emptyCardIcon} />
+                <div className={styles.emptyRow}>
+                  <CheckCircle size={16} className={styles.emptyRowIcon} />
                   <span>Queue is empty</span>
                 </div>
               ) : (
-                <div className={styles.transferList}>
+                <div className={styles.cardGrid}>
                   {visibleQueue.map((job) => (
                     <TransferCard key={job.id} job={job} />
                   ))}
@@ -199,60 +174,67 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
             </div>
 
             {/* Connections */}
-            <div className={styles.section}>
-              <div className={styles.sectionHead}>
-                <h3 className={styles.sectionTitle}>Connections</h3>
+            <div className={styles.contentBlock}>
+              <div className={styles.blockHeader}>
+                <h3 className={styles.blockTitle}>Connections</h3>
               </div>
 
               {displayConns.length === 0 ? (
-                <div className={styles.emptyCard}>
-                  <AlertCircle size={20} className={styles.emptyCardIconWarn} />
+                <div className={styles.emptyRow}>
+                  <AlertCircle size={16} className={styles.emptyRowIconWarn} />
                   <span>No connection configured.</span>
                 </div>
               ) : (
-                displayConns.map((conn) => {
-                  const host       = conn.type === 'sftp' ? conn.sftp?.host : conn.smb?.host
-                  const remotePath = conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath
-                  const isActive   = conn.id === activeConnId || conn.id === '__legacy__'
-                  return (
-                    <button
-                      key={conn.id}
-                      className={[styles.connCard, isActive ? styles.connCardActive : ''].join(' ')}
-                      onClick={() => onEditConnection?.(conn)}
-                    >
-                      <div className={styles.connIconWrap}>
-                        <HardDrive size={22} />
-                      </div>
-                      <div className={styles.connInfo}>
-                        <div className={styles.connName}>
-                          {conn.name}
-                          {isActive && <span className={styles.connOnline}>Active</span>}
+                <div className={styles.cardGrid}>
+                  {displayConns.map((conn) => {
+                    const host       = conn.type === 'sftp' ? conn.sftp?.host : conn.smb?.host
+                    const remotePath = conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath
+                    const isActive   = conn.id === activeConnId
+                    return (
+                      <button
+                        key={conn.id}
+                        className={[styles.connCard, isActive ? styles.connCardActive : ''].filter(Boolean).join(' ')}
+                        onClick={() => onEditConnection?.(conn)}
+                      >
+                        <div className={styles.connCardTop}>
+                          <div className={styles.connIconWrap}>
+                            <ConnectionIcon icon={conn.icon ?? null} size={18} />
+                          </div>
+                          <div className={styles.connCardMeta}>
+                            <span className={styles.connCardName}>{conn.name}</span>
+                            {isActive
+                              ? <span className={styles.connBadgeActive}>Active</span>
+                              : <span className={styles.connBadgeIdle}>Idle</span>
+                            }
+                          </div>
+                          <span className={styles.connTypeBadge}>{conn.type.toUpperCase()}</span>
                         </div>
-                        <code className={styles.connHost}>{host}</code>
-                        {remotePath && <code className={styles.connPath}>{remotePath}</code>}
-                      </div>
-                      <span className={styles.connType}>{conn.type.toUpperCase()}</span>
-                    </button>
-                  )
-                })
+                        <div className={styles.connCardBottom}>
+                          <code className={styles.connHost}>{host}</code>
+                          {remotePath && <code className={styles.connPath}>{remotePath}</code>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
               )}
             </div>
 
           </div>
 
-          {/* Right column — recent activity */}
+          {/* Right column — Recent Activity */}
           <div className={styles.colSide}>
-            <div className={[styles.section, styles.activitySection].join(' ')}>
-              <div className={styles.sectionHead}>
-                <h3 className={styles.sectionTitle}>Recent Activity</h3>
+            <div className={styles.activityPanel}>
+              <div className={styles.blockHeader}>
+                <h3 className={styles.blockTitle}>Recent Activity</h3>
                 <button className={styles.viewAllBtn} onClick={() => onNavigate('logs')}>
                   View logs
                 </button>
               </div>
 
               {logEntries.length === 0 ? (
-                <div className={styles.emptyCard}>
-                  <Clock size={18} className={styles.emptyCardIcon} />
+                <div className={styles.emptyRow}>
+                  <Clock size={16} className={styles.emptyRowIcon} />
                   <span>No activity yet</span>
                 </div>
               ) : (
@@ -276,30 +258,35 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
 // ---------------------------------------------------------------------------
 function TransferCard({ job }) {
   const { status, filename, srcPath, progress } = job
-  const dir = srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : ''
+  const dir      = srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : ''
   const isActive = status === 'TRANSFERRING'
-  const percent = Math.round((progress ?? 0) * 100)
-  const size = formatSize(job.size)
+  const percent  = Math.round((progress ?? 0) * 100)
+  const size     = formatSize(job.size)
 
   return (
     <div className={[styles.transferCard, isActive ? styles.transferCardActive : ''].join(' ')}>
-      <div className={styles.transferIconWrap}>
-        {getFileIcon(filename)}
-      </div>
-      <div className={styles.transferInfo}>
-        <div className={styles.transferMeta}>
+      <div className={styles.transferCardTop}>
+        <div className={styles.transferIconWrap}>
+          {getFileIcon(filename)}
+        </div>
+        <div className={styles.transferInfo}>
           <span className={styles.transferName} title={filename}>{filename}</span>
-          <span className={styles.transferStatus}>
-            {isActive ? `${percent}%` : status === 'PENDING' ? 'Queued' : status}
+          <span className={styles.transferSub}>
+            {isActive ? 'Uploading to remote' : status === 'PENDING' ? 'Queued' : (dir || status)}
           </span>
         </div>
-        {dir && <span className={styles.transferPath}>{dir}</span>}
-        {isActive && (
-          <div className={styles.progressTrack}>
-            <div className={styles.progressFill} style={{ width: `${percent}%` }} />
-          </div>
-        )}
-        {!isActive && size && <span className={styles.transferSize}>{size}</span>}
+      </div>
+      <div className={styles.transferCardBottom}>
+        <div className={styles.transferMeta}>
+          <span>{isActive ? `${percent}% complete` : (size ?? status)}</span>
+          {isActive && <span>{percent}%</span>}
+        </div>
+        <div className={styles.progressTrack}>
+          <div
+            className={[styles.progressFill, !isActive ? styles.progressFillIdle : ''].filter(Boolean).join(' ')}
+            style={{ width: isActive ? `${percent}%` : '0%' }}
+          />
+        </div>
       </div>
     </div>
   )

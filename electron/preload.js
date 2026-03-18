@@ -47,18 +47,22 @@ contextBridge.exposeInMainWorld('winraid', {
 
   // -- Queue ---------------------------------------------------------------
   queue: {
-    /** Returns the full job list from SQLite. */
+    /** Returns the full job list. */
     list:      ()        => ipcRenderer.invoke('queue:list'),
     /** Re-queues a job that is in ERROR state. */
     retry:     (jobId)   => ipcRenderer.invoke('queue:retry', jobId),
+    /** Removes a single ERROR job permanently. */
+    remove:    (jobId)   => ipcRenderer.invoke('queue:remove', jobId),
     /** Removes all DONE jobs from the persistent store. */
     clearDone: ()        => ipcRenderer.invoke('queue:clear-done'),
     /** Enqueue a batch of files (relative paths) from a local folder. */
     enqueueBatch: (localFolder, relPaths) => ipcRenderer.invoke('queue:enqueue-batch', localFolder, relPaths),
+    /** Cancel a PENDING job (removes it) or a TRANSFERRING job (marks it ERROR). */
+    cancel: (jobId) => ipcRenderer.invoke('queue:cancel', jobId),
 
     /**
      * Subscribe to queue mutation events pushed from the main process.
-     * Payload shape: { type: 'added'|'updated'|'retry'|'cleared', jobId?, job? }
+     * Payload shape: { type: 'added'|'updated'|'retry'|'cleared'|'removed', jobId?, job? }
      * @returns {() => void} unsubscribe
      */
     onUpdated: (cb) => on('queue:updated', cb),

@@ -75,6 +75,9 @@ export default function QueueView() {
         case 'cleared':
           setJobs((prev) => prev.filter((j) => j.status !== 'DONE'))
           break
+        case 'removed':
+          setJobs((prev) => prev.filter((j) => j.id !== payload.jobId))
+          break
       }
     })
 
@@ -140,7 +143,7 @@ export default function QueueView() {
           <div className={styles.empty}>
             <File size={32} strokeWidth={1} className={styles.emptyIcon} />
             <span>No transfers yet</span>
-            <span className={styles.emptyHint}>Add a watch folder in Settings to get started.</span>
+            <span className={styles.emptyHint}>Add a connection with a watch folder to get started.</span>
           </div>
         ) : (
           sorted.map((job) => <QueueRow key={job.id} job={job} />)
@@ -199,18 +202,27 @@ function QueueRow({ job }) {
       {/* Actions */}
       <div className={styles.actionsCell}>
         {status === 'ERROR' && (
-          <button
-            className={styles.retryBtn}
-            onClick={() => window.winraid?.queue.retry(job.id)}
-            title="Retry"
-          >
-            <RotateCcw size={13} />
-          </button>
+          <>
+            <button
+              className={styles.retryBtn}
+              onClick={() => window.winraid?.queue.retry(job.id)}
+              title="Retry"
+            >
+              <RotateCcw size={13} />
+            </button>
+            <button
+              className={styles.removeBtn}
+              onClick={() => window.winraid?.queue.remove(job.id)}
+              title="Remove"
+            >
+              <X size={13} />
+            </button>
+          </>
         )}
         {(status === 'PENDING' || status === 'TRANSFERRING') && (
           <button
             className={styles.cancelBtn}
-            onClick={() => window.winraid?.queue.cancel?.(job.id)}
+            onClick={() => window.winraid?.queue.cancel(job.id)}
             title="Cancel"
           >
             <X size={13} />

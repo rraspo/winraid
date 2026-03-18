@@ -1,11 +1,8 @@
 import { createReadStream, createWriteStream } from 'fs'
 import { mkdir, stat } from 'fs/promises'
 import { win32, dirname } from 'path'
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import { spawnSync } from 'child_process'
 import { log } from '../logger.js'
-
-const execAsync = promisify(exec)
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -29,7 +26,7 @@ async function transfer(cfg, job, onProgress) {
   // Authenticate if credentials are supplied.
   // net use caches credentials per session — subsequent calls are no-ops.
   if (cfg.username) {
-    await netUse(uncShare, cfg.username, cfg.password)
+    netUse(uncShare, cfg.username, cfg.password)
   }
 
   // Build full destination path: \\host\share\remotePath\relPath
@@ -77,27 +74,29 @@ function copyWithProgress(src, dest, totalBytes, onProgress) {
  * Credentials are cached by Windows for the session after the first call.
  * Failures are logged as warnings and do not abort the transfer — the
  * subsequent file operation will fail with the real error if auth is wrong.
+ *
+ * Uses spawnSync with an explicit argument array so no shell is involved
+ * and there is no possibility of argument-boundary injection via credentials.
  */
-async function netUse(uncShare, username, password) {
-  // Sanitize: reject credentials containing shell metacharacters
-  for (const val of [uncShare, username, password]) {
-    if (/[&|<>\n\r]/.test(val)) {
-      throw new Error('SMB config contains invalid characters.')
-    }
+function netUse(uncShare, username, password) {
+  const result = spawnSync(
+    'net',
+    ['use', uncShare, `/user:${username}`, password, '/persistent:no'],
+    { windowsHide: true, timeout: 8_000, encoding: 'utf8' }
+  )
+
+  if (result.error) {
+    throw result.error
   }
 
-  try {
-    await execAsync(
-      `net use "${uncShare}" /user:"${username}" "${password}" /persistent:no`,
-      { windowsHide: true, timeout: 8_000 }
-    )
-    log('info', `SMB authenticated to ${uncShare}`)
-  } catch (err) {
-    // Error 2 = already connected with different credentials (update them).
-    // Error 85 = already connected — fine, carry on.
-    const alreadyConnected = /System error 85/.test(err.stderr ?? '')
+  if (result.status !== 0) {
+    const stderr = result.stderr ?? ''
+    // System error 85 = already connected — treat as success.
+    const alreadyConnected = /System error 85/.test(stderr)
     if (!alreadyConnected) {
-      log('warn', `net use warning: ${err.stderr?.trim() ?? err.message}`)
+      log('warn', `net use warning: ${stderr.trim() || `exit code ${result.status}`}`)
     }
+  } else {
+    log('info', `SMB authenticated to ${uncShare}`)
   }
 }
