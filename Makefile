@@ -65,6 +65,9 @@ release:
 	@node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.version='$(RELEASE_VER)';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
 	@git add package.json
 	@git diff --cached --quiet || git commit -m "Bump version to $(RELEASE_VER)"
+	@echo   Cleaning previous build...
+	@if exist release rmdir /s /q release
+	@if exist out rmdir /s /q out
 	@echo   Building installer...
 	npm run dist
 	git tag $(RELEASE_TAG)
