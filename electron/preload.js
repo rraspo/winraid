@@ -34,12 +34,14 @@ contextBridge.exposeInMainWorld('winraid', {
 
   // -- Watcher -------------------------------------------------------------
   watcher: {
-    start:  (folder) => ipcRenderer.invoke('watcher:start', folder),
-    stop:   ()       => ipcRenderer.invoke('watcher:stop'),
+    /** Start the watcher for a specific connection. */
+    start:  (connectionId) => ipcRenderer.invoke('watcher:start', connectionId),
+    /** Stop the watcher for a specific connection, or all if omitted. */
+    stop:   (connectionId) => ipcRenderer.invoke('watcher:stop', connectionId),
 
     /**
      * Subscribe to watcher status events.
-     * @param {(status: { watching: boolean, folder: string|null }) => void} cb
+     * @param {(status: { connectionId: string|null, watching: boolean, folder: string|null }) => void} cb
      * @returns {() => void} unsubscribe
      */
     onStatus: (cb) => on('watcher:status', cb),
@@ -47,16 +49,16 @@ contextBridge.exposeInMainWorld('winraid', {
 
   // -- Queue ---------------------------------------------------------------
   queue: {
-    /** Returns the full job list. */
-    list:      ()        => ipcRenderer.invoke('queue:list'),
+    /** Returns the full job list, optionally filtered by connectionId. */
+    list:      (connectionId) => ipcRenderer.invoke('queue:list', connectionId),
     /** Re-queues a job that is in ERROR state. */
     retry:     (jobId)   => ipcRenderer.invoke('queue:retry', jobId),
     /** Removes a single ERROR job permanently. */
     remove:    (jobId)   => ipcRenderer.invoke('queue:remove', jobId),
     /** Removes all DONE jobs from the persistent store. */
     clearDone: ()        => ipcRenderer.invoke('queue:clear-done'),
-    /** Enqueue a batch of files (relative paths) from a local folder. */
-    enqueueBatch: (localFolder, relPaths) => ipcRenderer.invoke('queue:enqueue-batch', localFolder, relPaths),
+    /** Enqueue a batch of files (relative paths) from a local folder for a specific connection. */
+    enqueueBatch: (connectionId, localFolder, relPaths) => ipcRenderer.invoke('queue:enqueue-batch', connectionId, localFolder, relPaths),
     /** Cancel a PENDING job (removes it) or a TRANSFERRING job (marks it ERROR). */
     cancel: (jobId) => ipcRenderer.invoke('queue:cancel', jobId),
 
