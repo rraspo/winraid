@@ -1,0 +1,411 @@
+/* =============================================================================
+   QuickLookOverlay — fullscreen SFTP file preview overlay
+   ============================================================================= */
+
+/* Full-viewport backdrop */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  flex-direction: column;
+  backdrop-filter: blur(6px);
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────────────── */
+.topBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5);
+  background: rgba(0, 0, 0, 0.45);
+  border-bottom: 1px solid var(--border-strong);
+  flex-shrink: 0;
+}
+
+.topBarLeft {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fileName {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition);
+}
+
+.fileName:hover { color: var(--accent); }
+
+@keyframes fadeSlide {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.copiedBadge {
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  color: var(--success);
+  flex-shrink: 0;
+  animation: fadeSlide 0.15s ease;
+}
+
+.fileMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.fileType {
+  font-size: 10px;
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: var(--radius-xs);
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+.metaSep {
+  color: var(--text-faint);
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.closeBtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+/* ── File menu (three-dot) ───────────────────────────────────────────────── */
+.fileMenuWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.fileMenuBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.fileMenuBtn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.fileMenuDrop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 140px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  z-index: 10;
+  padding: var(--space-1) 0;
+}
+
+.fileMenuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  transition: background-color var(--transition);
+}
+
+.fileMenuItem:hover { background: var(--bg-hover); }
+
+.fileMenuItemDanger { color: var(--error); }
+
+.fileMenuCheckRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color var(--transition);
+}
+
+.fileMenuCheckRow:hover { background: var(--bg-hover); }
+
+.fileMenuCheckIcon {
+  width: 14px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  color: var(--accent);
+}
+
+.fileMenuLabel {
+  padding: var(--space-2) var(--space-3) 2px;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  user-select: none;
+}
+
+.fileMenuDivider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-1) 0;
+}
+
+/* ── Content row (nav + preview) ─────────────────────────────────────────── */
+.content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  position: relative;
+}
+
+/* ── Navigation buttons ──────────────────────────────────────────────────── */
+.navBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.navBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.navBtn:disabled {
+  opacity: 0.18;
+  cursor: default;
+}
+
+.navBtnLeft  { border-right: 1px solid var(--border); }
+.navBtnRight { border-left:  1px solid var(--border); }
+
+/* ── Preview area ────────────────────────────────────────────────────────── */
+.previewArea {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: var(--space-4);
+}
+
+.previewAreaZoom   { cursor: zoom-in; }
+.previewAreaScroll { cursor: ew-resize; }
+
+/* ── Image ───────────────────────────────────────────────────────────────── */
+.mediaWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.previewImage {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  display: block;
+}
+
+/* ── Video ───────────────────────────────────────────────────────────────── */
+.previewVideo {
+  max-width: 100%;
+  max-height: calc(100vh - 140px);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  display: block;
+  outline: none;
+}
+
+/* ── Audio ───────────────────────────────────────────────────────────────── */
+.audioWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-8);
+}
+
+.audioIcon {
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+.audioName {
+  font-size: var(--font-size-md);
+  color: var(--text);
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.previewAudio {
+  width: 320px;
+  max-width: 100%;
+}
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+.textWrap {
+  width: 100%;
+  max-width: 860px;
+  max-height: calc(100vh - 140px);
+  overflow: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--bg-panel);
+}
+
+.previewText {
+  margin: 0;
+  padding: var(--space-4);
+  font-family: ui-monospace, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-relaxed);
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.textLoading {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+}
+
+.textError {
+  font-size: var(--font-size-sm);
+  color: var(--error);
+  max-width: 480px;
+  text-align: center;
+}
+
+/* ── Unknown / metadata card ─────────────────────────────────────────────── */
+.unknownWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-8);
+}
+
+.unknownIcon {
+  color: var(--text-faint);
+  opacity: 0.5;
+}
+
+.unknownName {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  max-width: 440px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.unknownExt {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.unknownMeta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-4) var(--space-5);
+  min-width: 240px;
+}
+
+.unknownMetaRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.unknownMetaLabel {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.unknownMetaValue {
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.unknownNote {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  margin-top: var(--space-2);
+}
+
+/* ── File counter ────────────────────────────────────────────────────────── */
+.counter {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.55);
+  padding: 2px 10px;
+  border-radius: var(--radius-xl);
+  pointer-events: none;
+  user-select: none;
+}

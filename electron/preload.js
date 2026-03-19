@@ -151,9 +151,15 @@ contextBridge.exposeInMainWorld('winraid', {
      */
     move: (cfg, src, dst) => ipcRenderer.invoke('remote:move', cfg, src, dst),
     /**
-     * Walk localFolder, stat each file against cfg.remotePath on NAS,
-     * delete locally if found. Returns { ok, total, cleaned, notFound[], errors[] }.
+     * Walk localFolder, stat each file against cfg.remotePath on NAS.
+     * No deletion — check only.
+     * Returns { ok, total, confirmed[], notFound[] } or { ok: false, error }.
      */
     verifyClean: (cfg, localFolder) => ipcRenderer.invoke('remote:verify-clean', cfg, localFolder),
+    /**
+     * Delete a list of local files (by relative path) inside localFolder.
+     * Returns { ok, deleted, errors[] } or { ok: false, error }.
+     */
+    verifyDelete: (localFolder, relPaths) => ipcRenderer.invoke('remote:verify-delete', localFolder, relPaths),
   },
 })
