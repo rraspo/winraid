@@ -171,13 +171,18 @@ export function retryJob(id) {
 }
 
 /**
- * Returns true if a non-ERROR job already exists for this source path.
- * Used to skip re-enqueuing files that are already known to the queue
- * when the watcher scans existing files on startup.
+ * Returns true if an in-flight job (PENDING or TRANSFERRING) already exists
+ * for this source path. Used to skip re-enqueuing files during the initial
+ * watcher scan on startup. DONE and ERROR jobs are not considered active —
+ * a file that was previously transferred may have changed while the watcher
+ * was stopped and should be re-queued.
  * @param {string} srcPath
  */
 export function hasActiveJob(srcPath) {
-  return jobs().some((j) => j.srcPath === srcPath && j.status !== STATUS.ERROR)
+  return jobs().some(
+    (j) => j.srcPath === srcPath &&
+           (j.status === STATUS.PENDING || j.status === STATUS.TRANSFERRING),
+  )
 }
 
 /** Remove a single ERROR job by id. */

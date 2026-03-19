@@ -22,8 +22,13 @@
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
 }
 
-/* Static mode: right of anchor, vertically centered */
+/* Static mode: right/left of anchor, vertically centered */
 .bubbleStatic {
   transform: translateY(-50%);
+}
+
+/* Bottom mode: below anchor, left-aligned to anchor */
+.bubbleBottom {
+  transform: none;
 }
 

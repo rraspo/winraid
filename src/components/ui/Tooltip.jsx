@@ -35,13 +35,20 @@ export default function Tooltip({ tip, side = 'right', followMouse = false, chil
   if (!tip) return children
 
   let bubbleStyle
+  let bubbleClass = styles.bubble
   if (followMouse) {
     bubbleStyle = { top: mouse.y + 14, left: mouse.x + 14 }
   } else if (anchorRect) {
-    const midY = Math.round(anchorRect.top + anchorRect.height / 2)
-    bubbleStyle = side === 'left'
-      ? { top: midY, right: Math.round(window.innerWidth - anchorRect.left + 10) }
-      : { top: midY, left: Math.round(anchorRect.right + 10) }
+    if (side === 'bottom') {
+      bubbleStyle = { top: Math.round(anchorRect.bottom + 8), left: Math.round(anchorRect.left) }
+      bubbleClass = [styles.bubble, styles.bubbleBottom].join(' ')
+    } else {
+      const midY = Math.round(anchorRect.top + anchorRect.height / 2)
+      bubbleStyle = side === 'left'
+        ? { top: midY, right: Math.round(window.innerWidth - anchorRect.left + 10) }
+        : { top: midY, left: Math.round(anchorRect.right + 10) }
+      bubbleClass = [styles.bubble, styles.bubbleStatic].join(' ')
+    }
   } else {
     bubbleStyle = { display: 'none' }
   }
@@ -59,10 +66,7 @@ export default function Tooltip({ tip, side = 'right', followMouse = false, chil
       </span>
 
       {visible && createPortal(
-        <div
-          className={[styles.bubble, followMouse ? '' : styles.bubbleStatic].join(' ')}
-          style={bubbleStyle}
-        >
+        <div className={bubbleClass} style={bubbleStyle}>
           {tip}
         </div>,
         document.body

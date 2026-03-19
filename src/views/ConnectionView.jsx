@@ -59,7 +59,7 @@ const HINTS = {
   modeMirror:    'Recreates the local subfolder tree at the destination on the NAS.',
   modeMirrorClean: 'Same as Mirror, but also deletes the local source file after it\'s successfully copied to the NAS. Remote files are never deleted.',
   extensions:    'Restrict transfers to specific file types. Leave empty to transfer every file.',
-  verifyClean:   'Walk the local watch folder and check each file against the NAS over SFTP. Files confirmed on the NAS are deleted locally.',
+  verifyClean:   'Walk the local watch folder and check each file against the NAS over SFTP. Results are shown in a dialog where you can enqueue missing files, delete confirmed local copies, or ignore either group.',
 }
 
 export default function ConnectionView({ existing, onSave, onClose }) {
@@ -70,7 +70,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
   const [showWizard,         setShowWizard]         = useState(false)
   const [showBrowser,        setShowBrowser]        = useState(false)
   const [verifying,          setVerifying]          = useState(false)
-  const [verifyResult,       setVerifyResult]       = useState(null)
+  const [verifyCheckResult,  setVerifyCheckResult]  = useState(null)
   const [verifyError,        setVerifyError]        = useState(null)
   const [showVerifyConfirm,  setShowVerifyConfirm]  = useState(false)
 
@@ -170,11 +170,11 @@ export default function ConnectionView({ existing, onSave, onClose }) {
     }
     const res = await window.winraid?.remote.verifyClean(cfg, conn.localFolder)
     setVerifying(false)
-    if (res?.ok) {
-      setVerifyResult(res)
-    } else {
+    if (!res?.ok) {
       setVerifyError(res?.error || 'Verify & Clean failed')
+      return
     }
+    setVerifyCheckResult(res)
   }
 
   const canSave = conn.name.trim().length > 0 && (
@@ -444,11 +444,13 @@ export default function ConnectionView({ existing, onSave, onClose }) {
           onClose={() => setShowVerifyConfirm(false)}
         />
       )}
-      {verifyResult && (
+      {verifyCheckResult && (
         <VerifyResultDialog
-          result={verifyResult}
+          result={verifyCheckResult}
           localFolder={conn.localFolder}
-          onClose={() => setVerifyResult(null)}
+          onEnqueue={(paths) => window.winraid?.queue.enqueueBatch(conn.localFolder, paths)}
+          onDelete={(paths) => window.winraid?.remote.verifyDelete(conn.localFolder, paths)}
+          onClose={() => setVerifyCheckResult(null)}
         />
       )}
     </div>
@@ -737,11 +739,11 @@ function VerifyConfirmDialog({ localFolder, onConfirm, onClose }) {
         </div>
         <div className={styles.dialogBody}>
           <div className={styles.verifyConfirmText}>
-            Each file and folder inside
+            Each file inside
             <div className={styles.verifyPathRow}>
               <span className={styles.verifyPathValue}>{localFolder || '(not set)'}</span>
             </div>
-            will be checked against the remote path via SFTP. Files confirmed on the NAS will be deleted locally.
+            will be checked against the remote path via SFTP. Results are shown in a dialog where you can enqueue missing files, delete confirmed local copies, or ignore either group.
           </div>
         </div>
         <div className={styles.dialogFooter}>
@@ -755,87 +757,127 @@ function VerifyConfirmDialog({ localFolder, onConfirm, onClose }) {
 }
 
 // ---------------------------------------------------------------------------
-// VerifyResultDialog
+// VerifyResultDialog — shows check results with per-group action buttons
 // ---------------------------------------------------------------------------
-function VerifyResultDialog({ result, localFolder, onClose }) {
-  const [requeued,   setRequeued]   = useState(false)
-  const [requeueing, setRequeueing] = useState(false)
+function VerifyResultDialog({ result, localFolder, onEnqueue, onDelete, onClose }) {
+  const [enqueueing,   setEnqueueing]   = useState(false)
+  const [enqueued,     setEnqueued]     = useState(false)
+  const [notFoundDone, setNotFoundDone] = useState(false)
+  const [deleting,     setDeleting]     = useState(false)
+  const [deleted,      setDeleted]      = useState(null)   // { count, errors[] } once done
+  const [confirmedDone, setConfirmedDone] = useState(false)
 
-  async function handleRequeue() {
-    setRequeueing(true)
-    await window.winraid?.queue.enqueueBatch(localFolder, result.notFound)
-    setRequeueing(false)
-    setRequeued(true)
+  async function handleEnqueue() {
+    setEnqueueing(true)
+    await onEnqueue(result.notFound)
+    setEnqueueing(false)
+    setEnqueued(true)
   }
+
+  async function handleDelete() {
+    setDeleting(true)
+    const res = await onDelete(result.confirmed)
+    setDeleting(false)
+    setDeleted({ count: res?.deleted ?? 0, errors: res?.errors ?? [] })
+  }
+
+  const showNotFound  = result.notFound.length  > 0 && !notFoundDone
+  const showConfirmed = result.confirmed.length > 0 && !confirmedDone
 
   return createPortal(
     <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={styles.dialog}>
         <div className={styles.dialogHeader}>
-          <span className={styles.dialogTitle}>Verify &amp; Clean — Done</span>
+          <span className={styles.dialogTitle}>Verify &amp; Clean — Results</span>
           <button className={styles.dialogCloseBtn} onClick={onClose}>✕</button>
         </div>
 
-        <div className={styles.verifyStats}>
-          <div className={styles.verifyStat}>
-            <span className={styles.verifyStatNum}>{result.cleaned}</span>
-            <span className={styles.verifyStatLabel}>Cleaned locally</span>
-          </div>
-          <div className={styles.verifyStat}>
-            <span className={[
-              styles.verifyStatNum,
-              result.notFound.length ? styles.verifyStatWarn : '',
-            ].join(' ')}>
-              {result.notFound.length}
+        <div className={styles.dialogBody}>
+          <div className={styles.verifySummaryRow}>
+            {result.total} file{result.total !== 1 ? 's' : ''} checked
+            {' · '}
+            <span className={result.notFound.length ? styles.verifyStatWarn : ''}>
+              {result.notFound.length} not on NAS
             </span>
-            <span className={styles.verifyStatLabel}>Not on NAS</span>
+            {' · '}
+            {result.confirmed.length} confirmed
           </div>
-          <div className={styles.verifyStat}>
-            <span className={[
-              styles.verifyStatNum,
-              result.errors.length ? styles.verifyStatErr : '',
-            ].join(' ')}>
-              {result.errors.length}
-            </span>
-            <span className={styles.verifyStatLabel}>Errors</span>
-          </div>
-        </div>
 
-        {result.notFound.length > 0 && (
-          <div className={styles.verifyList}>
-            <p className={styles.verifyListTitle}>
-              Not found on NAS ({result.notFound.length})
-            </p>
-            <div className={styles.verifyListItems}>
-              {result.notFound.slice(0, 20).map((f) => (
-                <div key={f} className={styles.verifyListItem}>{f}</div>
-              ))}
-              {result.notFound.length > 20 && (
-                <div className={styles.verifyListMore}>
-                  +{result.notFound.length - 20} more
+          {showNotFound && (
+            <div className={styles.verifySection}>
+              <div className={styles.verifySectionTitle}>
+                Not on NAS — {result.notFound.length} file{result.notFound.length !== 1 ? 's' : ''}
+              </div>
+              <div className={styles.verifyListItems}>
+                {result.notFound.slice(0, 20).map((f) => (
+                  <div key={f} className={`${styles.verifyListItem} ${styles.verifyListItemWarn}`}>{f}</div>
+                ))}
+                {result.notFound.length > 20 && (
+                  <div className={styles.verifyListMore}>+{result.notFound.length - 20} more</div>
+                )}
+              </div>
+              <div className={styles.verifySectionActions}>
+                <Button variant="secondary" size="sm" onClick={() => setNotFoundDone(true)} disabled={enqueueing || enqueued}>
+                  Ignore
+                </Button>
+                <Button variant="primary" size="sm" onClick={handleEnqueue} disabled={enqueueing || enqueued}>
+                  {enqueued ? 'Enqueued' : enqueueing ? 'Enqueueing…' : `Enqueue ${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''}`}
+                </Button>
+              </div>
+            </div>
+          )}
+          {!showNotFound && result.notFound.length > 0 && (
+            <div className={styles.verifySectionDone}>
+              {enqueued
+                ? `${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''} enqueued for upload.`
+                : `${result.notFound.length} missing file${result.notFound.length !== 1 ? 's' : ''} ignored.`}
+            </div>
+          )}
+
+          {showConfirmed && (
+            <div className={styles.verifySection}>
+              <div className={styles.verifySectionTitle}>
+                Confirmed on NAS — {result.confirmed.length} file{result.confirmed.length !== 1 ? 's' : ''}
+              </div>
+              <div className={styles.verifyListItems}>
+                {result.confirmed.slice(0, 20).map((f) => (
+                  <div key={f} className={styles.verifyListItem}>{f}</div>
+                ))}
+                {result.confirmed.length > 20 && (
+                  <div className={styles.verifyListMore}>+{result.confirmed.length - 20} more</div>
+                )}
+              </div>
+              <div className={styles.verifySectionActions}>
+                <Button variant="secondary" size="sm" onClick={() => setConfirmedDone(true)} disabled={deleting || deleted !== null}>
+                  Ignore
+                </Button>
+                <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleting || deleted !== null}>
+                  {deleted !== null ? `Deleted ${deleted.count}` : deleting ? 'Deleting…' : `Delete ${result.confirmed.length} local file${result.confirmed.length !== 1 ? 's' : ''}`}
+                </Button>
+              </div>
+              {deleted?.errors?.length > 0 && (
+                <div className={styles.verifyErrors}>
+                  {deleted.errors.map((e) => (
+                    <div key={e.file} className={styles.verifyErrorItem}>{e.file}: {e.error}</div>
+                  ))}
                 </div>
               )}
             </div>
-          </div>
-        )}
+          )}
+          {!showConfirmed && result.confirmed.length > 0 && (
+            <div className={styles.verifySectionDone}>
+              {deleted !== null
+                ? `${deleted.count} local file${deleted.count !== 1 ? 's' : ''} deleted.${deleted.errors.length ? ` ${deleted.errors.length} error(s).` : ''}`
+                : `${result.confirmed.length} confirmed file${result.confirmed.length !== 1 ? 's' : ''} ignored.`}
+            </div>
+          )}
+
+          {result.notFound.length === 0 && result.confirmed.length === 0 && (
+            <div className={styles.verifySectionDone}>Nothing to action — all files match.</div>
+          )}
+        </div>
 
         <div className={styles.dialogFooter}>
-          <span className={styles.verifySummary}>
-            {result.total} file{result.total !== 1 ? 's' : ''} checked
-          </span>
-          {result.notFound.length > 0 && (
-            <Button
-              variant={requeued ? 'secondary' : 'primary'}
-              onClick={handleRequeue}
-              disabled={requeueing || requeued}
-            >
-              {requeued
-                ? `Queued ${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''}`
-                : requeueing
-                  ? 'Queuing…'
-                  : `Re-queue ${result.notFound.length} missing`}
-            </Button>
-          )}
           <Button variant="secondary" onClick={onClose}>Close</Button>
         </div>
       </div>

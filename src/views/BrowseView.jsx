@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
-  Folder, File, Image, ChevronRight, HardDrive, Download, RefreshCw,
+  Folder, File, Image, Film, ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, TriangleAlert, List, LayoutGrid, MoreHorizontal,
 } from 'lucide-react'
 import styles from './BrowseView.module.css'
 import EditorModal from '../components/EditorModal'
+import QuickLookOverlay from '../components/QuickLookOverlay'
 
 const EDITABLE_EXTENSIONS = new Set([
   'json', 'yml', 'yaml', 'sh', 'bash', 'zsh',
@@ -12,6 +13,7 @@ const EDITABLE_EXTENSIONS = new Set([
 ])
 
 const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'])
+const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'mov'])
 
 function isEditableFile(name) {
   const dot = name.lastIndexOf('.')
@@ -23,6 +25,12 @@ function isImageFile(name) {
   const dot = name.lastIndexOf('.')
   if (dot === -1) return false
   return IMAGE_EXTENSIONS.has(name.slice(dot + 1).toLowerCase())
+}
+
+function isVideoFile(name) {
+  const dot = name.lastIndexOf('.')
+  if (dot === -1) return false
+  return VIDEO_EXTENSIONS.has(name.slice(dot + 1).toLowerCase())
 }
 
 // ---------------------------------------------------------------------------
@@ -132,19 +140,92 @@ function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit, onMove, onDele
 }
 
 // ---------------------------------------------------------------------------
+// VideoThumb — lazy-loads via IntersectionObserver so only visible video
+// thumbnails trigger SFTP range requests.
+// ---------------------------------------------------------------------------
+function VideoThumb({ url, className, onError }) {
+  const wrapRef  = useRef(null)
+  const [active, setActive] = useState(false)
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setActive(true); obs.disconnect() } },
+      { threshold: 0.1 }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
+
+  return (
+    <div ref={wrapRef} className={className}>
+      {active && (
+        <video
+          src={url}
+          preload="metadata"
+          muted
+          className={styles.thumbFill}
+          onError={onError}
+        />
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail — cover-fit preview for images and video, icon fallback on error.
+// size: 'grid' | 'list'
+// ---------------------------------------------------------------------------
+function Thumbnail({ name, remotePath, connectionId, size }) {
+  const [error, setError] = useState(false)
+  const url    = `nas-stream://${connectionId}${remotePath}`
+  const isGrid = size === 'grid'
+
+  if (!error && isImageFile(name)) {
+    return (
+      <img
+        src={url}
+        loading="lazy"
+        className={isGrid ? styles.thumbGrid : styles.thumbList}
+        onError={() => setError(true)}
+        alt=""
+      />
+    )
+  }
+
+  if (!error && isVideoFile(name)) {
+    return (
+      <VideoThumb
+        url={url}
+        className={isGrid ? styles.thumbGrid : styles.thumbList}
+        onError={() => setError(true)}
+      />
+    )
+  }
+
+  // Fallback icons
+  if (isGrid) {
+    if (isImageFile(name) || isVideoFile(name)) return <Film size={40} className={styles.gridIconFile} />
+    return <File size={40} className={styles.gridIconFile} />
+  }
+  if (isImageFile(name)) return <Image size={14} className={styles.iconFile} />
+  if (isVideoFile(name)) return <Film  size={14} className={styles.iconFile} />
+  return <File size={14} className={styles.iconFile} />
+}
+
+// ---------------------------------------------------------------------------
 // GridCard
 // ---------------------------------------------------------------------------
-function GridCard({ entry, entryPath, isDir, busy, onNavigate, onCheckout, onEdit, onMove, onDelete }) {
+function GridCard({ entry, entryPath, connectionId, isDir, busy, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
-    : isImageFile(entry.name)
-      ? <Image  size={40} className={styles.gridIconFile} />
-      : <File   size={40} className={styles.gridIconFile} />
+    : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" />
 
   return (
     <div
-      className={[styles.gridCard, isDir ? styles.gridCardDir : ''].join(' ')}
-      onClick={isDir ? () => onNavigate(entryPath) : undefined}
+      className={[styles.gridCard, isDir ? styles.gridCardDir : styles.gridCardFile].join(' ')}
+      onClick={isDir ? () => onNavigate(entryPath) : () => onQuickLook(entry, entryPath)}
     >
       <div className={styles.gridThumb}>{icon}</div>
 
@@ -331,7 +412,7 @@ function ConfirmModal({ remotePath, cfgRemotePath, localFolder, onConfirm, onCan
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function BrowseView() {
+export default function BrowseView({ onHistoryPush, browseRestore }) {
   const [connections, setConnections]   = useState([])
   const [selectedId, setSelectedId]     = useState(null)
   const [path, setPath]                 = useState('/')
@@ -345,10 +426,34 @@ export default function BrowseView() {
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [moveTarget, setMoveTarget]     = useState(null)
   const [viewMode, setViewMode]         = useState(() => localStorage.getItem('browse-view') ?? 'list')
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [showQuickLook, setShowQuickLook] = useState(false)
+  // True once the starting path has been recorded in history. Reset on remount.
+  // Prevents a duplicate push when browseRestore sets the path programmatically.
+  const hasPushedInitialRef = useRef(false)
 
   useEffect(() => {
     localStorage.setItem('browse-view', viewMode)
   }, [viewMode])
+
+  // Restore navigation state when App drives a back/forward to a browse entry
+  useEffect(() => {
+    if (!browseRestore) return
+    hasPushedInitialRef.current = true  // being restored — no need to push initial
+    // Only clear entries when the path actually changes. If we are just toggling
+    // Quick Look on the same folder, keeping entries avoids a needless refetch.
+    if (browseRestore.path !== path) { // eslint-disable-line react-hooks/exhaustive-deps
+      setPath(browseRestore.path)
+      setEntries([])
+    }
+    if (browseRestore.quickLookFile) {
+      setSelectedFile(browseRestore.quickLookFile)
+      setShowQuickLook(true)
+    } else {
+      setShowQuickLook(false)
+      setSelectedFile(null)
+    }
+  }, [browseRestore]) // token on browseRestore ensures this fires even if path is same
 
   useEffect(() => {
     async function load() {
@@ -380,7 +485,9 @@ export default function BrowseView() {
     setEntries([])
     setError('')
     setStatus(null)
-    setPath(conn.sftp?.remotePath || '/')
+    const newPath = conn.sftp?.remotePath || '/'
+    setPath(newPath)
+    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null })
   }
 
   const fetchDir = useCallback(async (targetPath) => {
@@ -403,9 +510,27 @@ export default function BrowseView() {
     if (cfg) fetchDir(path)
   }, [cfg, path, fetchDir])
 
+  function pushInitialIfNeeded() {
+    if (!hasPushedInitialRef.current) {
+      hasPushedInitialRef.current = true
+      onHistoryPush?.({ kind: 'browse', path, quickLookFile: null })
+    }
+  }
+
   function navigate(newPath) {
+    pushInitialIfNeeded()
     setPath(newPath)
     setEntries([])
+    setShowQuickLook(false)
+    setSelectedFile(null)
+    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null })
+  }
+
+  function openQuickLook(entry, entryPath) {
+    pushInitialIfNeeded()
+    setSelectedFile({ ...entry, path: entryPath })
+    setShowQuickLook(true)
+    onHistoryPush?.({ kind: 'browse', path, quickLookFile: { ...entry, path: entryPath } })
   }
 
   function buildBreadcrumbs() {
@@ -506,11 +631,34 @@ export default function BrowseView() {
   const noConfig = !cfg?.host
   const crumbs   = buildBreadcrumbs()
 
+  // Flat list of non-folder entries with their full remote path, used for
+  // Quick Look navigation (prev / next arrows).
+  const fileEntries = useMemo(
+    () => entries
+      .filter((e) => e.type !== 'dir')
+      .map((e) => ({ ...e, path: joinRemote(path, e.name) })),
+    [entries, path]
+  )
+
   return (
     <div className={styles.container}>
 
       {editingFile && (
         <EditorModal cfg={cfg} filePath={editingFile} onClose={() => setEditingFile(null)} />
+      )}
+      {showQuickLook && selectedFile && (
+        <QuickLookOverlay
+          file={selectedFile}
+          connectionId={selectedId}
+          cfg={cfg}
+          files={fileEntries}
+          onNavigate={(f) => {
+            setSelectedFile(f)
+            onHistoryPush?.({ kind: 'browse', path, quickLookFile: f })
+          }}
+          onClose={() => setShowQuickLook(false)}
+          onDelete={(target) => { setShowQuickLook(false); setDeleteTarget(target) }}
+        />
       )}
       {confirmTarget && (
         <ConfirmModal
@@ -671,15 +819,17 @@ export default function BrowseView() {
               {entries.map((entry) => {
                 const entryPath = joinRemote(path, entry.name)
                 const isDir     = entry.type === 'dir'
-                const icon      = isDir
+                const icon = isDir
                   ? <Folder size={14} className={styles.iconDir} />
-                  : isImageFile(entry.name)
-                    ? <Image size={14} className={styles.iconFile} />
-                    : <File  size={14} className={styles.iconFile} />
+                  : (isImageFile(entry.name) || isVideoFile(entry.name))
+                    ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={selectedId} size="list" />
+                    : <File size={14} className={styles.iconFile} />
                 return (
                   <div
                     key={entry.name}
                     className={[styles.row, isDir ? styles.rowDir : ''].join(' ')}
+                    onClick={!isDir ? () => openQuickLook(entry, entryPath) : undefined}
+                    style={!isDir ? { cursor: 'pointer' } : undefined}
                   >
                     <div className={styles.rowName}>
                       {icon}
@@ -724,9 +874,11 @@ export default function BrowseView() {
                     key={entry.name}
                     entry={entry}
                     entryPath={entryPath}
+                    connectionId={selectedId}
                     isDir={isDir}
                     busy={busy}
                     onNavigate={navigate}
+                    onQuickLook={openQuickLook}
                     onCheckout={handleCheckout}
                     onEdit={setEditingFile}
                     onMove={setMoveTarget}
