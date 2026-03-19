@@ -2,18 +2,22 @@ import { Play, Square } from 'lucide-react'
 import styles from './Header.module.css'
 
 export default function Header({ watcherStatus, activeTransfers, onWatcherToggle }) {
-  const { watching, state, file } = watcherStatus
-
-  const dotState = !watching ? 'stopped' : state === 'enqueueing' ? 'enqueueing' : 'watching'
+  // watcherStatus is now a Map<connectionId, { watching, state, file }>
+  const entries = Object.values(watcherStatus ?? {})
+  const anyWatching = entries.some((s) => s.watching)
+  const enqueueing = entries.find((s) => s.state === 'enqueueing')
+  const watchingCount = entries.filter((s) => s.watching).length
 
   let statusLabel
-  if (!watching) {
-    statusLabel = 'Scanner stopped'
-  } else if (state === 'enqueueing') {
-    statusLabel = file ? `Detecting · ${file}` : 'Detecting file…'
+  if (!anyWatching) {
+    statusLabel = 'All scanners stopped'
+  } else if (enqueueing) {
+    statusLabel = enqueueing.file ? `Detecting · ${enqueueing.file}` : 'Detecting file…'
   } else {
-    statusLabel = 'Watching'
+    statusLabel = watchingCount === 1 ? 'Watching' : `${watchingCount} connections watching`
   }
+
+  const dotState = !anyWatching ? 'stopped' : enqueueing ? 'enqueueing' : 'watching'
 
   return (
     <header className={styles.header}>
@@ -33,11 +37,11 @@ export default function Header({ watcherStatus, activeTransfers, onWatcherToggle
 
       <div className={styles.right}>
         <button
-          className={[styles.watcherBtn, watching ? styles.watcherBtnStop : styles.watcherBtnStart].join(' ')}
-          onClick={onWatcherToggle}
-          title={watching ? 'Stop scanner' : 'Start scanner'}
+          className={[styles.watcherBtn, anyWatching ? styles.watcherBtnStop : styles.watcherBtnStart].join(' ')}
+          onClick={() => onWatcherToggle()}
+          title={anyWatching ? 'Stop scanner' : 'Start scanner'}
         >
-          {watching
+          {anyWatching
             ? <><Square size={11} fill="currentColor" /> Stop</>
             : <><Play  size={11} fill="currentColor" /> Start</>
           }
