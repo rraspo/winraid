@@ -627,13 +627,15 @@
 
 .verifyListItem {
   font-size: 12px;
-  color: var(--warning);
+  color: var(--text-muted);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   padding: 2px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.verifyListItemWarn { color: var(--warning); }
 
 .verifyListMore {
   font-size: 12px;
@@ -645,4 +647,55 @@
   flex: 1;
   font-size: var(--font-size-sm);
   color: var(--text-muted);
+}
+
+.verifySummaryRow {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: var(--space-2);
+}
+
+.verifySection {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.verifySection:last-child { border-bottom: none; }
+
+.verifySectionTitle {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.verifySectionActions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.verifySectionDone {
+  font-size: var(--font-size-sm);
+  color: var(--text-faint);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.verifySectionDone:last-child { border-bottom: none; }
+
+.verifyErrors {
+  margin-top: var(--space-2);
+}
+
+.verifyErrorItem {
+  font-size: 11px;
+  color: var(--error);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  padding: 1px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

@@ -582,12 +582,14 @@
   background: var(--bg-hover);
 }
 
-.gridCardDir { cursor: pointer; }
+.gridCardDir  { cursor: pointer; }
+.gridCardFile { cursor: pointer; }
 
 .gridThumb {
   aspect-ratio: 1 / 1;
   display: flex;
   align-items: center;
+  overflow: hidden;
   justify-content: center;
   background: var(--bg-base);
   border-radius: var(--radius-md) var(--radius-md) 0 0;
@@ -595,6 +597,32 @@
 
 .gridIconDir  { width: 40px; height: 40px; color: var(--accent);     opacity: 0.8; }
 .gridIconFile { width: 40px; height: 40px; color: var(--text-faint); opacity: 0.6; }
+
+/* Cover-fit thumbnail — fills the grid thumb area or list row icon slot */
+.thumbGrid {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.thumbList {
+  width: 54px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: block;
+  background: var(--bg-input);
+}
+
+/* Inner fill for VideoThumb wrapper div */
+.thumbFill {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 .gridMeta {
   padding: 6px 8px 8px;
