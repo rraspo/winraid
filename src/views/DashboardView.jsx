@@ -45,7 +45,10 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
   const [jobs,       setJobs]       = useState([])
   const [logEntries, setLogEntries] = useState([])
 
-  const { watching, state } = watcherStatus ?? {}
+  // watcherStatus is now a Map<connectionId, { watching, state, file }>
+  const watcherEntries = Object.values(watcherStatus ?? {})
+  const watching = watcherEntries.some((s) => s.watching)
+  const state = watcherEntries.find((s) => s.state === 'enqueueing')?.state ?? (watching ? 'watching' : null)
 
   const refreshJobs = useCallback(async () => {
     const list = await window.winraid?.queue.list()
