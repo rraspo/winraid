@@ -2,6 +2,7 @@ import {
   app,
   BrowserWindow,
   ipcMain,
+  protocol,
   session,
   Tray,
   Menu,
@@ -16,6 +17,22 @@ import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, uti
 import { readdir as readdirAsync, stat as statAsync } from 'fs/promises'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, log } from './logger.js'
+
+// ---------------------------------------------------------------------------
+// Custom protocol scheme declaration — must happen synchronously before
+// app.whenReady(), before any BrowserWindow is created.
+// ---------------------------------------------------------------------------
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme:     'nas-stream',
+    privileges: {
+      standard:       true,
+      supportFetchAPI: true,
+      stream:         true,
+      bypassCSP:      false,
+    },
+  },
+])
 
 // ---------------------------------------------------------------------------
 // Single-instance lock
@@ -840,18 +857,10 @@ function registerIPC() {
     }
   })
 
-  // -- Remote: verify local files exist on NAS, then delete them locally -----
+  // -- Remote: check which local files exist on NAS (no deletion) -------------
   ipcMain.handle('remote:verify-clean', async (_e, cfg, localFolder) => {
     try {
       validateCfg(cfg)
-      // Guard: localFolder must be inside the user home directory and must not
-      // be the home directory itself, to prevent accidental mass deletion.
-      const homeDir    = app.getPath('home')
-      const resolvedLF = resolve(localFolder)
-      const homePrefix = homeDir.endsWith(sep) ? homeDir : homeDir + sep
-      if (resolvedLF === homeDir || !resolvedLF.startsWith(homePrefix)) {
-        return { ok: false, error: 'Path is outside the user home directory.' }
-      }
 
       let localFiles
       try {
@@ -879,9 +888,8 @@ function registerIPC() {
             conn.sftp(async (err, sftp) => {
               if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
 
-              let cleaned = 0
-              const notFound = []
-              const errors = []
+              const confirmed = []
+              const notFound  = []
 
               for (const localFile of localFiles) {
                 const rel = relative(localFolder, localFile).replace(/\\/g, '/')
@@ -890,20 +898,14 @@ function registerIPC() {
                   await new Promise((res, rej) =>
                     sftp.stat(remotePath, (e) => e ? rej(e) : res())
                   )
-                  // File confirmed on NAS — delete locally
-                  try {
-                    rmSync(localFile)
-                    cleaned++
-                  } catch (e) {
-                    errors.push({ file: rel, error: e.message })
-                  }
+                  confirmed.push(rel)
                 } catch {
                   notFound.push(rel)
                 }
               }
 
               conn.end()
-              resolve({ ok: true, total: localFiles.length, cleaned, notFound, errors })
+              resolve({ ok: true, total: localFiles.length, confirmed, notFound })
             })
           })
           .on('error', (err) => resolve({ ok: false, error: err.message }))
@@ -916,6 +918,38 @@ function registerIPC() {
             readyTimeout: 10_000,
           })
       })
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote: delete a list of local files after user confirmation ----------
+  ipcMain.handle('remote:verify-delete', async (_e, localFolder, relPaths) => {
+    try {
+      if (!localFolder) return { ok: false, error: 'No local folder specified.' }
+      const resolvedLF = resolve(localFolder)
+      // Block drive roots (e.g. C:\, D:\, /)
+      if (/^[A-Za-z]:\\?$/.test(resolvedLF) || resolvedLF === '/') {
+        return { ok: false, error: 'Refusing to delete from a drive root.' }
+      }
+
+      let deleted = 0
+      const errors = []
+      for (const rel of relPaths) {
+        const abs = join(resolvedLF, rel)
+        // Path traversal guard
+        if (!abs.startsWith(resolvedLF + sep) && abs !== resolvedLF) {
+          errors.push({ file: rel, error: 'Path traversal blocked.' })
+          continue
+        }
+        try {
+          rmSync(abs)
+          deleted++
+        } catch (e) {
+          errors.push({ file: rel, error: e.message })
+        }
+      }
+      return { ok: true, deleted, errors }
     } catch (err) {
       return { ok: false, error: err.message }
     }
@@ -1172,15 +1206,18 @@ async function onFileDetected(filePath, { isInitial = false } = {}) {
   const { getConfig } = await import('./config.js')
   const cfg = getConfig()
 
+  const activeConn = (cfg.connections ?? []).find((c) => c.id === cfg.activeConnectionId)
+  const localFolder = activeConn?.localFolder ?? cfg.localFolder ?? ''
   const relPath = cfg.folderMode === 'flat'
     ? basename(filePath)
-    : relative(cfg.localFolder, filePath).replace(/\\/g, '/')
+    : relative(localFolder, filePath).replace(/\\/g, '/')
 
   const q = await getQueue()
 
   // On the initial folder scan (watcher start with queueExisting enabled),
-  // skip files that already have an active job — they are leftovers from a
-  // previous session (PENDING, TRANSFERRING, or already DONE).
+  // skip files that are already PENDING or TRANSFERRING — they are in-flight
+  // from a previous session. DONE files are re-queued normally; they may have
+  // been modified or replaced while the watcher was stopped.
   if (isInitial && q.hasActiveJob(filePath)) return
 
   const jobId = q.enqueue(filePath, { relPath, operation: cfg.operation })
@@ -1228,28 +1265,262 @@ async function initAutoUpdater() {
 
 
 // ---------------------------------------------------------------------------
+// nas-stream:// custom protocol — streams SFTP files to the renderer
+// ---------------------------------------------------------------------------
+
+// Map of file extension -> MIME type used in Content-Type headers.
+const MIME_BY_EXT = {
+  // Images
+  jpg:  'image/jpeg',
+  jpeg: 'image/jpeg',
+  png:  'image/png',
+  gif:  'image/gif',
+  webp: 'image/webp',
+  svg:  'image/svg+xml',
+  bmp:  'image/bmp',
+  // Video
+  mp4:  'video/mp4',
+  m4v:  'video/mp4',
+  webm: 'video/webm',
+  mov:  'video/quicktime',
+  // Audio
+  mp3:  'audio/mpeg',
+  flac: 'audio/flac',
+  wav:  'audio/wav',
+  aac:  'audio/aac',
+  ogg:  'audio/ogg',
+  m4a:  'audio/mp4',
+  opus: 'audio/ogg; codecs=opus',
+  // Text / code
+  txt:  'text/plain; charset=utf-8',
+  json: 'application/json',
+  xml:  'application/xml',
+  svg:  'image/svg+xml',
+}
+
+function mimeForPath(filePath) {
+  const dot = filePath.lastIndexOf('.')
+  if (dot === -1) return 'application/octet-stream'
+  const ext = filePath.slice(dot + 1).toLowerCase()
+  return MIME_BY_EXT[ext] ?? 'application/octet-stream'
+}
+
+// SFTP connection pool — reuses live connections across range requests.
+// Entry shape: { client: Client, sftp: SFTPWrapper, timer: NodeJS.Timeout }
+const _streamPool = new Map()
+const STREAM_POOL_TTL = 30_000  // 30 s idle before closing
+
+function _poolTouch(connId) {
+  const entry = _streamPool.get(connId)
+  if (!entry) return
+  clearTimeout(entry.timer)
+  entry.timer = setTimeout(() => {
+    const e = _streamPool.get(connId)
+    if (e) {
+      try { e.client.end() } catch { /* best effort */ }
+      _streamPool.delete(connId)
+    }
+  }, STREAM_POOL_TTL)
+}
+
+async function _poolGet(connId) {
+  const existing = _streamPool.get(connId)
+  if (existing) {
+    _poolTouch(connId)
+    return existing.sftp
+  }
+
+  // Look up connection config
+  const { getConfig } = await import('./config.js')
+  const appCfg = getConfig()
+  const conn = (appCfg.connections ?? []).find((c) => c.id === connId)
+  if (!conn || conn.type !== 'sftp') return null
+
+  const sftpCfg = conn.sftp
+  const { Client } = await import('ssh2')
+
+  let privateKey
+  if (sftpCfg?.keyPath) {
+    const kp = sftpCfg.keyPath.startsWith('~')
+      ? join(homedir(), sftpCfg.keyPath.slice(1).replace(/^[/\\]/, ''))
+      : sftpCfg.keyPath
+    try { privateKey = readFileSync(kp) }
+    catch { return null }
+  }
+
+  // Decrypt password if stored encrypted
+  let password = sftpCfg?.password ?? ''
+  if (typeof password === 'string' && password.startsWith('enc:')) {
+    const { safeStorage } = await import('electron')
+    try {
+      password = safeStorage.decryptString(Buffer.from(password.slice(4), 'base64'))
+    } catch {
+      password = ''
+    }
+  }
+
+  return new Promise((resolve) => {
+    const client = new Client()
+    client
+      .on('ready', () => {
+        client.sftp((err, sftpHandle) => {
+          if (err) {
+            client.end()
+            return resolve(null)
+          }
+          const timer = setTimeout(() => {
+            try { client.end() } catch { /* best effort */ }
+            _streamPool.delete(connId)
+          }, STREAM_POOL_TTL)
+          _streamPool.set(connId, { client, sftp: sftpHandle, timer })
+          resolve(sftpHandle)
+        })
+      })
+      .on('error', () => resolve(null))
+      .connect({
+        host:         sftpCfg.host,
+        port:         sftpCfg.port || 22,
+        username:     sftpCfg.username,
+        password:     password?.trim() || undefined,
+        privateKey:   privateKey || undefined,
+        readyTimeout: 15_000,
+      })
+  })
+}
+
+// Parse a Range header value like "bytes=0-1023".
+// Returns { start, end } or null if the header is absent or unparseable.
+function parseRange(rangeHeader, fileSize) {
+  if (!rangeHeader) return null
+  const m = rangeHeader.match(/^bytes=(\d*)-(\d*)$/)
+  if (!m) return null
+  const start = m[1] ? parseInt(m[1], 10) : 0
+  const end   = m[2] ? parseInt(m[2], 10) : fileSize - 1
+  if (isNaN(start) || isNaN(end) || start > end || end >= fileSize) return null
+  return { start, end }
+}
+
+function registerNasStreamProtocol() {
+  // Privilege must be declared before app.whenReady() — done in the
+  // protocol.registerSchemesAsPrivileged call below at module level.
+  protocol.handle('nas-stream', async (request) => {
+    try {
+      const url = new URL(request.url)
+      // hostname is the connectionId; pathname is the remote file path
+      const connId     = url.hostname
+      const remotePath = decodeURIComponent(url.pathname)
+
+      if (!connId || !remotePath) {
+        return new Response('Bad Request', { status: 400 })
+      }
+
+      const sftp = await _poolGet(connId)
+      if (!sftp) {
+        return new Response('Connection not found or unavailable', { status: 404 })
+      }
+      _poolTouch(connId)
+
+      // Stat the file to get its size (needed for Range calculations)
+      const attrs = await new Promise((res, rej) =>
+        sftp.stat(remotePath, (err, a) => err ? rej(err) : res(a))
+      ).catch(() => null)
+
+      if (!attrs) {
+        return new Response('File not found', { status: 404 })
+      }
+      const fileSize = attrs.size ?? 0
+      const mime     = mimeForPath(remotePath)
+      const rangeHeader = request.headers.get('range')
+
+      if (rangeHeader) {
+        const range = parseRange(rangeHeader, fileSize)
+        if (!range) {
+          return new Response('Range Not Satisfiable', {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${fileSize}` },
+          })
+        }
+        const { start, end } = range
+        const chunkSize = end - start + 1
+
+        const stream = sftp.createReadStream(remotePath, { start, end })
+        const body   = new ReadableStream({
+          start(controller) {
+            stream.on('data',  (chunk) => controller.enqueue(chunk))
+            stream.on('end',   ()      => controller.close())
+            stream.on('error', (err)   => controller.error(err))
+          },
+          cancel() { stream.destroy() },
+        })
+
+        return new Response(body, {
+          status: 206,
+          headers: {
+            'Content-Type':   mime,
+            'Content-Length': String(chunkSize),
+            'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
+            'Accept-Ranges':  'bytes',
+          },
+        })
+      }
+
+      // No Range — serve the full file
+      const stream = sftp.createReadStream(remotePath)
+      const body   = new ReadableStream({
+        start(controller) {
+          stream.on('data',  (chunk) => controller.enqueue(chunk))
+          stream.on('end',   ()      => controller.close())
+          stream.on('error', (err)   => controller.error(err))
+        },
+        cancel() { stream.destroy() },
+      })
+
+      return new Response(body, {
+        status: 200,
+        headers: {
+          'Content-Type':   mime,
+          'Content-Length': String(fileSize),
+          'Accept-Ranges':  'bytes',
+        },
+      })
+    } catch (err) {
+      log('error', `nas-stream: handler error — ${err.message}`)
+      return new Response('Internal Server Error', { status: 500 })
+    }
+  })
+}
+
+// ---------------------------------------------------------------------------
 // App lifecycle
 // ---------------------------------------------------------------------------
 app.whenReady().then(async () => {
   // Inject a Content Security Policy for the renderer via the session layer.
-  // Only applied in packaged builds — dev mode uses Vite HMR which injects
-  // inline scripts that would be blocked by a strict script-src directive.
-  if (app.isPackaged) {
-    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [
-            "default-src 'self'; " +
-            "script-src 'self'; " +
-            "style-src 'self' 'unsafe-inline'; " +
-            "img-src 'self' data: https://cdn.jsdelivr.net; " +
-            "connect-src 'self' https://cdn.jsdelivr.net https://raw.githubusercontent.com",
-          ],
-        },
-      })
-    })
-  }
+  // Production uses a strict policy; dev relaxes script-src so Vite HMR works.
+  const csp = app.isPackaged
+    ? "default-src 'self' nas-stream:; " +
+      "script-src 'self'; " +
+      "style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data: nas-stream: https://cdn.jsdelivr.net; " +
+      "media-src 'self' nas-stream:; " +
+      "connect-src 'self' https://cdn.jsdelivr.net https://raw.githubusercontent.com"
+    : "default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: nas-stream:; " +
+      "img-src 'self' data: blob: nas-stream:; " +
+      "media-src 'self' blob: nas-stream:; " +
+      "connect-src 'self' ws: wss: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
+
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders }
+    // Remove any existing CSP header regardless of case before injecting ours
+    for (const key of Object.keys(headers)) {
+      if (key.toLowerCase() === 'content-security-policy') delete headers[key]
+    }
+    headers['Content-Security-Policy'] = [csp]
+    callback({ responseHeaders: headers })
+  })
+
+  // Register the nas-stream:// protocol before creating the window so the
+  // renderer can use it as soon as it loads.
+  registerNasStreamProtocol()
 
   createWindow()
 

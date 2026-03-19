@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatusBar from './components/StatusBar'
@@ -9,6 +9,7 @@ import BrowseView from './views/BrowseView'
 import BackupView from './views/BackupView'
 import SettingsView from './views/SettingsView'
 import LogView from './views/LogView'
+import { useNavHistory } from './hooks/useNavHistory'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
@@ -124,6 +125,51 @@ export default function App() {
     })
   }, [])
 
+  // --- Navigation history ---------------------------------------------------
+  const { push, back, forward } = useNavHistory()
+  const historyInitRef = useRef(false)
+  const [browseRestore, setBrowseRestore] = useState(null)
+
+  // Push the initial entry once on mount
+  useEffect(() => {
+    if (historyInitRef.current) return
+    historyInitRef.current = true
+    push({ kind: 'view', view: 'dashboard' })
+  }, [push])
+
+  function navigateView(view) {
+    setConnEdit(null)
+    setActiveView(view)
+    // Browse owns its own initial history entry — pushed the first time the
+    // user navigates inside BrowseView, so the starting path is recorded.
+    if (view !== 'browse') push({ kind: 'view', view })
+  }
+
+  function restoreEntry(entry) {
+    if (entry.kind === 'view') {
+      setConnEdit(null)
+      setActiveView(entry.view)
+      setBrowseRestore(null)
+    } else if (entry.kind === 'conn-edit') {
+      setConnEdit({ conn: entry.conn })
+    } else if (entry.kind === 'browse') {
+      setConnEdit(null)
+      setActiveView('browse')
+      setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, token: Date.now() })
+    }
+  }
+
+  const onHistoryPush = useCallback((entry) => push(entry), [push])
+
+  useEffect(() => {
+    function onMouseDown(e) {
+      if (e.button === 3) { e.preventDefault(); const entry = back();    if (entry) restoreEntry(entry) }
+      if (e.button === 4) { e.preventDefault(); const entry = forward(); if (entry) restoreEntry(entry) }
+    }
+    window.addEventListener('mousedown', onMouseDown)
+    return () => window.removeEventListener('mousedown', onMouseDown)
+  }, [back, forward]) // restoreEntry uses only setters so it is stable
+
   async function openConnEdit(conn) {
     // Immediately mark the clicked connection as active in config and state,
     // so the sidebar highlights it without waiting for the save action.
@@ -132,6 +178,7 @@ export default function App() {
       setActiveConnId(conn.id)
     }
     setConnEdit({ conn: conn ?? null })
+    push({ kind: 'conn-edit', conn: conn ?? null })
   }
 
   async function handleConnSave(saved) {
@@ -158,7 +205,8 @@ export default function App() {
   const ActiveView = VIEW_COMPONENTS[activeView] ?? DashboardView
   const activeViewProps =
     activeView === 'backup'    ? { backupRun, setBackupRun } :
-    activeView === 'dashboard' ? { watcherStatus, onNavigate: setActiveView, onEditConnection: openConnEdit, connections, activeConnId } :
+    activeView === 'dashboard' ? { watcherStatus, onNavigate: navigateView, onEditConnection: openConnEdit, connections, activeConnId } :
+    activeView === 'browse'    ? { browseRestore, onHistoryPush } :
     {}
 
   // ID of the connection whose form is currently open — used by Sidebar to
@@ -170,7 +218,7 @@ export default function App() {
       <div className={styles.body}>
         <Sidebar
           activeView={connEdit !== null ? null : activeView}
-          onNavigate={(view) => { setConnEdit(null); setActiveView(view) }}
+          onNavigate={navigateView}
           theme={theme}
           onThemeToggle={toggleTheme}
           onEditConnection={openConnEdit}
