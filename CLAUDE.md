@@ -160,3 +160,19 @@ npm run dev
 npm run build
 # output: release\WinRaid-Setup.exe
 ```
+
+## Releasing
+
+Requires `gh` CLI authenticated (`gh auth login`) and `GH_TOKEN` set for auto-updater publish.
+
+```bash
+make release              # bump patch, build installer, push tag, publish GitHub Release
+make release minor        # bump minor version
+make release major        # bump major version
+make tag                  # tag + push only (no build)
+make dist                 # build installer only (no tag, no publish)
+make clean                # remove build output
+make version              # show latest release tag
+```
+
+Or without Make: `npm run release`, `node scripts/release.js minor`, etc.
