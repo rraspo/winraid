@@ -46,6 +46,10 @@ beforeEach(() => {
   // Stub localStorage for view mode persistence
   vi.spyOn(Storage.prototype, 'getItem').mockReturnValue('list')
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {})
+
+  // Mock scroll container dimensions for @tanstack/react-virtual
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, value: 800 })
+  Object.defineProperty(HTMLElement.prototype, 'scrollHeight', { configurable: true, value: 800 })
 })
 
 afterEach(() => {
