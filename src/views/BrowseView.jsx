@@ -78,6 +78,8 @@ function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit, onMove, onDele
   const [pos,  setPos]  = useState({ top: 0, right: 0 })
   const wrapRef = useRef(null)
 
+  const dropdownRef = useRef(null)
+
   function toggle(e) {
     e.stopPropagation()
     if (open) {
@@ -85,9 +87,19 @@ function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit, onMove, onDele
       return
     }
     const rect = e.currentTarget.getBoundingClientRect()
-    setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right })
+    setPos({ top: rect.bottom + 4, right: window.innerWidth - rect.right, bottom: null })
     setOpen(true)
   }
+
+  // Flip above the button if the dropdown overflows the viewport
+  useEffect(() => {
+    if (!open || !dropdownRef.current || !wrapRef.current) return
+    const dropRect = dropdownRef.current.getBoundingClientRect()
+    if (dropRect.bottom > window.innerHeight) {
+      const btnRect = wrapRef.current.getBoundingClientRect()
+      setPos((prev) => ({ ...prev, top: btnRect.top - dropRect.height - 4, bottom: null }))
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -115,7 +127,7 @@ function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit, onMove, onDele
       </Tooltip>
 
       {open && (
-        <div className={styles.menuDropdown} style={{ top: pos.top, right: pos.right }}>
+        <div ref={dropdownRef} className={styles.menuDropdown} style={{ top: pos.top ?? undefined, bottom: pos.bottom ?? undefined, right: pos.right }}>
           {isDir && (
             <button className={styles.menuItem} onClick={act(onCheckout)}>
               Check out
@@ -506,8 +518,16 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
       setSelectedId(initial?.id ?? null)
       if (initial?.sftp?.remotePath) setPath(initial.sftp.remotePath)
     }
-    load()
+    load().then(() => {})
   }, [])
+
+  // Push an initial browse history entry so the back button can return here
+  const initialPushed = useRef(false)
+  useEffect(() => {
+    if (initialPushed.current || !selectedId) return
+    initialPushed.current = true
+    onHistoryPush?.({ kind: 'browse', path, quickLookFile: null })
+  }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedConn = connections.find((c) => c.id === selectedId) ?? null
   const cfgRemotePath = selectedConn?.sftp?.remotePath ?? ''
@@ -863,8 +883,8 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
             setSelectedFile(f)
             onHistoryPush?.({ kind: 'browse', path, quickLookFile: f })
           }}
-          onClose={() => setShowQuickLook(false)}
-          onDelete={(target) => { setShowQuickLook(false); setDeleteTarget(target) }}
+          onClose={() => { setShowQuickLook(false); setSelectedFile(null); onHistoryPush?.({ kind: 'browse', path, quickLookFile: null }) }}
+          onDelete={(target) => { setShowQuickLook(false); setSelectedFile(null); onHistoryPush?.({ kind: 'browse', path, quickLookFile: null }); setDeleteTarget(target) }}
         />
       )}
       {confirmTarget && (

@@ -44,9 +44,12 @@ class WatcherInstance {
       ignoreInitial: true,
     })
 
-    this.watcher.on('add',    (filePath) => this._onFsEvent(filePath, false))
-    this.watcher.on('change', (filePath) => this._onFsEvent(filePath, false))
-    this.watcher.on('error',  (err)      => log('error', `Watcher [${this.connectionId}] error: ${err.message}`))
+    this.watcher.on('add',       (filePath) => this._onFsEvent(filePath, false))
+    this.watcher.on('change',    (filePath) => this._onFsEvent(filePath, false))
+    this.watcher.on('unlink',    (filePath) => log('info', `File deleted [${this.connectionId}]: ${filePath}`))
+    this.watcher.on('unlinkDir', (dirPath)  => log('info', `Directory deleted [${this.connectionId}]: ${dirPath}`))
+    this.watcher.on('addDir',    (dirPath)  => log('info', `Directory created [${this.connectionId}]: ${dirPath}`))
+    this.watcher.on('error',     (err)      => log('error', `Watcher [${this.connectionId}] error: ${err.message}`))
 
     log('info', `Watcher [${this.connectionId}] watching: ${folder}`)
 
