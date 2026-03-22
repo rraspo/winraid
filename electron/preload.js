@@ -34,14 +34,21 @@ contextBridge.exposeInMainWorld('winraid', {
 
   // -- Watcher -------------------------------------------------------------
   watcher: {
-    /** Start the watcher for a specific connection. */
-    start:  (connectionId) => ipcRenderer.invoke('watcher:start', connectionId),
-    /** Stop the watcher for a specific connection, or all if omitted. */
-    stop:   (connectionId) => ipcRenderer.invoke('watcher:stop', connectionId),
+    /** Start the watcher for a specific connection by connectionId. */
+    start:     (connectionId) => ipcRenderer.invoke('watcher:start', connectionId),
+    /** Stop the watcher for a specific connection by connectionId. */
+    stop:      (connectionId) => ipcRenderer.invoke('watcher:stop', connectionId),
+    /** Returns the full watcher state map keyed by connectionId. */
+    list:      ()             => ipcRenderer.invoke('watcher:list'),
+    /** Stop all watchers and pause the worker (global kill switch). */
+    pauseAll:  ()             => ipcRenderer.invoke('watcher:pause-all'),
+    /** Restart watchers that were running before pauseAll and resume the worker. */
+    resumeAll: ()             => ipcRenderer.invoke('watcher:resume-all'),
 
     /**
      * Subscribe to watcher status events.
-     * @param {(status: { connectionId: string|null, watching: boolean, folder: string|null }) => void} cb
+     * Payload is the full map: Record<connectionId, { watching, folder, state, file }>.
+     * @param {(statuses: Record<string, { watching: boolean, folder: string|null, state: string|null, file: string|null }>) => void} cb
      * @returns {() => void} unsubscribe
      */
     onStatus: (cb) => on('watcher:status', cb),
@@ -121,47 +128,24 @@ contextBridge.exposeInMainWorld('winraid', {
 
   // -- Remote browser ------------------------------------------------------
   remote: {
-    /**
-     * List a remote directory via SFTP.
-     * Returns { ok: true, entries: [{ name, type, size, modified }] } or { ok: false, error }.
-     */
-    list: (cfg, path) => ipcRenderer.invoke('remote:list', cfg, path),
-    /**
-     * Recursively create local directories mirroring a remote folder structure.
-     * Returns { ok: true, created: string[] } or { ok: false, error }.
-     */
-    checkout: (cfg, remotePath, localRoot) =>
-      ipcRenderer.invoke('remote:checkout', cfg, remotePath, localRoot),
-    /**
-     * Read a remote file as UTF-8 text.
-     * Returns { ok: true, content: string } or { ok: false, error }.
-     */
-    readFile: (cfg, path) => ipcRenderer.invoke('remote:read-file', cfg, path),
-    /**
-     * Write UTF-8 text content to a remote file.
-     * Returns { ok: true } or { ok: false, error }.
-     */
-    writeFile: (cfg, path, content) => ipcRenderer.invoke('remote:write-file', cfg, path, content),
-    /**
-     * Delete a remote file or directory tree.
-     * Returns { ok: true } or { ok: false, error }.
-     */
-    delete: (cfg, path, isDir) => ipcRenderer.invoke('remote:delete', cfg, path, isDir),
-    /**
-     * Move / rename a remote path via SFTP rename.
-     * Returns { ok: true } or { ok: false, error }.
-     */
-    move: (cfg, src, dst) => ipcRenderer.invoke('remote:move', cfg, src, dst),
-    /**
-     * Walk localFolder, stat each file against cfg.remotePath on NAS.
-     * No deletion — check only.
-     * Returns { ok, total, confirmed[], notFound[] } or { ok: false, error }.
-     */
-    verifyClean: (cfg, localFolder) => ipcRenderer.invoke('remote:verify-clean', cfg, localFolder),
-    /**
-     * Delete a list of local files (by relative path) inside localFolder.
-     * Returns { ok, deleted, errors[] } or { ok: false, error }.
-     */
+    /** List a remote directory via SFTP (pooled connection). */
+    list: (connectionId, path) => ipcRenderer.invoke('remote:list', connectionId, path),
+    /** Recursively create local directories mirroring a remote folder structure. */
+    checkout: (connectionId, remotePath, localRoot) =>
+      ipcRenderer.invoke('remote:checkout', connectionId, remotePath, localRoot),
+    /** Read a remote file as UTF-8 text. */
+    readFile: (connectionId, path) => ipcRenderer.invoke('remote:read-file', connectionId, path),
+    /** Write UTF-8 text content to a remote file. */
+    writeFile: (connectionId, path, content) => ipcRenderer.invoke('remote:write-file', connectionId, path, content),
+    /** Delete a remote file or directory tree. */
+    delete: (connectionId, path, isDir) => ipcRenderer.invoke('remote:delete', connectionId, path, isDir),
+    /** Move / rename a remote path via SFTP rename. */
+    move: (connectionId, src, dst) => ipcRenderer.invoke('remote:move', connectionId, src, dst),
+    /** Create a remote directory. */
+    mkdir: (connectionId, path) => ipcRenderer.invoke('remote:mkdir', connectionId, path),
+    /** Walk localFolder, stat each file against remote. No deletion — check only. */
+    verifyClean: (connectionId, localFolder) => ipcRenderer.invoke('remote:verify-clean', connectionId, localFolder),
+    /** Delete a list of local files (by relative path) inside localFolder. */
     verifyDelete: (localFolder, relPaths) => ipcRenderer.invoke('remote:verify-delete', localFolder, relPaths),
   },
 })

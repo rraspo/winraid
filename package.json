@@ -7,6 +7,10 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:layout": "playwright test -c playwright-ct.config.mjs",
+    "test:all": "vitest run && playwright test -c playwright-ct.config.mjs",
     "lint": "eslint src electron",
     "clean:gyp": "node -e \"require('fs').rmSync('node_modules/ssh2/lib/protocol/crypto/build/node_gyp_bins', {recursive: true, force: true})\"",
     "dist": "npm run build && npm run clean:gyp && electron-builder",
@@ -24,8 +28,13 @@
     "@codemirror/legacy-modes": "^6.4.2",
     "@eslint/js": "^9.39.3",
     "@fontsource/inter": "^5.1.0",
+    "@playwright/experimental-ct-react": "^1.58.2",
+    "@playwright/test": "^1.58.2",
     "@tanstack/react-table": "^8.20.6",
     "@tanstack/react-virtual": "^3.11.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@uiw/react-codemirror": "^4.23.7",
     "@vitejs/plugin-react": "^4.3.4",
     "electron": "^37.3.1",
@@ -35,9 +44,11 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "globals": "^17.4.0",
+    "happy-dom": "^20.8.4",
     "lucide-react": "^0.474.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "vite": "^5.4.0"
+    "vite": "^5.4.0",
+    "vitest": "^4.1.0"
   }
 }

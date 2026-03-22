@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, FileText, Music, Film, Image, MoreHorizontal, Check } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
 import styles from './QuickLookOverlay.module.css'
 
@@ -126,7 +126,7 @@ function AudioPreview({ file, src }) {
   )
 }
 
-function TextPreview({ cfg, remotePath }) {
+function TextPreview({ connectionId, remotePath }) {
   const [content, setContent] = useState(null)
   const [error,   setError]   = useState(null)
   const [loading, setLoading] = useState(true)
@@ -135,7 +135,7 @@ function TextPreview({ cfg, remotePath }) {
     setContent(null)
     setError(null)
     setLoading(true)
-    window.winraid?.remote.readFile(cfg, remotePath)
+    window.winraid?.remote.readFile(connectionId, remotePath)
       .then((res) => {
         if (res?.ok) {
           setContent(res.content)
@@ -145,7 +145,7 @@ function TextPreview({ cfg, remotePath }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [cfg, remotePath])
+  }, [connectionId, remotePath])
 
   if (loading) {
     return <div className={styles.textLoading}>Loading...</div>
@@ -200,14 +200,15 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 
   return (
     <div ref={ref} className={styles.fileMenuWrap}>
+      <Tooltip tip="More actions" side="bottom">
       <button
         className={styles.fileMenuBtn}
         onClick={() => setOpen((v) => !v)}
-        title="More actions"
         aria-label="More actions"
       >
         <MoreHorizontal size={16} />
       </button>
+      </Tooltip>
       {open && (
         <div className={styles.fileMenuDrop}>
           <button
@@ -264,7 +265,7 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // ---------------------------------------------------------------------------
 // Main overlay
 // ---------------------------------------------------------------------------
-export default function QuickLookOverlay({ file, connectionId, cfg, files, onNavigate, onClose, onDelete }) {
+export default function QuickLookOverlay({ file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete }) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
   const hasPrev    = currentIdx > 0
@@ -409,7 +410,7 @@ export default function QuickLookOverlay({ file, connectionId, cfg, files, onNav
     return () => el.removeEventListener('mousemove', onMouseMove)
   }, [])
 
-  const base    = cfg?.remotePath?.replace(/\/+$/, '') ?? ''
+  const base    = remoteBasePath?.replace(/\/+$/, '') ?? ''
   const relPath = file.path.startsWith(base + '/') ? file.path.slice(base.length + 1) : file.path
 
   function handleCopyPath() {
@@ -428,7 +429,7 @@ export default function QuickLookOverlay({ file, connectionId, cfg, files, onNav
       case 'image': return <ImagePreview src={src} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'video': return <VideoPreview src={src} loop={loop} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'audio': return <AudioPreview file={file} src={src} />
-      case 'text':  return <TextPreview cfg={cfg} remotePath={file.path} />
+      case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
       default:      return <UnknownPreview file={file} />
     }
   }
@@ -458,28 +459,30 @@ export default function QuickLookOverlay({ file, connectionId, cfg, files, onNav
           </span>
         </div>
         <FileMenu file={file} onDelete={onDelete} loop={loop} onLoopChange={handleLoopChange} wheelMode={wheelMode} onWheelModeChange={handleWheelModeChange} invertPan={invertPan} onInvertPanChange={handleInvertPanChange} />
+        <Tooltip tip="Close (Esc)" side="bottom">
         <button
           className={styles.closeBtn}
           onClick={onClose}
-          title="Close (Esc)"
           aria-label="Close"
         >
           <X size={18} />
         </button>
+        </Tooltip>
       </div>
 
       {/* Content area */}
       <div className={styles.content}>
         {/* Prev arrow */}
-        <button
-          className={[styles.navBtn, styles.navBtnLeft].join(' ')}
-          onClick={handlePrev}
-          disabled={!hasPrev}
-          title="Previous (Left arrow)"
-          aria-label="Previous file"
-        >
-          <ChevronLeft size={22} />
-        </button>
+        <Tooltip tip="Previous (Left arrow)" side="right">
+          <button
+            className={[styles.navBtn, styles.navBtnLeft].join(' ')}
+            onClick={handlePrev}
+            disabled={!hasPrev}
+            aria-label="Previous file"
+          >
+            <ChevronLeft size={22} />
+          </button>
+        </Tooltip>
 
         {/* Preview */}
         <div
@@ -494,15 +497,16 @@ export default function QuickLookOverlay({ file, connectionId, cfg, files, onNav
         </div>
 
         {/* Next arrow */}
-        <button
-          className={[styles.navBtn, styles.navBtnRight].join(' ')}
-          onClick={handleNext}
-          disabled={!hasNext}
-          title="Next (Right arrow)"
-          aria-label="Next file"
-        >
-          <ChevronRight size={22} />
-        </button>
+        <Tooltip tip="Next (Right arrow)" side="left">
+          <button
+            className={[styles.navBtn, styles.navBtnRight].join(' ')}
+            onClick={handleNext}
+            disabled={!hasNext}
+            aria-label="Next file"
+          >
+            <ChevronRight size={22} />
+          </button>
+        </Tooltip>
       </div>
 
       {/* File counter */}

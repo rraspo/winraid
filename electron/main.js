@@ -50,6 +50,10 @@ let tray        = null
 let isPaused    = false
 let _backupAbort = false   // cancellation flag for backup:run
 
+// Set of connectionIds that were watching before a pause-all operation,
+// used by resume-all to restart only those connections.
+let _watchingBeforePause = new Set()
+
 let _watcher = null
 let _queue   = null
 
@@ -247,18 +251,55 @@ function createTray() {
 function rebuildTrayMenu() {
   if (!tray) return
 
+  // Determine label: any watcher running or worker active => "Pause syncing"
+  // otherwise "Resume syncing"
+  const syncingLabel = isPaused ? 'Resume syncing' : 'Pause syncing'
+
   const menu = Menu.buildFromTemplate([
     {
       label: 'Show WinRaid',
       click: () => { mainWindow.show(); mainWindow.focus() },
     },
     {
-      label: isPaused ? 'Resume watcher' : 'Pause watcher',
+      label: syncingLabel,
       click: async () => {
-        isPaused = !isPaused
-        const w = await getWatcher()
-        isPaused ? w.pauseWatcher() : w.resumeWatcher()
-        sendToRenderer('watcher:status', { watching: !isPaused })
+        if (isPaused) {
+          // Resume — delegate to the IPC handler logic
+          isPaused = false
+          const { getConfig } = await import('./config.js')
+          const cfg = getConfig()
+          const w   = await getWatcher()
+          for (const connectionId of _watchingBeforePause) {
+            const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+            if (!conn?.localFolder) continue
+            try {
+              if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
+            } catch { continue }
+            w.startWatcher(
+              connectionId,
+              conn.localFolder,
+              makeFileDetectedCallback(connectionId),
+              () => sendToRenderer('watcher:status', w.listWatcherStates()),
+            )
+          }
+          _watchingBeforePause.clear()
+          const { ensureWorkerRunning } = await import('./worker.js')
+          ensureWorkerRunning()
+          sendToRenderer('watcher:status', w.listWatcherStates())
+        } else {
+          // Pause — stop all watchers and the worker
+          isPaused = true
+          const w = await getWatcher()
+          _watchingBeforePause = new Set(
+            Object.entries(w.listWatcherStates())
+              .filter(([, s]) => s.watching)
+              .map(([id]) => id)
+          )
+          w.stopAllWatchers()
+          const { stopWorker } = await import('./worker.js')
+          stopWorker()
+          sendToRenderer('watcher:status', w.listWatcherStates())
+        }
         rebuildTrayMenu()
       },
     },
@@ -402,7 +443,7 @@ function registerIPC() {
 
   const CONFIG_SET_ALLOWLIST = [
     'localFolder', 'operation', 'folderMode', 'extensions',
-    'backup', 'watcher', 'connections', 'activeConnectionId',
+    'backup', 'connections', 'activeConnectionId',
   ]
 
   ipcMain.handle('config:set', async (_e, key, value) => {
@@ -414,32 +455,98 @@ function registerIPC() {
     setConfig(key, value)
   })
 
-  ipcMain.handle('watcher:start', async (_e, folder) => {
-    if (typeof folder !== 'string' || !folder.trim()) {
-      return { ok: false, error: 'invalid folder' }
-    }
-    try {
-      if (!existsSync(folder) || !statSync(folder).isDirectory()) {
-        return { ok: false, error: 'invalid folder' }
-      }
-    } catch {
-      return { ok: false, error: 'invalid folder' }
+  ipcMain.handle('watcher:start', async (_e, connectionId) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false, error: 'invalid connectionId' }
     }
     const { getConfig } = await import('./config.js')
-    const watcherOpts = { queueExisting: getConfig('watcher.queueExisting') ?? true }
+    const cfg  = getConfig()
+    const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+    if (!conn) return { ok: false, error: 'connection not found' }
+    const folder = conn.localFolder
+    if (!folder || typeof folder !== 'string') return { ok: false, error: 'no local folder configured' }
+    try {
+      if (!existsSync(folder) || !statSync(folder).isDirectory()) {
+        return { ok: false, error: 'local folder does not exist or is not a directory' }
+      }
+    } catch {
+      return { ok: false, error: 'cannot access local folder' }
+    }
     const w = await getWatcher()
-    w.startWatcher(folder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder, ...s }), watcherOpts)
-    sendToRenderer('watcher:status', { watching: true, folder, state: 'watching' })
-    isPaused = false
+    w.startWatcher(
+      connectionId,
+      folder,
+      makeFileDetectedCallback(connectionId),
+      () => sendToRenderer('watcher:status', w.listWatcherStates()),
+    )
+    sendToRenderer('watcher:status', w.listWatcherStates())
     rebuildTrayMenu()
+    // Kick the worker for any PENDING jobs that were skipped by hasActiveJob
+    const q = await getQueue()
+    if (q.listJobs().some((j) => j.status === 'PENDING')) {
+      const { ensureWorkerRunning } = await import('./worker.js')
+      ensureWorkerRunning()
+    }
+    return { ok: true }
   })
 
-  ipcMain.handle('watcher:stop', async () => {
+  ipcMain.handle('watcher:stop', async (_e, connectionId) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false, error: 'invalid connectionId' }
+    }
     const w = await getWatcher()
-    w.stopWatcher()
-    sendToRenderer('watcher:status', { watching: false, folder: null })
-    isPaused = false
+    w.stopWatcher(connectionId)
+    sendToRenderer('watcher:status', w.listWatcherStates())
     rebuildTrayMenu()
+    return { ok: true }
+  })
+
+  ipcMain.handle('watcher:list', async () => {
+    const w = await getWatcher()
+    return w.listWatcherStates()
+  })
+
+  ipcMain.handle('watcher:pause-all', async () => {
+    isPaused = true
+    const w = await getWatcher()
+    // Capture which connections were watching so resume-all can restart them
+    _watchingBeforePause = new Set(
+      Object.entries(w.listWatcherStates())
+        .filter(([, s]) => s.watching)
+        .map(([id]) => id)
+    )
+    w.stopAllWatchers()
+    const { stopWorker } = await import('./worker.js')
+    stopWorker()
+    sendToRenderer('watcher:status', w.listWatcherStates())
+    rebuildTrayMenu()
+    return { ok: true }
+  })
+
+  ipcMain.handle('watcher:resume-all', async () => {
+    isPaused = false
+    const { getConfig } = await import('./config.js')
+    const cfg = getConfig()
+    const w   = await getWatcher()
+    for (const connectionId of _watchingBeforePause) {
+      const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+      if (!conn?.localFolder) continue
+      try {
+        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
+      } catch { continue }
+      w.startWatcher(
+        connectionId,
+        conn.localFolder,
+        makeFileDetectedCallback(connectionId),
+        () => sendToRenderer('watcher:status', w.listWatcherStates()),
+      )
+    }
+    _watchingBeforePause.clear()
+    const { ensureWorkerRunning } = await import('./worker.js')
+    ensureWorkerRunning()
+    sendToRenderer('watcher:status', w.listWatcherStates())
+    rebuildTrayMenu()
+    return { ok: true }
   })
 
   ipcMain.handle('queue:list', async () => {
@@ -487,14 +594,21 @@ function registerIPC() {
     return { ok: true }
   })
 
-  ipcMain.handle('queue:enqueue-batch', async (_e, localFolder, relPaths) => {
+  ipcMain.handle('queue:enqueue-batch', async (_e, connectionId, localFolder, relPaths) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false, error: 'invalid connectionId' }
+    }
     const { getConfig } = await import('./config.js')
-    const cfg = getConfig()
+    const cfg  = getConfig()
+    const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+    if (!conn) return { ok: false, error: 'connection not found' }
     const q = await getQueue()
     for (const rel of relPaths) {
       const filePath = join(localFolder, ...rel.split('/'))
-      const relPath = cfg.folderMode === 'flat' ? basename(filePath) : rel
-      const jobId = q.enqueue(filePath, { relPath, operation: cfg.operation })
+      const relPath  = conn.folderMode === 'flat' ? basename(filePath) : rel
+      let fileSize = null
+      try { fileSize = statSync(filePath).size } catch { /* file may have been removed */ }
+      const jobId    = q.enqueue(filePath, { relPath, operation: conn.operation, connectionId, size: fileSize })
       sendToRenderer('queue:updated', { type: 'added', jobId })
     }
     try {
@@ -617,52 +731,28 @@ function registerIPC() {
   })
 
   // -- Remote browser: list directory ----------------------------------------
-  ipcMain.handle('remote:list', async (_e, cfg, remotePath) => {
+  ipcMain.handle('remote:list', async (_e, connectionId, remotePath) => {
     try {
-      validateCfg(cfg)
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
-      }
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
       return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp((err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              sftp.readdir(remotePath, (err, list) => {
-                conn.end()
-                if (err) return resolve({ ok: false, error: err.message })
-                const entries = list
-                  .map((e) => ({
-                    name:     e.filename,
-                    type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
-                    size:     e.attrs.size ?? 0,
-                    modified: (e.attrs.mtime ?? 0) * 1000,
-                  }))
-                  .filter((e) => !e.name.startsWith('.'))
-                  .sort((a, b) => {
-                    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-                    return a.name.localeCompare(b.name)
-                  })
-                resolve({ ok: true, entries })
-              })
+        sftp.readdir(remotePath, (err, list) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          const entries = list
+            .map((e) => ({
+              name:     e.filename,
+              type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
+              size:     e.attrs.size ?? 0,
+              modified: (e.attrs.mtime ?? 0) * 1000,
+            }))
+            .filter((e) => !e.name.startsWith('.'))
+            .sort((a, b) => {
+              if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+              return a.name.localeCompare(b.name)
             })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
+          resolve({ ok: true, entries })
+        })
       })
     } catch (err) {
       return { ok: false, error: err.message }
@@ -670,96 +760,38 @@ function registerIPC() {
   })
 
   // -- Remote browser: check out folder structure locally --------------------
-  ipcMain.handle('remote:checkout', async (_e, cfg, remotePath, localRoot) => {
+  ipcMain.handle('remote:checkout', async (_e, connectionId, remotePath, localRoot) => {
     try {
-      validateCfg(cfg)
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
-      }
-      return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp(async (err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              const created = []
-              // Strip the configured remote base (cfg.remotePath) so only the
-              // relative portion is appended to localRoot.
-              // e.g. cfg.remotePath=/mnt/user, remotePath=/mnt/user/media/movies,
-              //      localRoot=Z:\unraid  →  localTarget=Z:\unraid\media\movies
-              const remoteBase = (cfg.remotePath || '').replace(/\/+$/, '')
-              const rel = remotePath.startsWith(remoteBase)
-                ? remotePath.slice(remoteBase.length).replace(/^\/+/, '')
-                : remotePath.replace(/^\/+/, '')
-              const localTarget = rel
-                ? join(localRoot, ...rel.split('/').filter(Boolean))
-                : localRoot
-              try {
-                await remoteWalkCreate(sftp, remotePath, localTarget, created)
-                conn.end()
-                resolve({ ok: true, created })
-              } catch (e) {
-                conn.end()
-                resolve({ ok: false, error: e.message })
-              }
-            })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
-      })
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const conn = await _getConnConfig(connectionId)
+      const remoteBase = (conn?.sftp?.remotePath || '').replace(/\/+$/, '')
+      const rel = remotePath.startsWith(remoteBase)
+        ? remotePath.slice(remoteBase.length).replace(/^\/+/, '')
+        : remotePath.replace(/^\/+/, '')
+      const localTarget = rel
+        ? join(localRoot, ...rel.split('/').filter(Boolean))
+        : localRoot
+      const created = []
+      await remoteWalkCreate(sftp, remotePath, localTarget, created)
+      return { ok: true, created }
     } catch (err) {
       return { ok: false, error: err.message }
     }
   })
 
   // -- Remote browser: read file content ------------------------------------
-  ipcMain.handle('remote:read-file', async (_e, cfg, remotePath) => {
+  ipcMain.handle('remote:read-file', async (_e, connectionId, remotePath) => {
     try {
-      validateCfg(cfg)
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
-      }
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
       return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp((err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              sftp.readFile(remotePath, 'utf8', (err, content) => {
-                conn.end()
-                if (err) return resolve({ ok: false, error: err.message })
-                resolve({ ok: true, content })
-              })
-            })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
+        sftp.readFile(remotePath, 'utf8', (err, content) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          resolve({ ok: true, content })
+        })
       })
     } catch (err) {
       return { ok: false, error: err.message }
@@ -767,90 +799,51 @@ function registerIPC() {
   })
 
   // -- Remote browser: delete file or directory tree ------------------------
-  ipcMain.handle('remote:delete', async (_e, cfg, remotePath, isDir) => {
+  ipcMain.handle('remote:delete', async (_e, connectionId, remotePath, isDir) => {
     try {
-      validateCfg(cfg)
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      if (isDir) {
+        await sftpRmRf(sftp, remotePath)
+      } else {
+        await new Promise((res, rej) =>
+          sftp.unlink(remotePath, (e) => e ? rej(e) : res())
+        )
       }
-      return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp(async (err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              try {
-                if (isDir) {
-                  await sftpRmRf(sftp, remotePath)
-                } else {
-                  await new Promise((res, rej) =>
-                    sftp.unlink(remotePath, (e) => e ? rej(e) : res())
-                  )
-                }
-                conn.end()
-                resolve({ ok: true })
-              } catch (e) {
-                conn.end()
-                resolve({ ok: false, error: e.message })
-              }
-            })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
-      })
+      return { ok: true }
     } catch (err) {
       return { ok: false, error: err.message }
     }
   })
 
   // -- Remote browser: move / rename ----------------------------------------
-  ipcMain.handle('remote:move', async (_e, cfg, srcPath, dstPath) => {
+  ipcMain.handle('remote:move', async (_e, connectionId, srcPath, dstPath) => {
     try {
-      validateCfg(cfg)
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
-      }
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
       return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp((err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              sftp.rename(srcPath, dstPath, (err) => {
-                conn.end()
-                if (err) return resolve({ ok: false, error: err.message })
-                resolve({ ok: true })
-              })
-            })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
+        sftp.rename(srcPath, dstPath, (err) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          resolve({ ok: true })
+        })
+      })
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('remote:mkdir', async (_e, connectionId, remotePath) => {
+    try {
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      return new Promise((resolve) => {
+        sftp.mkdir(remotePath, (err) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          resolve({ ok: true })
+        })
       })
     } catch (err) {
       return { ok: false, error: err.message }
@@ -858,10 +851,8 @@ function registerIPC() {
   })
 
   // -- Remote: check which local files exist on NAS (no deletion) -------------
-  ipcMain.handle('remote:verify-clean', async (_e, cfg, localFolder) => {
+  ipcMain.handle('remote:verify-clean', async (_e, connectionId, localFolder) => {
     try {
-      validateCfg(cfg)
-
       let localFiles
       try {
         localFiles = await walkLocal(localFolder)
@@ -869,55 +860,30 @@ function registerIPC() {
         return { ok: false, error: `Cannot read local folder: ${e.message}` }
       }
 
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+
+      const conn = await _getConnConfig(connectionId)
+      const remoteBase = (conn?.sftp?.remotePath || '').replace(/\/+$/, '')
+
+      const confirmed = []
+      const notFound  = []
+
+      for (const localFile of localFiles) {
+        const rel = relative(localFolder, localFile).replace(/\\/g, '/')
+        const remotePath = remoteBase ? `${remoteBase}/${rel}` : `/${rel}`
+        try {
+          await new Promise((res, rej) =>
+            sftp.stat(remotePath, (e) => e ? rej(e) : res())
+          )
+          confirmed.push(rel)
+        } catch {
+          notFound.push(rel)
+        }
       }
 
-      const remoteBase = (cfg.remotePath || '').replace(/\/+$/, '')
-
-      return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp(async (err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-
-              const confirmed = []
-              const notFound  = []
-
-              for (const localFile of localFiles) {
-                const rel = relative(localFolder, localFile).replace(/\\/g, '/')
-                const remotePath = remoteBase ? `${remoteBase}/${rel}` : `/${rel}`
-                try {
-                  await new Promise((res, rej) =>
-                    sftp.stat(remotePath, (e) => e ? rej(e) : res())
-                  )
-                  confirmed.push(rel)
-                } catch {
-                  notFound.push(rel)
-                }
-              }
-
-              conn.end()
-              resolve({ ok: true, total: localFiles.length, confirmed, notFound })
-            })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
-      })
+      return { ok: true, total: localFiles.length, confirmed, notFound }
     } catch (err) {
       return { ok: false, error: err.message }
     }
@@ -956,40 +922,16 @@ function registerIPC() {
   })
 
   // -- Remote browser: write file content -----------------------------------
-  ipcMain.handle('remote:write-file', async (_e, cfg, remotePath, content) => {
+  ipcMain.handle('remote:write-file', async (_e, connectionId, remotePath, content) => {
     try {
-      validateCfg(cfg)
-      const { Client } = await import('ssh2')
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try { privateKey = readFileSync(kp) }
-        catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
-      }
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
       return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp((err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              sftp.writeFile(remotePath, content, (err) => {
-                conn.end()
-                if (err) return resolve({ ok: false, error: err.message })
-                resolve({ ok: true })
-              })
-            })
-          })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
+        sftp.writeFile(remotePath, content, (err) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          resolve({ ok: true })
+        })
       })
     } catch (err) {
       return { ok: false, error: err.message }
@@ -1200,33 +1142,94 @@ function registerIPC() {
 }
 
 // ---------------------------------------------------------------------------
-// File-detected callback
+// File-detected callback factory
 // ---------------------------------------------------------------------------
-async function onFileDetected(filePath, { isInitial = false } = {}) {
-  const { getConfig } = await import('./config.js')
-  const cfg = getConfig()
 
-  const activeConn = (cfg.connections ?? []).find((c) => c.id === cfg.activeConnectionId)
-  const localFolder = activeConn?.localFolder ?? cfg.localFolder ?? ''
-  const relPath = cfg.folderMode === 'flat'
-    ? basename(filePath)
-    : relative(localFolder, filePath).replace(/\\/g, '/')
+/**
+ * Returns a callback for the watcher that enqueues detected files under
+ * the given connectionId. Each connection gets its own closure so that
+ * the connectionId is baked in and not looked up at call time.
+ *
+ * @param {string} connectionId
+ * @returns {(filePath: string, opts: { isInitial: boolean }) => Promise<void>}
+ */
+function makeFileDetectedCallback(connectionId) {
+  // Lazy-opened once per watcher start: a checker that probes individual
+  // remote paths over a single persistent connection (SFTP) or UNC stat (SMB).
+  let _checker = undefined  // undefined = not opened, null = open failed
 
-  const q = await getQueue()
+  return async function onFileDetected(filePath, { isInitial = false } = {}) {
+    const { getConfig } = await import('./config.js')
+    const cfg  = getConfig()
+    const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+    if (!conn) {
+      log('warn', `File detected for unknown connection ${connectionId} — skipping`)
+      return
+    }
 
-  // On the initial folder scan (watcher start with queueExisting enabled),
-  // skip files that are already PENDING or TRANSFERRING — they are in-flight
-  // from a previous session. DONE files are re-queued normally; they may have
-  // been modified or replaced while the watcher was stopped.
-  if (isInitial && q.hasActiveJob(filePath)) return
+    const relPath = conn.folderMode === 'flat'
+      ? basename(filePath)
+      : relative(conn.localFolder, filePath).replace(/\\/g, '/')
 
-  const jobId = q.enqueue(filePath, { relPath, operation: cfg.operation })
-  sendToRenderer('queue:updated', { type: 'added', jobId })
+    const q = await getQueue()
 
+    // During the initial folder scan, skip files that are already in the
+    // local queue OR already present on the remote (covers wiped queues).
+    if (isInitial) {
+      if (q.shouldSkipOnRescan(filePath, connectionId)) return
+
+      // Open remote checker once per scan (lazy, per-connection)
+      if (_checker === undefined) {
+        _checker = await openRemoteCheckerForConn(conn)
+      }
+      if (_checker) {
+        try {
+          if (await _checker.exists(relPath)) {
+            log('info', `Skipping (exists on remote) [${connectionId}]: ${relPath}`)
+            return
+          }
+        } catch {
+          // Connection dropped mid-scan — stop checking, let files queue normally
+          _checker.close()
+          _checker = null
+        }
+      }
+    } else if (_checker) {
+      // Initial scan is over — close the checker
+      _checker.close()
+      _checker = null
+    }
+
+    let fileSize = null
+    try { fileSize = statSync(filePath).size } catch { /* file may have been removed */ }
+    const jobId = q.enqueue(filePath, { relPath, operation: conn.operation, connectionId, size: fileSize })
+    sendToRenderer('queue:updated', { type: 'added', jobId })
+
+    try {
+      const { ensureWorkerRunning } = await import('./worker.js')
+      ensureWorkerRunning()
+    } catch { /* worker may already be running */ }
+  }
+}
+
+/**
+ * Open a remote checker for a connection (single SFTP session or UNC stat).
+ * Returns { exists(relPath): Promise<boolean>, close() } or null on failure.
+ */
+async function openRemoteCheckerForConn(conn) {
   try {
-    const { ensureWorkerRunning } = await import('./worker.js')
-    ensureWorkerRunning()
-  } catch { /* worker may already be running */ }
+    if (conn.type === 'sftp') {
+      const { openRemoteChecker } = await import('./backends/sftp.js')
+      return await openRemoteChecker(conn.sftp)
+    }
+    if (conn.type === 'smb') {
+      const { openRemoteChecker } = await import('./backends/smb.js')
+      return await openRemoteChecker(conn.smb)
+    }
+  } catch (err) {
+    log('warn', `Could not open remote checker for [${conn.id}]: ${err.message}`)
+  }
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -1295,7 +1298,6 @@ const MIME_BY_EXT = {
   txt:  'text/plain; charset=utf-8',
   json: 'application/json',
   xml:  'application/xml',
-  svg:  'image/svg+xml',
 }
 
 function mimeForPath(filePath) {
@@ -1305,31 +1307,51 @@ function mimeForPath(filePath) {
   return MIME_BY_EXT[ext] ?? 'application/octet-stream'
 }
 
-// SFTP connection pool — reuses live connections across range requests.
+// SFTP connection pool — reuses live connections for all remote operations.
 // Entry shape: { client: Client, sftp: SFTPWrapper, timer: NodeJS.Timeout }
-const _streamPool = new Map()
-const STREAM_POOL_TTL = 30_000  // 30 s idle before closing
+const _sftpPool = new Map()
+const _sftpPoolPending = new Map()  // concurrency guard: connId → Promise
+const SFTP_POOL_TTL = 30_000  // 30 s idle before closing
 
 function _poolTouch(connId) {
-  const entry = _streamPool.get(connId)
+  const entry = _sftpPool.get(connId)
   if (!entry) return
   clearTimeout(entry.timer)
   entry.timer = setTimeout(() => {
-    const e = _streamPool.get(connId)
+    const e = _sftpPool.get(connId)
     if (e) {
       try { e.client.end() } catch { /* best effort */ }
-      _streamPool.delete(connId)
+      _sftpPool.delete(connId)
     }
-  }, STREAM_POOL_TTL)
+  }, SFTP_POOL_TTL)
 }
 
 async function _poolGet(connId) {
-  const existing = _streamPool.get(connId)
+  const existing = _sftpPool.get(connId)
   if (existing) {
     _poolTouch(connId)
     return existing.sftp
   }
 
+  // Concurrency guard — if another call is already connecting, wait for it
+  const pending = _sftpPoolPending.get(connId)
+  if (pending) {
+    await pending
+    const entry = _sftpPool.get(connId)
+    if (entry) { _poolTouch(connId); return entry.sftp }
+    return null
+  }
+
+  const connectPromise = _poolConnect(connId)
+  _sftpPoolPending.set(connId, connectPromise)
+  try {
+    return await connectPromise
+  } finally {
+    _sftpPoolPending.delete(connId)
+  }
+}
+
+async function _poolConnect(connId) {
   // Look up connection config
   const { getConfig } = await import('./config.js')
   const appCfg = getConfig()
@@ -1370,9 +1392,9 @@ async function _poolGet(connId) {
           }
           const timer = setTimeout(() => {
             try { client.end() } catch { /* best effort */ }
-            _streamPool.delete(connId)
-          }, STREAM_POOL_TTL)
-          _streamPool.set(connId, { client, sftp: sftpHandle, timer })
+            _sftpPool.delete(connId)
+          }, SFTP_POOL_TTL)
+          _sftpPool.set(connId, { client, sftp: sftpHandle, timer })
           resolve(sftpHandle)
         })
       })
@@ -1386,6 +1408,12 @@ async function _poolGet(connId) {
         readyTimeout: 15_000,
       })
   })
+}
+
+/** Look up a connection's config from the config store. */
+async function _getConnConfig(connId) {
+  const { getConfig } = await import('./config.js')
+  return (getConfig().connections ?? []).find((c) => c.id === connId) ?? null
 }
 
 // Parse a Range header value like "bytes=0-1023".
@@ -1542,17 +1570,36 @@ app.whenReady().then(async () => {
     }
   })
 
-  // Auto-start watcher if a folder was previously configured
+  // Auto-start watchers for all configured connections that have a local folder
   try {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
-    if (cfg.localFolder) {
-      const watcherOpts = { queueExisting: cfg.watcher?.queueExisting ?? true }
-      const w = await getWatcher()
-      w.startWatcher(cfg.localFolder, onFileDetected, (s) => sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, ...s }), watcherOpts)
-      sendToRenderer('watcher:status', { watching: true, folder: cfg.localFolder, state: 'watching' })
+    const w = await getWatcher()
+    for (const conn of (cfg.connections ?? [])) {
+      if (!conn.localFolder) continue
+      try {
+        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
+      } catch { continue }
+      w.startWatcher(
+        conn.id,
+        conn.localFolder,
+        makeFileDetectedCallback(conn.id),
+        () => sendToRenderer('watcher:status', w.listWatcherStates()),
+      )
     }
-  } catch { /* config not set — watcher will not auto-start */ }
+    if ((cfg.connections ?? []).some((c) => c.localFolder)) {
+      sendToRenderer('watcher:status', w.listWatcherStates())
+    }
+
+    // Kick the worker in case there are PENDING jobs left from a previous session.
+    // onFileDetected only calls ensureWorkerRunning for newly detected files, so
+    // jobs that were already PENDING when the app restarted would otherwise sit idle.
+    const q = await getQueue()
+    if (q.listJobs().some((j) => j.status === 'PENDING')) {
+      const { ensureWorkerRunning } = await import('./worker.js')
+      ensureWorkerRunning()
+    }
+  } catch { /* config not set — watchers will not auto-start */ }
 })
 
 app.on('second-instance', () => {

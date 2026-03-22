@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { FolderOpen } from 'lucide-react'
+import Tooltip from '../components/ui/Tooltip'
 import styles from './LogView.module.css'
 
 const MAX_LIVE = 500
@@ -43,14 +44,15 @@ export default function LogView() {
           <span className={styles.entryCount}>{entries.length} entries</span>
         )}
         <div className={styles.spacer} />
-        <button
-          className={styles.openBtn}
-          onClick={() => window.winraid?.log.reveal()}
-          title="Open log file in Explorer"
-        >
-          <FolderOpen size={13} />
-          Open file
-        </button>
+        <Tooltip tip="Open log file in Explorer" side="bottom">
+          <button
+            className={styles.openBtn}
+            onClick={() => window.winraid?.log.reveal()}
+          >
+            <FolderOpen size={13} />
+            Open file
+          </button>
+        </Tooltip>
         <button
           className={styles.clearBtn}
           onClick={() => setEntries([])}

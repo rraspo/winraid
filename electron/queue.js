@@ -93,24 +93,27 @@ app.on('before-quit', () => {
  * Add a new job to the queue.
  *
  * @param {string} srcPath   - Absolute local file path
- * @param {{ relPath?: string, operation?: string }} opts
+ * @param {{ relPath?: string, operation?: string, connectionId?: string }} opts
  * @returns {string} The new job id
  */
 export function enqueue(srcPath, opts = {}) {
-  const id        = randomUUID()
-  const filename  = srcPath.split(/[/\\]/).pop()
-  const relPath   = opts.relPath   ?? filename
-  const operation = opts.operation ?? 'copy'
+  const id           = randomUUID()
+  const filename     = srcPath.split(/[/\\]/).pop()
+  const relPath      = opts.relPath      ?? filename
+  const operation    = opts.operation    ?? 'copy'
+  const connectionId = opts.connectionId ?? null
 
   jobs().push({
     id,
     srcPath,
     filename,
     relPath,
+    size:      opts.size ?? null,
     status:    STATUS.PENDING,
     progress:  0,
     errorMsg:  '',
     operation,
+    connectionId,
     retries:   0,
     createdAt: Date.now(),
   })
@@ -176,13 +179,38 @@ export function retryJob(id) {
  * watcher scan on startup. DONE and ERROR jobs are not considered active —
  * a file that was previously transferred may have changed while the watcher
  * was stopped and should be re-queued.
- * @param {string} srcPath
+ *
+ * When connectionId is provided, both srcPath and connectionId must match.
+ * When connectionId is null, falls back to matching on srcPath only (for
+ * legacy null-connectionId jobs).
+ *
+ * @param {string}      srcPath
+ * @param {string|null} connectionId
  */
-export function hasActiveJob(srcPath) {
-  return jobs().some(
-    (j) => j.srcPath === srcPath &&
-           (j.status === STATUS.PENDING || j.status === STATUS.TRANSFERRING),
-  )
+export function hasActiveJob(srcPath, connectionId = null) {
+  return jobs().some((j) => {
+    if (j.srcPath !== srcPath) return false
+    if (j.status !== STATUS.PENDING && j.status !== STATUS.TRANSFERRING) return false
+    if (connectionId !== null) return j.connectionId === connectionId
+    return true
+  })
+}
+
+/**
+ * Returns true if a file should be skipped during an initial (rescan) pass.
+ * Skips when any PENDING, TRANSFERRING, or DONE job exists for this path —
+ * re-uploading the same file just overwrites, so there is no benefit.
+ * ERROR jobs are ignored so the file can be re-detected and retried.
+ *
+ * @param {string}      srcPath
+ * @param {string|null} connectionId
+ */
+export function shouldSkipOnRescan(srcPath, connectionId = null) {
+  return jobs().some((j) => {
+    if (j.srcPath !== srcPath) return false
+    if (connectionId !== null && j.connectionId !== connectionId) return false
+    return j.status === STATUS.PENDING || j.status === STATUS.TRANSFERRING || j.status === STATUS.DONE
+  })
 }
 
 /** Remove a single ERROR job by id. */

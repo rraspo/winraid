@@ -18,6 +18,8 @@
   color: var(--text-muted);
   pointer-events: none;
   white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
   text-align: left;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
 }
@@ -27,8 +29,4 @@
   transform: translateY(-50%);
 }
 
-/* Bottom mode: below anchor, left-aligned to anchor */
-.bubbleBottom {
-  transform: none;
-}
 
