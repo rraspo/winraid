@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { RefreshCw, Download } from 'lucide-react'
 
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
@@ -11,6 +12,20 @@ const HINTS = {
 
 export default function SettingsView() {
   const [watching, setWatching] = useState(false)
+  const [version, setVersion] = useState('')
+  const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
+
+  useEffect(() => {
+    window.winraid?.getVersion().then(setVersion).catch(() => {})
+  }, [])
+
+  // Listen for update status events from the main process
+  useEffect(() => {
+    const unsub = window.winraid?.update?.onStatus((payload) => {
+      setUpdateStatus(payload)
+    })
+    return () => unsub?.()
+  }, [])
 
   useEffect(() => {
     // Track per-connection watcher state; derive aggregate `watching` flag
@@ -43,6 +58,37 @@ export default function SettingsView() {
     }
   }
 
+  async function handleCheckUpdate() {
+    setUpdateStatus({ status: 'checking' })
+    const result = await window.winraid?.update?.check()
+    if (result && !result.ok) {
+      setUpdateStatus({ status: 'error', error: result.error })
+    }
+  }
+
+  function handleInstall() {
+    window.winraid?.update?.install()
+  }
+
+  const status = updateStatus?.status
+  const isChecking    = status === 'checking'
+  const isDownloading = status === 'downloading'
+  const isReady       = status === 'ready'
+  const isUpToDate    = status === 'up-to-date'
+  const isError       = status === 'error'
+  const isBusy        = isChecking || isDownloading
+
+  function renderUpdateInfo() {
+    if (!updateStatus) return null
+    if (isChecking)    return <span className={styles.updateMsg}>Checking for updates...</span>
+    if (isDownloading) return <span className={styles.updateMsg}>Downloading update... {updateStatus.percent ?? 0}%</span>
+    if (isReady)       return <span className={`${styles.updateMsg} ${styles.updateReady}`}>v{updateStatus.version} ready to install</span>
+    if (isUpToDate)    return <span className={`${styles.updateMsg} ${styles.updateOk}`}>Up to date</span>
+    if (isError)       return <span className={`${styles.updateMsg} ${styles.updateError}`}>{updateStatus.error}</span>
+    if (status === 'available') return <span className={styles.updateMsg}>Downloading v{updateStatus.version}...</span>
+    return null
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.scrollBody}>
@@ -54,6 +100,32 @@ export default function SettingsView() {
               The scanner watches each connection's local folder and queues new or changed files for transfer.
               On restart it automatically picks up files that appeared while stopped.
             </p>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>About</div>
+          <div className={styles.sectionBody}>
+            <div className={styles.aboutRow}>
+              <div className={styles.aboutVersion}>
+                <span className={styles.aboutLabel}>WinRaid</span>
+                {version && <span className={styles.aboutTag}>v{version}</span>}
+              </div>
+              <div className={styles.aboutActions}>
+                {isReady ? (
+                  <Button size="sm" onClick={handleInstall}>
+                    <Download size={14} strokeWidth={1.75} />
+                    Install & restart
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="ghost" onClick={handleCheckUpdate} disabled={isBusy}>
+                    <RefreshCw size={14} strokeWidth={1.75} className={isChecking ? styles.spinning : undefined} />
+                    {isBusy ? 'Checking...' : 'Check for updates'}
+                  </Button>
+                )}
+              </div>
+            </div>
+            {renderUpdateInfo()}
           </div>
         </section>
 

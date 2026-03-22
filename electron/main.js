@@ -16,7 +16,7 @@ import { join, basename, relative, dirname, resolve, sep } from 'path'
 import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, utimesSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync } from 'fs/promises'
 import { homedir, userInfo } from 'os'
-import { initLogger, getLogPath, log } from './logger.js'
+import { initLogger, getLogPath, clearLog, log } from './logger.js'
 
 // ---------------------------------------------------------------------------
 // Custom protocol scheme declaration — must happen synchronously before
@@ -660,6 +660,10 @@ function registerIPC() {
     if (p) shell.showItemInFolder(p)
   })
 
+  ipcMain.handle('log:clear', () => {
+    clearLog()
+  })
+
   // -- SSH: test connection ---------------------------------------------------
   ipcMain.handle('ssh:test', async (_e, cfg) => {
     try {
@@ -1282,20 +1286,68 @@ export function notify(title, body) {
 // ---------------------------------------------------------------------------
 // Auto-updater (production only)
 // ---------------------------------------------------------------------------
+let _autoUpdater = null
+
+function _sendUpdateStatus(status, info) {
+  mainWindow?.webContents?.send('update:status', { status, ...info })
+}
+
 async function initAutoUpdater() {
   if (!app.isPackaged) return
 
   try {
     const { autoUpdater } = await import('electron-updater')
-    autoUpdater.on('error', (err) => log('error', `Updater: ${err.message}`))
-    autoUpdater.on('update-downloaded', () => {
-      notify('WinRaid update ready', 'Restart to apply.')
-      log('info', 'Update downloaded.')
+    _autoUpdater = autoUpdater
+    autoUpdater.autoDownload = true
+    autoUpdater.autoInstallOnAppQuit = true
+
+    autoUpdater.on('checking-for-update', () => {
+      _sendUpdateStatus('checking')
+      log('info', 'Updater: checking for updates...')
     })
+    autoUpdater.on('update-available', (info) => {
+      _sendUpdateStatus('available', { version: info.version })
+      log('info', `Updater: update available — v${info.version}`)
+    })
+    autoUpdater.on('update-not-available', (info) => {
+      _sendUpdateStatus('up-to-date', { version: info.version })
+      log('info', 'Updater: already up to date.')
+    })
+    autoUpdater.on('download-progress', (progress) => {
+      _sendUpdateStatus('downloading', { percent: Math.round(progress.percent) })
+    })
+    autoUpdater.on('update-downloaded', (info) => {
+      _sendUpdateStatus('ready', { version: info.version })
+      notify('WinRaid update ready', `v${info.version} — restart to apply.`)
+      log('info', `Update downloaded: v${info.version}`)
+    })
+    autoUpdater.on('error', (err) => {
+      _sendUpdateStatus('error', { error: err.message })
+      log('error', `Updater: ${err.message}`)
+    })
+
     autoUpdater.checkForUpdatesAndNotify()
   } catch (err) {
     log('error', `Auto-updater init failed: ${err.message}`)
   }
+}
+
+// IPC: manual update check + install
+function registerUpdateIPC() {
+  ipcMain.handle('update:check', async () => {
+    if (!_autoUpdater) return { ok: false, error: 'Updater not available (dev mode)' }
+    try {
+      const result = await _autoUpdater.checkForUpdates()
+      return { ok: true, version: result?.updateInfo?.version ?? null }
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('update:install', () => {
+    if (!_autoUpdater) return
+    _autoUpdater.quitAndInstall(false, true)
+  })
 }
 
 
@@ -1602,6 +1654,7 @@ app.whenReady().then(async () => {
   }
 
   registerIPC()
+  registerUpdateIPC()
   await initAutoUpdater()
 
   // After the system wakes from sleep the GPU compositor can go stale,

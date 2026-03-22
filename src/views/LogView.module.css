@@ -65,6 +65,16 @@
   color: var(--text);
 }
 
+.clearConfirm {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+.clearConfirm:hover:not(:disabled) {
+  background: var(--error-subtle);
+  color: var(--error);
+}
+
 /* ---- Log area ---- */
 .log {
   flex: 1;

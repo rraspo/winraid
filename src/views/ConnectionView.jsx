@@ -370,7 +370,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                   className={styles.input}
                   value={conn.localFolder}
                   onChange={(e) => { setTop('localFolder', e.target.value); setFolderOverlapError(null) }}
-                  placeholder="C:\Users\you\Downloads"
+                  placeholder="Optional — leave blank to browse only"
                   spellCheck={false}
                 />
                 <Tooltip tip="Open a folder picker dialog." side="left">
@@ -379,50 +379,54 @@ export default function ConnectionView({ existing, onSave, onClose }) {
               </div>
             </Field>
 
-            <Field label="Operation">
-              <ToggleGroup
-                value={conn.operation}
-                onChange={(v) => setTop('operation', v)}
-                options={[
-                  { value: 'copy', label: 'Copy', tip: HINTS.opCopy },
-                  { value: 'move', label: 'Move', tip: HINTS.opMove },
-                ]}
-              />
-            </Field>
+            {conn.localFolder && (
+              <>
+                <Field label="Operation">
+                  <ToggleGroup
+                    value={conn.operation}
+                    onChange={(v) => setTop('operation', v)}
+                    options={[
+                      { value: 'copy', label: 'Copy', tip: HINTS.opCopy },
+                      { value: 'move', label: 'Move', tip: HINTS.opMove },
+                    ]}
+                  />
+                </Field>
 
-            <Field label="Folder structure">
-              <div className={styles.folderModeRow}>
-                <ToggleGroup
-                  value={conn.folderMode}
-                  onChange={(v) => setTop('folderMode', v)}
-                  options={[
-                    { value: 'flat',         label: 'Flat',           tip: HINTS.modeFlat },
-                    { value: 'mirror',       label: 'Mirror',         tip: HINTS.modeMirror },
-                    { value: 'mirror_clean', label: 'Mirror + clean', tip: HINTS.modeMirrorClean },
-                  ]}
-                />
-                {conn.type === 'sftp' && (
-                  <Tooltip tip={HINTS.verifyClean} side="left">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => setShowVerifyConfirm(true)}
-                      disabled={verifying || !conn.localFolder || !conn.sftp.host}
-                    >
-                      <ShieldCheck size={13} />
-                      {verifying ? 'Verifying…' : 'Verify & Clean'}
-                    </Button>
-                  </Tooltip>
-                )}
-              </div>
-            </Field>
+                <Field label="Folder structure">
+                  <div className={styles.folderModeRow}>
+                    <ToggleGroup
+                      value={conn.folderMode}
+                      onChange={(v) => setTop('folderMode', v)}
+                      options={[
+                        { value: 'flat',         label: 'Flat',           tip: HINTS.modeFlat },
+                        { value: 'mirror',       label: 'Mirror',         tip: HINTS.modeMirror },
+                        { value: 'mirror_clean', label: 'Mirror + clean', tip: HINTS.modeMirrorClean },
+                      ]}
+                    />
+                    {conn.type === 'sftp' && (
+                      <Tooltip tip={HINTS.verifyClean} side="left">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setShowVerifyConfirm(true)}
+                          disabled={verifying || !conn.localFolder || !conn.sftp.host}
+                        >
+                          <ShieldCheck size={13} />
+                          {verifying ? 'Verifying…' : 'Verify & Clean'}
+                        </Button>
+                      </Tooltip>
+                    )}
+                  </div>
+                </Field>
 
-            <Field label="Extensions" hint={HINTS.extensions}>
-              <ExtensionPicker
-                value={conn.extensions}
-                onChange={(v) => setTop('extensions', v)}
-              />
-            </Field>
+                <Field label="Extensions" hint={HINTS.extensions}>
+                  <ExtensionPicker
+                    value={conn.extensions}
+                    onChange={(v) => setTop('extensions', v)}
+                  />
+                </Field>
+              </>
+            )}
 
             {verifyError && (
               <div className={styles.testRow}>
