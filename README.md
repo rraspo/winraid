@@ -84,6 +84,3 @@ npm run dist         # build installer → release/WinRaid-Setup.exe
 | SFTP | ssh2 |
 | Icons | lucide-react |
 
-## License
-
-MIT
