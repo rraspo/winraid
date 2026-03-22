@@ -1,12 +1,21 @@
-# WinRaid
+<!-- noinspection HtmlDeprecatedAttribute -->
+<p align="center">
+  <img src="assets/winraid_icon.ico" alt="WinRaid icon" width="96" />
+</p>
 
-**Automatic file sync for your homelab NAS**
-Watch local folders → push to NAS via SFTP/SMB → browse, backup, repeat.
+<h1 align="center">WinRaid</h1>
 
-[![Latest release](https://img.shields.io/github/v/release/rraspo/winraid?style=flat-square&color=blue)](https://github.com/rraspo/winraid/releases/latest)
-![Windows 10/11](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows11&logoColor=white)
-![Electron](https://img.shields.io/badge/electron-37-47848F?style=flat-square&logo=electron&logoColor=white)
-![MIT License](https://img.shields.io/github/license/rraspo/winraid?style=flat-square)
+<p align="center">
+  <strong>Automatic file sync for your homelab NAS</strong><br/>
+  Watch local folders &rarr; push to NAS via SFTP/SMB &rarr; browse, backup, repeat.
+</p>
+
+<p align="center">
+  <a href="https://github.com/rraspo/winraid/releases/latest"><img src="https://img.shields.io/github/v/release/rraspo/winraid?style=flat-square&color=blue" alt="Latest release" /></a>
+  <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows11&logoColor=white" alt="Windows 10/11" />
+  <img src="https://img.shields.io/badge/electron-37-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" />
+  <img src="https://img.shields.io/github/license/rraspo/winraid?style=flat-square" alt="MIT License" />
+</p>
 
 ---
 
