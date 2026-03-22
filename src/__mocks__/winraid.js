@@ -64,6 +64,13 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.backup,
     },
 
+    update: {
+      check: vi.fn().mockResolvedValue({ ok: true, version: '1.1.0' }),
+      install: vi.fn(),
+      onStatus: vi.fn().mockReturnValue(() => {}),
+      ...overrides.update,
+    },
+
     local: {
       clearFolder: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.local,

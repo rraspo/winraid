@@ -12,7 +12,7 @@
 
 import { app } from 'electron'
 import { join } from 'path'
-import { mkdirSync, createWriteStream } from 'fs'
+import { mkdirSync, createWriteStream, truncateSync } from 'fs'
 
 let _send      = null
 let _stream    = null
@@ -36,6 +36,14 @@ export function initLogger(sendFn) {
 /** Absolute path to today's log file (null until initLogger is called). */
 export function getLogPath() {
   return _logPath
+}
+
+/** Truncate today's log file and reopen the write stream. */
+export function clearLog() {
+  if (!_logPath) return
+  _stream?.end()
+  truncateSync(_logPath, 0)
+  _stream = createWriteStream(_logPath, { flags: 'a', encoding: 'utf8' })
 }
 
 /**

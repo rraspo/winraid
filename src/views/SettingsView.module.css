@@ -114,3 +114,57 @@
 
 .saveMsg.ok    { color: var(--success); background: var(--success-subtle); }
 .saveMsg.error { color: var(--error);   background: var(--error-subtle); }
+
+/* ---- About / Updates ---- */
+.aboutRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.aboutVersion {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.aboutLabel {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.aboutTag {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  background: var(--bg-input);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.aboutActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.updateMsg {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.updateOk    { color: var(--success); }
+.updateReady { color: var(--accent); font-weight: var(--font-weight-medium); }
+.updateError { color: var(--error); }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.spinning {
+  animation: spin 1s linear infinite;
+}

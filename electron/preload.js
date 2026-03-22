@@ -92,6 +92,8 @@ contextBridge.exposeInMainWorld('winraid', {
     tail:    (n)      => ipcRenderer.invoke('log:tail', n),
     /** Opens the log file in Explorer. */
     reveal:  ()       => ipcRenderer.invoke('log:reveal'),
+    /** Truncate today's log file. */
+    clear:   ()       => ipcRenderer.invoke('log:clear'),
     /** Subscribe to live log entries pushed from the main process. */
     onEntry: (cb)     => on('log:entry', cb),
   },
@@ -118,6 +120,18 @@ contextBridge.exposeInMainWorld('winraid', {
      * @returns {() => void} unsubscribe
      */
     onProgress: (cb) => on('backup:progress', cb),
+  },
+
+  // -- Updates --------------------------------------------------------------
+  update: {
+    /** Manually trigger an update check. Returns { ok, version? } or { ok: false, error }. */
+    check:   () => ipcRenderer.invoke('update:check'),
+    /** Quit and install a downloaded update. */
+    install: () => ipcRenderer.invoke('update:install'),
+    /** Subscribe to update status events from the main process.
+     *  Payload: { status: 'checking'|'available'|'downloading'|'ready'|'up-to-date'|'error', version?, percent?, error? }
+     *  @returns {() => void} unsubscribe */
+    onStatus: (cb) => on('update:status', cb),
   },
 
   // -- Local filesystem ----------------------------------------------------
