@@ -732,6 +732,22 @@
   height: 28px;
   flex-shrink: 0;
   cursor: pointer;
+  margin-right: var(--space-1);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.row:hover > .checkbox,
+.rowSelected > .checkbox {
+  opacity: 1;
+}
+
+.colHeader > .checkbox {
+  opacity: 0;
+}
+
+.hasSelection .colHeader > .checkbox {
+  opacity: 1;
 }
 
 .checkbox input {

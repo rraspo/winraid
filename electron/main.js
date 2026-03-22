@@ -775,8 +775,10 @@ function registerIPC() {
         : localRoot
       const created = []
       await remoteWalkCreate(sftp, remotePath, localTarget, created)
+      log('info', `Remote checkout [${await _connLabel(connectionId)}]: ${remotePath} -> ${localTarget} (${created.length} files)`)
       return { ok: true, created }
     } catch (err) {
+      log('error', `Remote checkout failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -811,8 +813,10 @@ function registerIPC() {
           sftp.unlink(remotePath, (e) => e ? rej(e) : res())
         )
       }
+      log('info', `Remote ${isDir ? 'directory' : 'file'} deleted [${await _connLabel(connectionId)}]: ${remotePath}`)
       return { ok: true }
     } catch (err) {
+      log('error', `Remote delete failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -823,13 +827,25 @@ function registerIPC() {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
-      return new Promise((resolve) => {
+      const result = await new Promise((resolve) => {
         sftp.rename(srcPath, dstPath, (err) => {
           if (err) return resolve({ ok: false, error: err.message })
           resolve({ ok: true })
         })
       })
+      const label = await _connLabel(connectionId)
+      if (result.ok) {
+        log('info', `Remote move/rename [${label}] from: ${srcPath}`)
+        log('info', `Remote move/rename [${label}]   to: ${dstPath}`)
+      } else {
+        log('error', `Remote move/rename failed [${label}] from: ${srcPath}`)
+        log('error', `Remote move/rename failed [${label}]   to: ${dstPath} — ${result.error}`)
+      }
+      return result
     } catch (err) {
+      const label = await _connLabel(connectionId)
+      log('error', `Remote move/rename failed [${label}] from: ${srcPath}`)
+      log('error', `Remote move/rename failed [${label}]   to: ${dstPath} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -839,13 +855,20 @@ function registerIPC() {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
-      return new Promise((resolve) => {
+      const result = await new Promise((resolve) => {
         sftp.mkdir(remotePath, (err) => {
           if (err) return resolve({ ok: false, error: err.message })
           resolve({ ok: true })
         })
       })
+      if (result.ok) {
+        log('info', `Remote directory created [${await _connLabel(connectionId)}]: ${remotePath}`)
+      } else {
+        log('error', `Remote mkdir failed [${await _connLabel(connectionId)}]: ${remotePath} — ${result.error}`)
+      }
+      return result
     } catch (err) {
+      log('error', `Remote mkdir failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -911,7 +934,9 @@ function registerIPC() {
         try {
           rmSync(abs)
           deleted++
+          log('info', `Local file deleted: ${abs}`)
         } catch (e) {
+          log('error', `Local delete failed: ${abs} — ${e.message}`)
           errors.push({ file: rel, error: e.message })
         }
       }
@@ -927,13 +952,20 @@ function registerIPC() {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
-      return new Promise((resolve) => {
+      const result = await new Promise((resolve) => {
         sftp.writeFile(remotePath, content, (err) => {
           if (err) return resolve({ ok: false, error: err.message })
           resolve({ ok: true })
         })
       })
+      if (result.ok) {
+        log('info', `Remote file written [${await _connLabel(connectionId)}]: ${remotePath}`)
+      } else {
+        log('error', `Remote write failed [${await _connLabel(connectionId)}]: ${remotePath} — ${result.error}`)
+      }
+      return result
     } catch (err) {
+      log('error', `Remote write failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -1414,6 +1446,16 @@ async function _poolConnect(connId) {
 async function _getConnConfig(connId) {
   const { getConfig } = await import('./config.js')
   return (getConfig().connections ?? []).find((c) => c.id === connId) ?? null
+}
+
+async function _connLabel(connId) {
+  try {
+    const { getConfig } = await import('./config.js')
+    const conn = (getConfig().connections ?? []).find((c) => c.id === connId)
+    return conn?.name ?? connId
+  } catch {
+    return connId
+  }
 }
 
 // Parse a Range header value like "bytes=0-1023".
