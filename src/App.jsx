@@ -155,6 +155,7 @@ export default function App() {
   function navigateView(view) {
     setConnEdit(null)
     setActiveView(view)
+    setBrowseRestore(null)
     push({ kind: 'view', view })
   }
 

@@ -1,5 +1,6 @@
 /* Import design tokens first so variables are available everywhere */
 @import './tokens.css';
+@import './shimmer.css';
 
 /* Inter — import only the weights we use to keep bundle size down */
 @import '@fontsource/inter/400.css';
