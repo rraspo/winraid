@@ -41,9 +41,6 @@ const DEFAULTS = {
     sources:   [],   // string[] — remote paths on the NAS to pull down
     localDest: '',   // local folder to receive the backup
   },
-  watcher: {
-    queueExisting: true,  // scan for files added while the scanner was stopped
-  },
   connections:        [],
   activeConnectionId: null,
 }
@@ -52,23 +49,24 @@ const DEFAULTS = {
 // Migration — move legacy top-level fields into the first connection object
 // ---------------------------------------------------------------------------
 function migrateConfig(cfg) {
-  // If the old top-level localFolder exists and there are connections,
-  // merge the legacy fields into the first connection that lacks them.
-  if (!cfg.localFolder) return cfg
+  const hasLegacy = cfg.localFolder || cfg.watcher
+  if (!hasLegacy) return cfg
 
-  const conn = (cfg.connections ?? [])[0]
-  if (conn) {
-    if (!conn.localFolder)  conn.localFolder  = cfg.localFolder
-    if (!conn.operation)    conn.operation     = cfg.operation ?? 'copy'
-    if (!conn.folderMode)   conn.folderMode   = cfg.folderMode ?? 'flat'
-    if (!conn.extensions)   conn.extensions    = cfg.extensions ?? []
+  if (cfg.localFolder) {
+    const conn = (cfg.connections ?? [])[0]
+    if (conn) {
+      if (!conn.localFolder)  conn.localFolder  = cfg.localFolder
+      if (!conn.operation)    conn.operation     = cfg.operation ?? 'copy'
+      if (!conn.folderMode)   conn.folderMode   = cfg.folderMode ?? 'flat'
+      if (!conn.extensions)   conn.extensions    = cfg.extensions ?? []
+    }
+    delete cfg.localFolder
+    delete cfg.operation
+    delete cfg.folderMode
+    delete cfg.extensions
   }
 
-  // Remove legacy keys
-  delete cfg.localFolder
-  delete cfg.operation
-  delete cfg.folderMode
-  delete cfg.extensions
+  delete cfg.watcher
 
   return cfg
 }
@@ -126,7 +124,7 @@ function load() {
     const migrated = migrateConfig(merged)
     _cache = applyToSensitive(migrated, decryptValue)
     // Persist migration changes so they only run once
-    if (raw.localFolder !== undefined) persist()
+    if (raw.localFolder !== undefined || raw.watcher !== undefined) persist()
   } catch {
     _cache = structuredClone(DEFAULTS)
   }

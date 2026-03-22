@@ -9,6 +9,7 @@ import { nginx } from '@codemirror/legacy-modes/mode/nginx'
 import { properties } from '@codemirror/legacy-modes/mode/properties'
 import { toml } from '@codemirror/legacy-modes/mode/toml'
 import { X } from 'lucide-react'
+import Tooltip from './ui/Tooltip'
 import styles from './EditorModal.module.css'
 
 // ---------------------------------------------------------------------------
@@ -35,7 +36,7 @@ function getExtension(filename) {
 // ---------------------------------------------------------------------------
 // EditorModal
 // ---------------------------------------------------------------------------
-export default function EditorModal({ cfg, filePath, onClose }) {
+export default function EditorModal({ connectionId, filePath, onClose }) {
   const [content,  setContent]  = useState('')
   const [draft,    setDraft]    = useState('')
   const [loading,  setLoading]  = useState(true)
@@ -51,7 +52,7 @@ export default function EditorModal({ cfg, filePath, onClose }) {
     async function load() {
       setLoading(true)
       setError('')
-      const res = await window.winraid?.remote.readFile(cfg, filePath)
+      const res = await window.winraid?.remote.readFile(connectionId, filePath)
       if (cancelled) return
       setLoading(false)
       if (res?.ok) {
@@ -63,19 +64,19 @@ export default function EditorModal({ cfg, filePath, onClose }) {
     }
     load()
     return () => { cancelled = true }
-  }, [cfg, filePath])
+  }, [connectionId, filePath])
 
   const handleSave = useCallback(async () => {
     setSaving(true)
     setError('')
-    const res = await window.winraid?.remote.writeFile(cfg, filePath, draft)
+    const res = await window.winraid?.remote.writeFile(connectionId, filePath, draft)
     setSaving(false)
     if (res?.ok) {
       setContent(draft)
     } else {
       setError(res?.error || 'Failed to save file')
     }
-  }, [cfg, filePath, draft])
+  }, [connectionId, filePath, draft])
 
   // Ctrl+S to save
   useEffect(() => {
@@ -106,13 +107,17 @@ export default function EditorModal({ cfg, filePath, onClose }) {
 
         {/* Header */}
         <div className={styles.header}>
-          <span className={styles.filePath} title={filePath}>
-            {filePath}
-            {isDirty && <span className={styles.dirtyDot} title="Unsaved changes">●</span>}
-          </span>
-          <button className={styles.closeBtn} onClick={handleClose} title="Close">
-            <X size={15} />
-          </button>
+          <Tooltip tip={filePath} side="bottom">
+            <span className={styles.filePath}>
+              {filePath}
+              {isDirty && <Tooltip tip="Unsaved changes" side="bottom"><span className={styles.dirtyDot}>●</span></Tooltip>}
+            </span>
+          </Tooltip>
+          <Tooltip tip="Close" side="bottom">
+            <button className={styles.closeBtn} onClick={handleClose}>
+              <X size={15} />
+            </button>
+          </Tooltip>
         </div>
 
         {/* Body */}

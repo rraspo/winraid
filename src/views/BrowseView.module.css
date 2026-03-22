@@ -1,5 +1,6 @@
 /* Container */
 .container {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -575,6 +576,7 @@
   background: var(--bg-card, var(--bg-panel));
   cursor: default;
   transition: border-color var(--transition), background-color var(--transition);
+  min-width: 0;
 }
 
 .gridCard:hover {
@@ -586,6 +588,7 @@
 .gridCardFile { cursor: pointer; }
 
 .gridThumb {
+  position: relative;
   aspect-ratio: 1 / 1;
   display: flex;
   align-items: center;
@@ -629,6 +632,7 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow: hidden;
 }
 
 .gridMetaRow {
@@ -638,9 +642,13 @@
   min-width: 0;
 }
 
-.gridName {
+.gridNameWrap {
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+}
+
+.gridName {
   font-size: var(--font-size-xs);
   color: var(--text);
   overflow: hidden;
@@ -654,6 +662,57 @@
   padding-left: 2px;
 }
 
+/* ── Drag-and-drop ──────────────────────────────────────────────────────── */
+.dropTarget {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
+}
+
+.crumbDropTarget {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent) !important;
+}
+
+.dragging {
+  opacity: 0.45;
+}
+
+.lastVisited {
+  background: rgba(91, 164, 245, 0.25) !important;
+}
+
+/* ── Move overlay ───────────────────────────────────────────────────────── */
+.moveOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.moveOverlayText {
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  font-weight: var(--font-weight-medium);
+}
+
+.moveOverlayPath {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: monospace;
+  max-width: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+}
+
 /* Spin animation for refresh icon */
 .spinning {
   animation: spin 700ms linear infinite;
@@ -661,4 +720,284 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── Checkbox ──────────────────────────────────────────────────────────── */
+.checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border-strong);
+  background: transparent;
+  transition: background-color 150ms ease, border-color 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkmark::after {
+  content: '';
+  display: none;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-0.5px, -0.5px);
+}
+
+.checkbox input:checked + .checkmark,
+.gridCheckbox input:checked + .checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox input:checked + .checkmark::after,
+.gridCheckbox input:checked + .checkmark::after {
+  display: block;
+}
+
+.checkbox input:indeterminate + .checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox input:indeterminate + .checkmark::after {
+  display: block;
+  width: 8px;
+  height: 0;
+  border-width: 0 0 2px 0;
+  transform: none;
+}
+
+.checkbox:hover .checkmark,
+.gridCheckbox:hover .checkmark {
+  border-color: var(--accent);
+}
+
+/* ── Row selection ─────────────────────────────────────────────────────── */
+.rowSelected {
+  background: rgba(91, 164, 245, 0.10) !important;
+}
+
+.rowSelected:hover {
+  background: rgba(91, 164, 245, 0.15) !important;
+}
+
+/* ── Grid card selection ───────────────────────────────────────────────── */
+.gridCheckbox {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.gridCheckbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.gridCard:hover .gridCheckbox,
+.gridCardSelected .gridCheckbox {
+  opacity: 1;
+}
+
+.gridCardSelected {
+  border-color: var(--accent) !important;
+  background: rgba(91, 164, 245, 0.08) !important;
+}
+
+/* ── Bulk action drawer (bottom) ────────────────────────────────────── */
+.bulkBar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px var(--space-4);
+  background: var(--bg-panel);
+  border-top: 1px solid rgba(91, 164, 245, 0.25);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.25);
+  transform: translateY(100%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 200ms ease;
+}
+
+.bulkBarOpen {
+  transform: translateY(0);
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bulkCount {
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.bulkActions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.bulkBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.bulkBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.bulkBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.bulkBtnDanger:hover:not(:disabled) {
+  background: var(--error-subtle);
+  color: var(--error);
+}
+
+/* Extra bottom padding when bulk bar is visible so last row isn't covered */
+.hasSelection {
+  padding-bottom: 52px;
+}
+
+/* ── New folder inline prompt (list view) ──────────────────────────────── */
+.newFolderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+
+.newFolderInput {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.newFolderInput:focus {
+  border-color: var(--accent);
+}
+
+.newFolderConfirm {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.newFolderConfirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.newFolderConfirm:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.newFolderCancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.newFolderCancel:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+/* ── New folder card (grid view) ───────────────────────────────────────── */
+.newFolderCard {
+  border-radius: var(--radius-md);
+  border: 1.5px dashed var(--accent);
+  background: rgba(91, 164, 245, 0.04);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.newFolderCardIcon {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
+.newFolderCardBody {
+  padding: 6px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.newFolderCardActions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.newFolderCardActions .newFolderConfirm {
+  flex: 1;
+}
+
+.newFolderCardActions .newFolderCancel {
+  flex-shrink: 0;
 }

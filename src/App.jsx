@@ -31,7 +31,8 @@ export default function App() {
   const [activeView, setActiveView]       = useState('dashboard')
   // Map<connectionId, { watching, folder, state, file }> — per-connection watcher status
   const [watcherStatus, setWatcherStatus] = useState({})
-  const [activeTransfers, setActiveTransfers] = useState(0)
+  // Map<jobId, connectionId> of currently transferring jobs
+  const [activeTransfers, setActiveTransfers] = useState(new Map())
   const [backupRun, setBackupRun] = useState({
     runStatus:   'idle',
     stats:       null,
@@ -59,29 +60,20 @@ export default function App() {
   }
 
   // --- IPC: watcher status ---------------------------------------------------
+  // Load initial state on mount
   useEffect(() => {
     if (!window.winraid) return
-    return window.winraid.watcher.onStatus((status) => {
-      if (status.connectionId) {
-        // Per-connection status update
-        setWatcherStatus((prev) => ({
-          ...prev,
-          [status.connectionId]: {
-            watching: status.watching,
-            folder: status.folder ?? null,
-            state: status.state ?? null,
-            file: status.file ?? null,
-          },
-        }))
-      } else {
-        // Bulk update (e.g. pause/resume all)
-        setWatcherStatus((prev) => {
-          const next = { ...prev }
-          for (const id of Object.keys(next)) {
-            next[id] = { ...next[id], watching: status.watching }
-          }
-          return next
-        })
+    window.winraid.watcher.list().then((states) => {
+      if (states) setWatcherStatus(states)
+    }).catch(() => {})
+  }, [])
+
+  // Subscribe to pushed updates — payload is always the full map
+  useEffect(() => {
+    if (!window.winraid) return
+    return window.winraid.watcher.onStatus((states) => {
+      if (states && typeof states === 'object') {
+        setWatcherStatus(states)
       }
     })
   }, [])
@@ -115,9 +107,9 @@ export default function App() {
         if (prevStatus !== nextStatus) {
           jobStatusMapRef.current.set(job.id, nextStatus)
           if (nextStatus === 'TRANSFERRING') {
-            setActiveTransfers((n) => n + 1)
+            setActiveTransfers((prev) => new Map(prev).set(job.id, job.connectionId ?? null))
           } else if (prevStatus === 'TRANSFERRING') {
-            setActiveTransfers((n) => Math.max(0, n - 1))
+            setActiveTransfers((prev) => { const m = new Map(prev); m.delete(job.id); return m })
           }
         }
       } else if (payload?.type === 'cleared') {
@@ -163,9 +155,7 @@ export default function App() {
   function navigateView(view) {
     setConnEdit(null)
     setActiveView(view)
-    // Browse owns its own initial history entry — pushed the first time the
-    // user navigates inside BrowseView, so the starting path is recorded.
-    if (view !== 'browse') push({ kind: 'view', view })
+    push({ kind: 'view', view })
   }
 
   function restoreEntry(entry) {
@@ -204,7 +194,7 @@ export default function App() {
     push({ kind: 'conn-edit', conn: conn ?? null })
   }
 
-  async function handleConnSave(saved) {
+  async function handleConnSave() {
     setConnEdit(null)
     const cfg = await window.winraid?.config.get()
     setConnections(cfg?.connections ?? [])
@@ -228,6 +218,7 @@ export default function App() {
     activeView === 'backup'    ? { backupRun, setBackupRun } :
     activeView === 'dashboard' ? { watcherStatus, onNavigate: navigateView, onEditConnection: openConnEdit, connections, activeConnId } :
     activeView === 'browse'    ? { browseRestore, onHistoryPush } :
+    activeView === 'queue'     ? { connections } :
     {}
 
   // ID of the connection whose form is currently open — used by Sidebar to
@@ -246,12 +237,15 @@ export default function App() {
           connections={connections}
           activeConnId={activeConnId}
           editingConnId={editingConnId}
+          watcherStatuses={watcherStatus}
         />
         <div className={styles.main}>
           <Header
             watcherStatus={watcherStatus}
             activeTransfers={activeTransfers}
+            activeConnId={activeConnId}
             onWatcherToggle={handleWatcherToggle}
+            connections={connections}
           />
           <main className={styles.content}>
             {connEdit !== null
@@ -264,7 +258,7 @@ export default function App() {
               : <ActiveView {...activeViewProps} />
             }
           </main>
-          <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} />
+          <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} connections={connections} />
         </div>
       </div>
 

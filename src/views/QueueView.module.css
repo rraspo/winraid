@@ -63,8 +63,7 @@
 
 /* ---- Column header row ---- */
 .colHeader {
-  display: grid;
-  grid-template-columns: 32px 1fr 120px 80px 70px 64px;
+  display: flex;
   align-items: center;
   padding: 0 var(--space-4);
   height: 32px;
@@ -76,26 +75,58 @@
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
-.colFile    { padding-left: var(--space-3); }
-.colStatus  { text-align: center; }
-.colSize    { text-align: right; }
-.colTime    { text-align: right; }
-.colActions { }
+.colHeaderCell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  user-select: none;
+  overflow: hidden;
+}
+
+.colSortable { cursor: pointer; }
+.colSortable:hover { color: var(--text-muted); }
+
+.sortIcon {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+/* ---- Column resize handle ---- */
+.resizer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  user-select: none;
+  touch-action: none;
+}
+
+.resizer:hover,
+.resizerActive {
+  background: var(--accent);
+  opacity: 0.4;
+  border-radius: 1px;
+}
 
 /* ---- List ---- */
 .list {
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: auto;
 }
 
 /* ---- Row ---- */
 .row {
-  display: grid;
-  grid-template-columns: 32px 1fr 120px 80px 70px 64px;
+  display: flex;
   align-items: center;
   padding: 0 var(--space-4);
   min-height: 56px;
@@ -131,6 +162,7 @@
   justify-content: center;
   gap: 2px;
   min-width: 0;
+  overflow: hidden;
   padding: var(--space-2) var(--space-3);
 }
 
@@ -174,6 +206,28 @@
   background: var(--accent);
   border-radius: 2px;
   transition: width 300ms ease;
+}
+
+/* ---- Connection cell ---- */
+.connCell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.connTag {
+  display: inline-block;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ---- Status badge ---- */
