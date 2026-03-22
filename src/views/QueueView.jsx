@@ -54,7 +54,7 @@ const columnHelper = createColumnHelper()
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function QueueView({ connections = [] }) {
+export default function QueueView({ connections = [], onBrowsePath }) {
   const [jobs, setJobs] = useState([])
   const [sorting, setSorting] = useState([])
   const [columnSizing, setColumnSizing] = useState({})
@@ -65,6 +65,19 @@ export default function QueueView({ connections = [] }) {
     for (const c of connections) m[c.id] = c.name || c.id.slice(0, 8)
     return m
   }, [connections])
+
+  function handleRowClick(job) {
+    if (!onBrowsePath || !job.connectionId) return
+    const conn = connections.find((c) => c.id === job.connectionId)
+    if (!conn) return
+    const remotePath = conn.sftp?.remotePath || conn.smb?.remotePath || '/'
+    // For mirror modes the relPath includes subdirectories — navigate to the containing folder
+    const relDir = job.relPath?.replace(/[/\\][^/\\]+$/, '')
+    const dest = (conn.folderMode !== 'flat' && relDir && relDir !== job.relPath)
+      ? `${remotePath}/${relDir}`.replace(/\/+/g, '/')
+      : remotePath
+    onBrowsePath(job.connectionId, dest, job.filename)
+  }
 
   const refresh = useCallback(async () => {
     const list = await window.winraid?.queue.list()
@@ -361,6 +374,8 @@ export default function QueueView({ connections = [] }) {
               <div
                 key={row.id}
                 className={[styles.row, isActive ? styles.rowActive : ''].join(' ')}
+                onClick={() => handleRowClick(row.original)}
+                style={{ cursor: 'pointer' }}
               >
                 {row.getVisibleCells().map((cell) => {
                   const isFlex = cell.column.id === 'file'

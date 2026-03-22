@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import styles from './StatusBar.module.css'
 
-export default function StatusBar({ watcherStatus, activeTransfers, connections = [] }) {
+export default function StatusBar({ watcherStatus, activeTransfers, connections = [], onNavigate }) {
   // watcherStatus is now a Map<connectionId, { watching, state, file }>
   const entries = Object.values(watcherStatus ?? {})
   const anyWatching = entries.some((s) => s.watching)
@@ -36,10 +36,10 @@ export default function StatusBar({ watcherStatus, activeTransfers, connections 
       <span className={styles.label}>{label}</span>
       <div className={styles.spacer} />
       {transferCount > 0 && (
-        <div className={styles.transfers}>
+        <button className={styles.transfers} onClick={() => onNavigate?.('queue')}>
           <span className={styles.spinner} />
           {transferLabel}
-        </div>
+        </button>
       )}
     </div>
   )

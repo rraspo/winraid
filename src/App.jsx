@@ -218,7 +218,7 @@ export default function App() {
     activeView === 'backup'    ? { backupRun, setBackupRun } :
     activeView === 'dashboard' ? { watcherStatus, onNavigate: navigateView, onEditConnection: openConnEdit, connections, activeConnId } :
     activeView === 'browse'    ? { browseRestore, onHistoryPush } :
-    activeView === 'queue'     ? { connections } :
+    activeView === 'queue'     ? { connections, onNavigate: navigateView, onBrowsePath: (connId, remotePath, highlightFile) => { setActiveConnId(connId); navigateView('browse'); setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() }) } } :
     {}
 
   // ID of the connection whose form is currently open — used by Sidebar to
@@ -258,7 +258,7 @@ export default function App() {
               : <ActiveView {...activeViewProps} />
             }
           </main>
-          <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} connections={connections} />
+          <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} connections={connections} onNavigate={navigateView} />
         </div>
       </div>
 
