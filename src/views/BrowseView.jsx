@@ -57,6 +57,7 @@ function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
 }
 
+
 function isOutsideRoot(remotePath, cfgRemotePath) {
   if (!cfgRemotePath) return false
   const base = cfgRemotePath.replace(/\/+$/, '')
@@ -233,13 +234,14 @@ function Thumbnail({ name, remotePath, connectionId, size }) {
 // ---------------------------------------------------------------------------
 // GridCard
 // ---------------------------------------------------------------------------
-function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isDragSource, isDropTarget, isLastVisited, onSelect, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop }) {
+function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isDragSource, isDropTarget, isLastVisited, isHighlighted, highlightRef, onSelect, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
     : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" />
 
   return (
     <div
+      ref={isHighlighted ? highlightRef : undefined}
       className={[
         styles.gridCard,
         isDir ? styles.gridCardDir : styles.gridCardFile,
@@ -247,6 +249,7 @@ function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isD
         isDragSource ? styles.dragging : '',
         isDropTarget ? styles.dropTarget : '',
         isLastVisited ? styles.lastVisited : '',
+        isHighlighted ? styles.highlightFlash : '',
       ].join(' ')}
       draggable={!busy}
       onDragStart={onDragStart}
@@ -470,6 +473,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   const [dropTargetPath, setDropTargetPath] = useState(null)  // remote dir path being hovered
   const [moveInFlight, setMoveInFlight]   = useState(null)    // { name, from, to } while move is running
   const [lastVisitedDir, setLastVisitedDir] = useState(null) // folder name to highlight after navigating up
+  const [highlightFile, setHighlightFile]  = useState(null)  // filename to briefly highlight after queue navigation
   const [selected, setSelected]           = useState(new Set())  // Set of entry names
   const [bulkAction, setBulkAction]       = useState(null)   // 'delete' | 'move' | null
   const [bulkMoveDest, setBulkMoveDest]   = useState('')
@@ -486,6 +490,15 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   // Restore navigation state when App drives a back/forward to a browse entry
   useEffect(() => {
     if (!browseRestore) return
+
+    // Switch connection if specified and different from current
+    if (browseRestore.connectionId && browseRestore.connectionId !== selectedId) {
+      setSelectedId(browseRestore.connectionId)
+      setEntries([])
+      setError('')
+      setStatus(null)
+    }
+
     // Only clear entries when the path actually changes. If we are just toggling
     // Quick Look on the same folder, keeping entries avoids a needless refetch.
     if (browseRestore.path !== path) { // eslint-disable-line react-hooks/exhaustive-deps
@@ -507,19 +520,36 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
       setShowQuickLook(false)
       setSelectedFile(null)
     }
+    if (browseRestore.highlightFile) {
+      setHighlightFile(browseRestore.highlightFile)
+    }
   }, [browseRestore]) // token on browseRestore ensures this fires even if path is same
+
+  // Auto-clear highlight after the flash animation
+  useEffect(() => {
+    if (!highlightFile) return
+    const t = setTimeout(() => setHighlightFile(null), 3000)
+    return () => clearTimeout(t)
+  }, [highlightFile])
+
+  // Scroll the highlighted element into view once it renders
+  const highlightRef = useCallback((node) => {
+    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [])
 
   useEffect(() => {
     async function load() {
       const conns    = await window.winraid?.config.get('connections') ?? []
       const activeId = await window.winraid?.config.get('activeConnectionId')
       setConnections(conns)
+      // If browseRestore already set connection + path, don't overwrite
+      if (browseRestore?.connectionId) return
       const initial = conns.find((c) => c.id === activeId) ?? conns[0] ?? null
       setSelectedId(initial?.id ?? null)
       if (initial?.sftp?.remotePath) setPath(initial.sftp.remotePath)
     }
     load().then(() => {})
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Push an initial browse history entry so the back button can return here
   const initialPushed = useRef(false)
@@ -837,6 +867,8 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
     clearTimeout(dwellTimer.current)
     if (!dragSource || !selectedId) return
     const srcPath = dragSource.path
+    // Prevent dropping a folder onto or inside itself
+    if (targetDirPath === srcPath || targetDirPath.startsWith(srcPath + '/')) return
     const dstPath = joinRemote(targetDirPath, dragSource.name)
     if (srcPath === dstPath) return
     setDragSource(null)
@@ -1024,16 +1056,18 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                   Set root here
                 </button>
               </Tooltip>
-              <Tooltip tip={`Check out current folder structure to ${localFolder}`} side="bottom">
-                <button
-                  className={styles.checkoutBtn}
-                  onClick={() => handleCheckout(path)}
-                  disabled={busy || loading}
-                >
-                  <Download size={13} />
-                  Check out here
-                </button>
-              </Tooltip>
+              {localFolder && (
+                <Tooltip tip={`Check out current folder structure to ${localFolder}`} side="bottom">
+                  <button
+                    className={styles.checkoutBtn}
+                    onClick={() => handleCheckout(path)}
+                    disabled={busy || loading}
+                  >
+                    <Download size={13} />
+                    Check out here
+                  </button>
+                </Tooltip>
+              )}
             </>
           )}
 
@@ -1183,9 +1217,11 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                   : (isImageFile(entry.name) || isVideoFile(entry.name))
                     ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={selectedId} size="list" />
                     : <File size={14} className={styles.iconFile} />
+                const isHighlit = highlightFile === entry.name
                 return (
                   <div
                     key={entry.name}
+                    ref={isHighlit ? highlightRef : undefined}
                     className={[
                       styles.row,
                       isDir ? styles.rowDir : '',
@@ -1193,6 +1229,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                       dragSource?.path === entryPath ? styles.dragging : '',
                       isDir && dropTargetPath === entryPath ? styles.dropTarget : '',
                       isDir && lastVisitedDir === entry.name ? styles.lastVisited : '',
+                      isHighlit ? styles.highlightFlash : '',
                     ].join(' ')}
                     draggable={!busy}
                     onDragStart={(e) => handleDragStart(e, entry, entryPath)}
@@ -1290,6 +1327,8 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                     isDragSource={dragSource?.path === entryPath}
                     isDropTarget={isDir && dropTargetPath === entryPath}
                     isLastVisited={isDir && lastVisitedDir === entry.name}
+                    isHighlighted={highlightFile === entry.name}
+                    highlightRef={highlightRef}
                     onSelect={toggleSelect}
                     onNavigate={navigate}
                     onQuickLook={openQuickLook}

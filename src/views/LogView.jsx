@@ -9,6 +9,8 @@ export default function LogView() {
   const [entries, setEntries] = useState([])
   const bottomRef    = useRef(null)
   const isNearBottom = useRef(true)
+  const [confirmClear, setConfirmClear] = useState(false)
+  const clearTimer = useRef(null)
 
   // Load history from the log file, then subscribe to live entries
   useEffect(() => {
@@ -54,11 +56,21 @@ export default function LogView() {
           </button>
         </Tooltip>
         <button
-          className={styles.clearBtn}
-          onClick={() => setEntries([])}
+          className={`${styles.clearBtn} ${confirmClear ? styles.clearConfirm : ''}`}
+          onClick={() => {
+            if (confirmClear) {
+              setEntries([])
+              window.winraid?.log.clear()
+              setConfirmClear(false)
+              clearTimeout(clearTimer.current)
+            } else {
+              setConfirmClear(true)
+              clearTimer.current = setTimeout(() => setConfirmClear(false), 3000)
+            }
+          }}
           disabled={entries.length === 0}
         >
-          Clear
+          {confirmClear ? 'Clear file?' : 'Clear'}
         </button>
       </div>
 
