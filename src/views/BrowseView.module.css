@@ -682,14 +682,7 @@
   background: rgba(91, 164, 245, 0.25) !important;
 }
 
-@keyframes highlightPulse {
-  0%, 40% { background-color: var(--accent-subtle); }
-  100%    { background-color: transparent; }
-}
-
-.highlightFlash {
-  animation: highlightPulse 2.5s ease-out 0.4s both;
-}
+/* highlightFlash is applied via JS; actual shimmer comes from global shimmer classes */
 
 /* ── Move overlay ───────────────────────────────────────────────────────── */
 .moveOverlay {
