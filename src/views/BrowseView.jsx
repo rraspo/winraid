@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import {
   Folder, File, Image, Film, ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, TriangleAlert, List, LayoutGrid, MoreHorizontal, Loader,
@@ -249,7 +250,7 @@ function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isD
         isDragSource ? styles.dragging : '',
         isDropTarget ? styles.dropTarget : '',
         isLastVisited ? styles.lastVisited : '',
-        isHighlighted ? styles.highlightFlash : '',
+        isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
       ].join(' ')}
       draggable={!busy}
       onDragStart={onDragStart}
@@ -478,6 +479,14 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   const [bulkAction, setBulkAction]       = useState(null)   // 'delete' | 'move' | null
   const [bulkMoveDest, setBulkMoveDest]   = useState('')
   const dwellTimer = useRef(null)  // auto-navigate timer when hovering a folder while dragging
+  const listScrollRef = useRef(null)
+
+  const rowVirtualizer = useVirtualizer({
+    count: entries.length,
+    getScrollElement: () => listScrollRef.current,
+    estimateSize: () => 41, // 40px row + 1px border
+    overscan: 15,
+  })
 
   useEffect(() => {
     localStorage.setItem('browse-view', viewMode)
@@ -525,25 +534,42 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
     }
   }, [browseRestore]) // token on browseRestore ensures this fires even if path is same
 
-  // Auto-clear highlight after the flash animation
+  // Clear highlight when user navigates to a different directory
+  const prevPath = useRef(path)
   useEffect(() => {
-    if (!highlightFile) return
-    const t = setTimeout(() => setHighlightFile(null), 3000)
-    return () => clearTimeout(t)
-  }, [highlightFile])
+    if (prevPath.current !== path && !browseRestore?.highlightFile) {
+      setHighlightFile(null)
+    }
+    prevPath.current = path
+  }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Scroll the highlighted element into view once it renders
+  // Scroll the highlighted element into view via virtualizer or DOM
   const highlightRef = useCallback((node) => {
     if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [])
+
+  // Scroll virtualizer to highlighted file when entries load
+  useEffect(() => {
+    if (!highlightFile || entries.length === 0) return
+    const idx = entries.findIndex((e) => e.name === highlightFile)
+    if (idx >= 0) rowVirtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' })
+  }, [highlightFile, entries]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const browseRestoreRef = useRef(browseRestore)
+  browseRestoreRef.current = browseRestore
 
   useEffect(() => {
     async function load() {
       const conns    = await window.winraid?.config.get('connections') ?? []
       const activeId = await window.winraid?.config.get('activeConnectionId')
       setConnections(conns)
-      // If browseRestore already set connection + path, don't overwrite
-      if (browseRestore?.connectionId) return
+      const restore = browseRestoreRef.current
+      if (restore?.connectionId && conns.find((c) => c.id === restore.connectionId)) {
+        // browseRestore already set selectedId and path — connections are now loaded
+        setSelectedId(restore.connectionId)
+        if (restore.path) setPath(restore.path)
+        return
+      }
       const initial = conns.find((c) => c.id === activeId) ?? conns[0] ?? null
       setSelectedId(initial?.id ?? null)
       if (initial?.sftp?.remotePath) setPath(initial.sftp.remotePath)
@@ -886,7 +912,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   }
 
   const busy     = opInFlight || !!moveInFlight
-  const noConfig = !selectedId || !selectedConn?.sftp?.host
+  const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
   const crumbs   = buildBreadcrumbs()
 
 
@@ -1162,6 +1188,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
           {/* List view */}
           {viewMode === 'list' && (
             <div
+              ref={listScrollRef}
               className={[styles.listWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
               onDragOver={(e) => { if (dragSource) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
               onDrop={(e) => handleDrop(e, path)}
@@ -1209,67 +1236,80 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                   </button>
                 </div>
               )}
-              {entries.map((entry) => {
-                const entryPath = joinRemote(path, entry.name)
-                const isDir     = entry.type === 'dir'
-                const icon = isDir
-                  ? <Folder size={14} className={styles.iconDir} />
-                  : (isImageFile(entry.name) || isVideoFile(entry.name))
-                    ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={selectedId} size="list" />
-                    : <File size={14} className={styles.iconFile} />
-                const isHighlit = highlightFile === entry.name
-                return (
-                  <div
-                    key={entry.name}
-                    ref={isHighlit ? highlightRef : undefined}
-                    className={[
-                      styles.row,
-                      isDir ? styles.rowDir : '',
-                      selected.has(entry.name) ? styles.rowSelected : '',
-                      dragSource?.path === entryPath ? styles.dragging : '',
-                      isDir && dropTargetPath === entryPath ? styles.dropTarget : '',
-                      isDir && lastVisitedDir === entry.name ? styles.lastVisited : '',
-                      isHighlit ? styles.highlightFlash : '',
-                    ].join(' ')}
-                    draggable={!busy}
-                    onDragStart={(e) => handleDragStart(e, entry, entryPath)}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={isDir ? (e) => handleDragOverFolder(e, entryPath) : undefined}
-                    onDragLeave={isDir ? handleDragLeaveFolder : undefined}
-                    onDrop={isDir ? (e) => { e.stopPropagation(); handleDrop(e, entryPath) } : undefined}
-                    onClick={!isDir ? () => openQuickLook(entry, entryPath) : undefined}
-                    style={!isDir ? { cursor: 'pointer' } : undefined}
-                  >
-                    <label className={styles.checkbox} onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" checked={selected.has(entry.name)} onChange={(e) => toggleSelect(entry.name, e)} />
-                      <span className={styles.checkmark} />
-                    </label>
-                    <div className={styles.rowName}>
-                      {icon}
-                      {isDir ? (
-                        <button className={styles.nameBtn} onClick={() => navigate(entryPath)}>
-                          {entry.name}
-                        </button>
-                      ) : (
-                        <span className={styles.nameText}>{entry.name}</span>
-                      )}
-                    </div>
-                    <span className={styles.rowSize}>{isDir ? '—' : formatSize(entry.size)}</span>
-                    <span className={styles.rowDate}>{formatDate(entry.modified)}</span>
-                    <div className={styles.rowActions}>
-                      <EntryMenu
-                        isDir={isDir}
-                        isEditable={!isDir && isEditableFile(entry.name)}
-                        busy={busy}
-                        onCheckout={() => handleCheckout(entryPath)}
-                        onEdit={() => setEditingFile(entryPath)}
-                        onMove={() => setMoveTarget({ name: entry.name, path: entryPath })}
-                        onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
-                      />
-                    </div>
-                  </div>
-                )
-              })}
+              {entries.length > 0 && (
+                <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
+                  {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                    const entry = entries[virtualRow.index]
+                    const entryPath = joinRemote(path, entry.name)
+                    const isDir     = entry.type === 'dir'
+                    const icon = isDir
+                      ? <Folder size={14} className={styles.iconDir} />
+                      : (isImageFile(entry.name) || isVideoFile(entry.name))
+                        ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={selectedId} size="list" />
+                        : <File size={14} className={styles.iconFile} />
+                    const isHighlit = highlightFile === entry.name
+                    return (
+                      <div
+                        key={entry.name}
+                        ref={isHighlit ? highlightRef : undefined}
+                        className={[
+                          styles.row,
+                          isDir ? styles.rowDir : '',
+                          selected.has(entry.name) ? styles.rowSelected : '',
+                          dragSource?.path === entryPath ? styles.dragging : '',
+                          isDir && dropTargetPath === entryPath ? styles.dropTarget : '',
+                          isDir && lastVisitedDir === entry.name ? styles.lastVisited : '',
+                          isHighlit ? 'shimmer shimmer-border shimmer-once' : '',
+                        ].join(' ')}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          width: '100%',
+                          height: virtualRow.size,
+                          transform: `translateY(${virtualRow.start}px)`,
+                          cursor: !isDir ? 'pointer' : undefined,
+                        }}
+                        draggable={!busy}
+                        onDragStart={(e) => handleDragStart(e, entry, entryPath)}
+                        onDragEnd={handleDragEnd}
+                        onDragOver={isDir ? (e) => handleDragOverFolder(e, entryPath) : undefined}
+                        onDragLeave={isDir ? handleDragLeaveFolder : undefined}
+                        onDrop={isDir ? (e) => { e.stopPropagation(); handleDrop(e, entryPath) } : undefined}
+                        onClick={!isDir ? () => openQuickLook(entry, entryPath) : undefined}
+                      >
+                        <label className={styles.checkbox} onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" checked={selected.has(entry.name)} onChange={(e) => toggleSelect(entry.name, e)} />
+                          <span className={styles.checkmark} />
+                        </label>
+                        <div className={styles.rowName}>
+                          {icon}
+                          {isDir ? (
+                            <button className={styles.nameBtn} onClick={() => navigate(entryPath)}>
+                              {entry.name}
+                            </button>
+                          ) : (
+                            <span className={styles.nameText}>{entry.name}</span>
+                          )}
+                        </div>
+                        <span className={styles.rowSize}>{isDir ? '—' : formatSize(entry.size)}</span>
+                        <span className={styles.rowDate}>{formatDate(entry.modified)}</span>
+                        <div className={styles.rowActions}>
+                          <EntryMenu
+                            isDir={isDir}
+                            isEditable={!isDir && isEditableFile(entry.name)}
+                            busy={busy}
+                            onCheckout={() => handleCheckout(entryPath)}
+                            onEdit={() => setEditingFile(entryPath)}
+                            onMove={() => setMoveTarget({ name: entry.name, path: entryPath })}
+                            onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           )}
 

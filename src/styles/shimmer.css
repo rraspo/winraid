@@ -1,0 +1,75 @@
+/* =============================================================================
+   Shimmer — reusable gradient sweep animation for text and borders.
+
+   Usage:
+     Text:   class="shimmer shimmer-text"           (loops)
+             class="shimmer shimmer-text shimmer-once" (plays once, keeps gradient)
+
+     Border: class="shimmer shimmer-border"          (loops)
+             class="shimmer shimmer-border shimmer-once"
+
+   Customise via CSS variables on the element:
+     --shimmer-base:   base colour            (default: var(--text))
+     --shimmer-mid:    mid-tone accent         (default: #006a61)
+     --shimmer-peak:   bright highlight        (default: #89f5e7)
+     --shimmer-speed:  animation duration      (default: 3s)
+   ============================================================================= */
+
+/* ---- Keyframes ---- */
+@keyframes shimmerSweep {
+  0%   { background-position: 0% center; }
+  50%  { background-position: 100% center; }
+  100% { background-position: 0% center; }
+}
+
+@keyframes shimmerSweepOnce {
+  0%   { background-position: 0% center; }
+  100% { background-position: 100% center; }
+}
+
+@keyframes shimmerBorderColor {
+  0%   { border-color: var(--border); }
+  30%  { border-color: var(--shimmer-mid); }
+  50%  { border-color: var(--shimmer-peak); }
+  70%  { border-color: var(--shimmer-mid); }
+  100% { border-color: var(--shimmer-peak); }
+}
+
+/* ---- Base variables ---- */
+.shimmer {
+  --shimmer-base: var(--text);
+  --shimmer-mid: #006a61;
+  --shimmer-peak: #89f5e7;
+  --shimmer-speed: 3s;
+}
+
+/* ---- Text shimmer ---- */
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    var(--shimmer-base) 0%,
+    var(--shimmer-mid)  30%,
+    var(--shimmer-peak) 50%,
+    var(--shimmer-mid)  70%,
+    var(--shimmer-base) 100%
+  );
+  background-size: 300% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmerSweep var(--shimmer-speed) ease-in-out infinite;
+}
+
+/* ---- Border shimmer (animates border-color) ---- */
+.shimmer-border {
+  animation: shimmerBorderColor var(--shimmer-speed) ease-in-out infinite;
+}
+
+/* ---- Once modifier ---- */
+.shimmer-once.shimmer-text {
+  animation: shimmerSweepOnce var(--shimmer-speed) ease-in-out forwards;
+}
+
+.shimmer-once.shimmer-border {
+  animation: shimmerBorderColor var(--shimmer-speed) ease-in-out forwards;
+}

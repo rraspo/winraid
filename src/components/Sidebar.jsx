@@ -33,7 +33,7 @@ export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, 
             <img src={iconSrc} className={styles.brandImg} alt="" />
           </div>
           <div>
-            <div className={styles.brandName}>WinRaid</div>
+            <div className={`${styles.brandName} shimmer shimmer-text`}>WinRaid</div>
             <div className={styles.brandSub}>File Synchronization</div>
           </div>
         </div>
