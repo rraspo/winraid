@@ -1,5 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
-import { File, Video, Image, FileText, Archive, X, RotateCcw } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import {
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  flexRender,
+  createColumnHelper,
+} from '@tanstack/react-table'
+import { File, Video, Image, FileText, Archive, X, RotateCcw, ArrowUp, ArrowDown } from 'lucide-react'
+import Tooltip from '../components/ui/Tooltip'
 import styles from './QueueView.module.css'
 
 // ---------------------------------------------------------------------------
@@ -14,7 +22,7 @@ function relativeTime(ts) {
 }
 
 function formatSize(bytes) {
-  if (!bytes) return '—'
+  if (!bytes) return '\u2014'
   if (bytes < 1024)       return `${bytes} B`
   if (bytes < 1024 ** 2)  return `${(bytes / 1024).toFixed(0)} KB`
   if (bytes < 1024 ** 3)  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
@@ -35,18 +43,28 @@ function getFileIcon(filename) {
 }
 
 const STATUS_META = {
-  PENDING:     { label: 'Pending',     cls: 'pending' },
-  TRANSFERRING:{ label: 'Transferring',cls: 'transferring' },
-  DONE:        { label: 'Done',        cls: 'done' },
-  ERROR:       { label: 'Error',       cls: 'error' },
+  PENDING:     { label: 'Pending',     cls: 'pending',      pri: 1 },
+  TRANSFERRING:{ label: 'Transferring',cls: 'transferring', pri: 0 },
+  DONE:        { label: 'Done',        cls: 'done',         pri: 3 },
+  ERROR:       { label: 'Error',       cls: 'error',        pri: 2 },
 }
+
+const columnHelper = createColumnHelper()
 
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function QueueView() {
+export default function QueueView({ connections = [] }) {
   const [jobs, setJobs] = useState([])
+  const [sorting, setSorting] = useState([])
+  const [columnSizing, setColumnSizing] = useState({})
   const scrollRef = useRef(null)
+
+  const connMap = useMemo(() => {
+    const m = {}
+    for (const c of connections) m[c.id] = c.name || c.id.slice(0, 8)
+    return m
+  }, [connections])
 
   const refresh = useCallback(async () => {
     const list = await window.winraid?.queue.list()
@@ -95,14 +113,183 @@ export default function QueueView() {
     }
   }, [refresh])
 
+  // Default sort: active first, then pending, done, error
+  const sorted = useMemo(() => {
+    if (sorting.length > 0) return jobs
+    return [...jobs].sort((a, b) => {
+      const priA = STATUS_META[a.status]?.pri ?? 4
+      const priB = STATUS_META[b.status]?.pri ?? 4
+      return priA - priB
+    })
+  }, [jobs, sorting])
+
+  const columns = useMemo(() => [
+    columnHelper.display({
+      id: 'icon',
+      size: 32,
+      minSize: 32,
+      maxSize: 32,
+      enableResizing: false,
+      enableSorting: false,
+      header: () => null,
+      cell: ({ row }) => (
+        <div className={styles.fileIconWrap}>
+          {getFileIcon(row.original.filename)}
+        </div>
+      ),
+    }),
+    columnHelper.accessor('filename', {
+      id: 'file',
+      header: 'File / Path',
+      size: 200,
+      minSize: 120,
+      enableResizing: true,
+      sortingFn: 'alphanumeric',
+      cell: ({ row }) => {
+        const { filename, srcPath, errorMsg, status, progress } = row.original
+        const dir = srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : ''
+        const isActive = status === 'TRANSFERRING'
+        const percent = Math.round((progress ?? 0) * 100)
+        return (
+          <div className={styles.fileInfo}>
+            <Tooltip tip={filename} side="bottom" onlyWhenTruncated>
+              <span className={styles.filename}>{filename}</span>
+            </Tooltip>
+            {dir && (
+              <Tooltip tip={dir} side="bottom" onlyWhenTruncated>
+                <span className={styles.filepath}>{dir}</span>
+              </Tooltip>
+            )}
+            {errorMsg && <span className={styles.errorMsg}>{errorMsg}</span>}
+            {isActive && (
+              <div className={styles.progressTrack}>
+                <div className={styles.progressFill} style={{ width: `${percent}%` }} />
+              </div>
+            )}
+          </div>
+        )
+      },
+    }),
+    columnHelper.accessor('connectionId', {
+      id: 'connection',
+      header: 'Connection',
+      size: 120,
+      minSize: 60,
+      enableResizing: true,
+      sortingFn: (rowA, rowB) => {
+        const a = connMap[rowA.original.connectionId] ?? ''
+        const b = connMap[rowB.original.connectionId] ?? ''
+        return a.localeCompare(b)
+      },
+      cell: ({ row }) => {
+        const name = connMap[row.original.connectionId] ?? null
+        return (
+          <div className={styles.connCell}>
+            {name && <span className={styles.connTag}>{name}</span>}
+          </div>
+        )
+      },
+    }),
+    columnHelper.accessor('status', {
+      id: 'status',
+      header: () => <span style={{ width: '100%', textAlign: 'center' }}>Status</span>,
+      size: 96,
+      minSize: 70,
+      enableResizing: true,
+      sortingFn: (rowA, rowB) => {
+        const priA = STATUS_META[rowA.original.status]?.pri ?? 4
+        const priB = STATUS_META[rowB.original.status]?.pri ?? 4
+        return priA - priB
+      },
+      cell: ({ row }) => {
+        const { status, progress } = row.original
+        const meta = STATUS_META[status] ?? STATUS_META.PENDING
+        const isActive = status === 'TRANSFERRING'
+        const percent = Math.round((progress ?? 0) * 100)
+        return (
+          <div className={styles.statusCell}>
+            <span className={[styles.statusBadge, styles[`status_${meta.cls}`]].join(' ')}>
+              {isActive ? `${percent}%` : meta.label}
+            </span>
+          </div>
+        )
+      },
+    }),
+    columnHelper.accessor('size', {
+      id: 'size',
+      header: () => <span style={{ width: '100%', textAlign: 'right', paddingRight: 'var(--space-2)' }}>Size</span>,
+      size: 80,
+      minSize: 50,
+      enableResizing: true,
+      sortingFn: 'basic',
+      cell: ({ row }) => (
+        <div className={styles.sizeCell}>{formatSize(row.original.size)}</div>
+      ),
+    }),
+    columnHelper.accessor('createdAt', {
+      id: 'added',
+      header: () => <span style={{ width: '100%', textAlign: 'right', paddingRight: 'var(--space-2)' }}>Added</span>,
+      size: 70,
+      minSize: 50,
+      enableResizing: true,
+      sortingFn: 'basic',
+      cell: ({ row }) => (
+        <div className={styles.timeCell}>{relativeTime(row.original.createdAt)}</div>
+      ),
+    }),
+    columnHelper.display({
+      id: 'actions',
+      size: 64,
+      minSize: 64,
+      maxSize: 64,
+      enableResizing: false,
+      enableSorting: false,
+      header: () => null,
+      cell: ({ row }) => {
+        const { id, status } = row.original
+        return (
+          <div className={styles.actionsCell}>
+            {status === 'ERROR' && (
+              <>
+                <Tooltip tip="Retry" side="bottom">
+                  <button className={styles.retryBtn} onClick={() => window.winraid?.queue.retry(id)}>
+                    <RotateCcw size={13} />
+                  </button>
+                </Tooltip>
+                <Tooltip tip="Remove" side="bottom">
+                  <button className={styles.removeBtn} onClick={() => window.winraid?.queue.remove(id)}>
+                    <X size={13} />
+                  </button>
+                </Tooltip>
+              </>
+            )}
+            {(status === 'PENDING' || status === 'TRANSFERRING') && (
+              <Tooltip tip="Cancel" side="bottom">
+                <button className={styles.cancelBtn} onClick={() => window.winraid?.queue.cancel(id)}>
+                  <X size={13} />
+                </button>
+              </Tooltip>
+            )}
+          </div>
+        )
+      },
+    }),
+  ], [connMap])
+
+  const table = useReactTable({
+    data: sorted,
+    columns,
+    state: { sorting, columnSizing },
+    onSortingChange: setSorting,
+    onColumnSizingChange: setColumnSizing,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    columnResizeMode: 'onChange',
+    enableColumnResizing: true,
+  })
+
   const doneCount = jobs.filter((j) => j.status === 'DONE').length
   const pendingCount = jobs.filter((j) => j.status === 'PENDING' || j.status === 'TRANSFERRING').length
-
-  // Sort: active first, then pending, then done, then error
-  const sorted = [...jobs].sort((a, b) => {
-    const pri = { TRANSFERRING: 0, PENDING: 1, ERROR: 2, DONE: 3 }
-    return (pri[a.status] ?? 4) - (pri[b.status] ?? 4)
-  })
 
   return (
     <div className={styles.container}>
@@ -126,19 +313,41 @@ export default function QueueView() {
         </div>
       </div>
 
-      {/* Column headers */}
-      {jobs.length > 0 && (
-        <div className={styles.colHeader}>
-          <span className={styles.colFile}>File / Path</span>
-          <span className={styles.colStatus}>Status</span>
-          <span className={styles.colSize}>Size</span>
-          <span className={styles.colTime}>Added</span>
-          <span className={styles.colActions} />
-        </div>
-      )}
-
       {/* List */}
       <div ref={scrollRef} className={styles.list}>
+        {/* Column headers — inside scrollable list so they scroll horizontally in sync */}
+        {jobs.length > 0 && (
+          <div className={styles.colHeader}>
+            {table.getHeaderGroups().map((hg) =>
+              hg.headers.map((header) => {
+                const isFlex = header.id === 'file'
+                return (
+                  <div
+                    key={header.id}
+                    className={[
+                      styles.colHeaderCell,
+                      header.column.getCanSort() ? styles.colSortable : '',
+                    ].join(' ')}
+                    style={isFlex ? { flex: 1, minWidth: 0, overflow: 'hidden' } : { width: header.getSize(), flexShrink: 0 }}
+                    onClick={header.column.getToggleSortingHandler()}
+                  >
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getIsSorted() === 'asc' && <ArrowUp size={11} className={styles.sortIcon} />}
+                    {header.column.getIsSorted() === 'desc' && <ArrowDown size={11} className={styles.sortIcon} />}
+                    {header.column.getCanResize() && (
+                      <div
+                        className={[styles.resizer, header.column.getIsResizing() ? styles.resizerActive : ''].join(' ')}
+                        onMouseDown={header.getResizeHandler()}
+                        onTouchStart={header.getResizeHandler()}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )}
         {jobs.length === 0 ? (
           <div className={styles.empty}>
             <File size={32} strokeWidth={1} className={styles.emptyIcon} />
@@ -146,87 +355,27 @@ export default function QueueView() {
             <span className={styles.emptyHint}>Add a connection with a watch folder to get started.</span>
           </div>
         ) : (
-          sorted.map((job) => <QueueRow key={job.id} job={job} />)
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// QueueRow
-// ---------------------------------------------------------------------------
-function QueueRow({ job }) {
-  const { status, filename, srcPath, progress, createdAt, size, errorMsg } = job
-  const dir = srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : ''
-  const meta = STATUS_META[status] ?? STATUS_META.PENDING
-  const isActive = status === 'TRANSFERRING'
-  const percent = Math.round((progress ?? 0) * 100)
-
-  return (
-    <div className={[styles.row, isActive ? styles.rowActive : ''].join(' ')}>
-      {/* File icon */}
-      <div className={styles.fileIconWrap}>
-        {getFileIcon(filename)}
-      </div>
-
-      {/* Name + path */}
-      <div className={styles.fileInfo}>
-        <span className={styles.filename} title={filename}>{filename}</span>
-        {dir && <span className={styles.filepath}>{dir}</span>}
-        {errorMsg && <span className={styles.errorMsg}>{errorMsg}</span>}
-        {isActive && (
-          <div className={styles.progressTrack}>
-            <div className={styles.progressFill} style={{ width: `${percent}%` }} />
-          </div>
-        )}
-      </div>
-
-      {/* Status badge */}
-      <div className={styles.statusCell}>
-        <span className={[styles.statusBadge, styles[`status_${meta.cls}`]].join(' ')}>
-          {isActive ? `${percent}%` : meta.label}
-        </span>
-      </div>
-
-      {/* Size */}
-      <div className={styles.sizeCell}>
-        {formatSize(size)}
-      </div>
-
-      {/* Time */}
-      <div className={styles.timeCell}>
-        {relativeTime(createdAt)}
-      </div>
-
-      {/* Actions */}
-      <div className={styles.actionsCell}>
-        {status === 'ERROR' && (
-          <>
-            <button
-              className={styles.retryBtn}
-              onClick={() => window.winraid?.queue.retry(job.id)}
-              title="Retry"
-            >
-              <RotateCcw size={13} />
-            </button>
-            <button
-              className={styles.removeBtn}
-              onClick={() => window.winraid?.queue.remove(job.id)}
-              title="Remove"
-            >
-              <X size={13} />
-            </button>
-          </>
-        )}
-        {(status === 'PENDING' || status === 'TRANSFERRING') && (
-          <button
-            className={styles.cancelBtn}
-            onClick={() => window.winraid?.queue.cancel(job.id)}
-            title="Cancel"
-          >
-            <X size={13} />
-          </button>
+          table.getRowModel().rows.map((row) => {
+            const isActive = row.original.status === 'TRANSFERRING'
+            return (
+              <div
+                key={row.id}
+                className={[styles.row, isActive ? styles.rowActive : ''].join(' ')}
+              >
+                {row.getVisibleCells().map((cell) => {
+                  const isFlex = cell.column.id === 'file'
+                  return (
+                    <div
+                      key={cell.id}
+                      style={isFlex ? { flex: 1, minWidth: 0, overflow: 'hidden' } : { width: cell.column.getSize(), flexShrink: 0 }}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })
         )}
       </div>
     </div>

@@ -1,37 +1,18 @@
 import { useState, useEffect } from 'react'
-import { Info } from 'lucide-react'
+
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
 import styles from './SettingsView.module.css'
 
 const HINTS = {
-  queueExisting: 'When the scanner starts, scan the watch folder for files that appeared while it was stopped. Files already in the queue (pending or done) are skipped — only genuinely new arrivals are queued. Takes effect on next scanner start.',
   startWatcher:  'Begin scanning the watch folder for new files. Runs in the background even when the window is hidden to the tray.',
   stopWatcher:   'Pause scanning. Already-queued transfers still complete; new files are ignored until resumed.',
-  save:          'Write all settings to disk.',
-}
-
-const DEFAULT_FORM = {
-  watcher: { queueExisting: true },
 }
 
 export default function SettingsView() {
-  const [form,    setForm]    = useState(DEFAULT_FORM)
-  const [loaded,  setLoaded]  = useState(false)
-  const [saving,  setSaving]  = useState(false)
-  const [saveMsg, setSaveMsg] = useState(null)
   const [watching, setWatching] = useState(false)
 
   useEffect(() => {
-    async function load() {
-      const cfg = await window.winraid?.config.get()
-      if (!cfg) return
-      setForm({
-        watcher: { ...DEFAULT_FORM.watcher, ...cfg.watcher },
-      })
-      setLoaded(true)
-    }
-    load()
     // Track per-connection watcher state; derive aggregate `watching` flag
     const watchMap = {}
     const unsub = window.winraid?.watcher.onStatus((s) => {
@@ -46,24 +27,6 @@ export default function SettingsView() {
     return () => unsub?.()
   }, [])
 
-  function setNested(section, key, value) {
-    setForm((f) => ({ ...f, [section]: { ...f[section], [key]: value } }))
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setSaveMsg(null)
-    try {
-      await window.winraid.config.set('watcher', form.watcher)
-      setSaveMsg({ type: 'ok', text: 'Settings saved.' })
-      setTimeout(() => setSaveMsg(null), 3000)
-    } catch (err) {
-      setSaveMsg({ type: 'error', text: err.message })
-    } finally {
-      setSaving(false)
-    }
-  }
-
   async function handleWatcherToggle() {
     if (watching) {
       // Stop all watchers
@@ -72,23 +35,12 @@ export default function SettingsView() {
       const cfg = await window.winraid?.config.get()
       const conns = cfg?.connections ?? []
       const watchable = conns.filter((c) => c.localFolder)
-      if (watchable.length === 0) {
-        setSaveMsg({ type: 'error', text: 'Configure a watch folder in at least one connection first.' })
-        return
-      }
+      if (watchable.length === 0) return
       // Start watchers for all connections with a localFolder
       for (const conn of watchable) {
         await window.winraid?.watcher.start(conn.id)
       }
     }
-  }
-
-  if (!loaded) {
-    return (
-      <div className={styles.container} style={{ color: 'var(--text-muted)', padding: 'var(--space-6)' }}>
-        Loading…
-      </div>
-    )
   }
 
   return (
@@ -98,12 +50,10 @@ export default function SettingsView() {
         <section className={styles.section}>
           <div className={styles.sectionHeader}>Scanner</div>
           <div className={styles.sectionBody}>
-            <Field label="Queue existing files" hint={HINTS.queueExisting}>
-              <Switch
-                checked={form.watcher.queueExisting}
-                onChange={(v) => setNested('watcher', 'queueExisting', v)}
-              />
-            </Field>
+            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', margin: 0 }}>
+              The scanner watches each connection's local folder and queues new or changed files for transfer.
+              On restart it automatically picks up files that appeared while stopped.
+            </p>
           </div>
         </section>
 
@@ -115,43 +65,7 @@ export default function SettingsView() {
             {watching ? 'Stop scanner' : 'Start scanner'}
           </Button>
         </Tooltip>
-        <Tooltip tip={HINTS.save} side="left">
-          <Button variant="primary" onClick={handleSave} disabled={saving}>
-            {saving ? 'Saving…' : 'Save settings'}
-          </Button>
-        </Tooltip>
-        {saveMsg && (
-          <span className={`${styles.saveMsg} ${styles[saveMsg.type]}`}>{saveMsg.text}</span>
-        )}
       </div>
-    </div>
-  )
-}
-
-function Switch({ checked, onChange }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      className={[styles.switch, checked ? styles.switchOn : null].filter(Boolean).join(' ')}
-      onClick={() => onChange(!checked)}
-    />
-  )
-}
-
-function Field({ label, hint, children }) {
-  return (
-    <div className={styles.field}>
-      <label className={styles.label}>
-        {label}
-        {hint && (
-          <Tooltip tip={hint}>
-            <Info size={12} className={styles.hintIcon} />
-          </Tooltip>
-        )}
-      </label>
-      <div>{children}</div>
     </div>
   )
 }

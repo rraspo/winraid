@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx electron-vite:*)",
+      "Bash(npm ls:*)",
+      "Bash(npx vite:*)",
+      "Bash(find /X/WebstormProjects/winraid -maxdepth 1 -name *.config.* -type f)",
+      "Bash(wc -l /X/WebstormProjects/winraid/src/views/*.jsx /X/WebstormProjects/winraid/src/components/*.jsx /X/WebstormProjects/winraid/src/components/ui/*.jsx /X/WebstormProjects/winraid/src/App.jsx)",
+      "Bash(find /X/WebstormProjects/winraid -maxdepth 2 -name setup.* -o -name vitest* -o -name jest* -o -name playwright*)",
+      "Bash(npm install:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npm run:*)",
+      "Bash(npm test:*)"
+    ]
+  }
+}

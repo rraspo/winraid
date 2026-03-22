@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { ChevronUp, Folder } from 'lucide-react'
 import Button from './ui/Button'
+import Tooltip from './ui/Tooltip'
 import styles from './RemotePathBrowser.module.css'
 
 /**
@@ -55,10 +56,12 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, onSelect, onCl
           <button className={styles.dialogCloseBtn} onClick={onClose}>✕</button>
         </div>
         <div className={styles.browserNav}>
-          <button className={styles.upBtn} onClick={navigateUp}
-            disabled={loading || currentPath === '/'} title="Go to parent directory">
-            <ChevronUp size={15} />
-          </button>
+          <Tooltip tip="Go to parent directory" side="bottom">
+            <button className={styles.upBtn} onClick={navigateUp}
+              disabled={loading || currentPath === '/'}>
+              <ChevronUp size={15} />
+            </button>
+          </Tooltip>
           <span className={styles.browserPath}>{currentPath}</span>
         </div>
         <div className={styles.dialogBody}>

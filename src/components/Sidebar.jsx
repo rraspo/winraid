@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { LayoutList, Settings, ScrollText, HardDrive, Download, Sun, Moon, LayoutDashboard, Plus } from 'lucide-react'
 import iconSrc from '../../assets/winraid_icon_64x64.png'
 import ConnectionIcon from './ConnectionIcon'
+import Tooltip from './ui/Tooltip'
 import styles from './Sidebar.module.css'
 
 const NAV_TOP = [
@@ -16,7 +17,7 @@ const NAV_BOTTOM = [
   { id: 'settings', label: 'Settings', Icon: Settings   },
 ]
 
-export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, onEditConnection, connections, activeConnId, editingConnId }) {
+export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, onEditConnection, connections, activeConnId, editingConnId, watcherStatuses }) {
   const [version, setVersion] = useState('')
 
   useEffect(() => {
@@ -57,9 +58,11 @@ export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, 
           <div className={styles.connSection}>
             <div className={styles.connHeader}>
               <span className={styles.connLabel}>Connections</span>
-              <button className={styles.addBtn} onClick={() => onEditConnection(null)} title="Add connection">
-                <Plus size={13} strokeWidth={2} />
-              </button>
+              <Tooltip tip="Add connection" side="right">
+                <button className={styles.addBtn} onClick={() => onEditConnection(null)}>
+                  <Plus size={13} strokeWidth={2} />
+                </button>
+              </Tooltip>
             </div>
             <div className={styles.connList}>
               {connections.length === 0 && (
@@ -69,8 +72,9 @@ export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, 
                 // connEditing — the form for this connection is currently open
                 // connActive  — this is the selected active connection (for watcher)
                 // Both can apply simultaneously if the active connection is also being edited.
-                const isEditing = editingConnId === conn.id
-                const isActive  = activeConnId === conn.id
+                const isEditing  = editingConnId === conn.id
+                const isActive   = activeConnId === conn.id
+                const isWatching = (watcherStatuses ?? {})[conn.id]?.watching ?? false
                 return (
                   <button
                     key={conn.id}
@@ -82,6 +86,7 @@ export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, 
                   >
                     <span className={styles.connItemIcon}><ConnectionIcon icon={conn.icon ?? null} size={13} /></span>
                     <span className={styles.connItemName}>{conn.name}</span>
+                    {isWatching && <Tooltip tip="Scanner active" side="right"><span className={styles.connWatchDot} /></Tooltip>}
                     <span className={styles.connItemType}>{conn.type.toUpperCase()}</span>
                   </button>
                 )
@@ -108,17 +113,18 @@ export default function Sidebar({ activeView, onNavigate, theme, onThemeToggle, 
 
         {/* Footer */}
         <div className={styles.footer}>
-          <button
-            className={styles.themeToggle}
-            onClick={onThemeToggle}
-            title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
-          >
-            {theme === 'dark'
-              ? <Sun size={13} strokeWidth={1.75} />
-              : <Moon size={13} strokeWidth={1.75} />
-            }
-            <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
-          </button>
+          <Tooltip tip={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} side="right">
+            <button
+              className={styles.themeToggle}
+              onClick={onThemeToggle}
+            >
+              {theme === 'dark'
+                ? <Sun size={13} strokeWidth={1.75} />
+                : <Moon size={13} strokeWidth={1.75} />
+              }
+              <span>{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            </button>
+          </Tooltip>
           {version && <span className={styles.version}>v{version}</span>}
         </div>
       </aside>

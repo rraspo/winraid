@@ -1,6 +1,6 @@
 import { Client } from 'ssh2'
 import { readFile, stat } from 'fs/promises'
-import { posix, join } from 'path'
+import { posix } from 'path'
 import { homedir } from 'os'
 import { log } from '../logger.js'
 
@@ -147,6 +147,34 @@ function sftpMkdir(sftp, remotePath) {
       else resolve()
     })
   })
+}
+
+// ---------------------------------------------------------------------------
+// Remote existence check — reusable session for batch lookups
+// ---------------------------------------------------------------------------
+
+/**
+ * Open a persistent SFTP session for batch file-existence checks.
+ * Call .exists(relPath) to check a single file, .close() when done.
+ *
+ * @param {{ host, port, username, password, keyPath, remotePath }} cfg
+ * @returns {Promise<{ exists(relPath: string): Promise<boolean>, close(): void }>}
+ */
+export async function openRemoteChecker(cfg) {
+  const base = cfg.remotePath.replace(/\\/g, '/')
+  const { conn, sftp } = await connect(cfg)
+  return {
+    async exists(relPath) {
+      const full = posix.join(base, relPath.replace(/\\/g, '/'))
+      try {
+        await sftpStat(sftp, full)
+        return true
+      } catch {
+        return false
+      }
+    },
+    close() { conn.end() },
+  }
 }
 
 // ---------------------------------------------------------------------------

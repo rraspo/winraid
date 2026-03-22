@@ -20,6 +20,7 @@ endif
 major minor patch:
 	@rem
 
+
 # Compute last tag and next tag entirely via node to avoid grep/sed/bash.
 _LAST_TAG   := $(shell node -e "const t=require('child_process').execSync('git tag --sort=-v:refname',{encoding:'utf8'}).split('\n').find(l=>/^v\d+\.\d+\.\d+$$/.test(l))||'';process.stdout.write(t)")
 RELEASE_TAG := $(if $(TAG),$(TAG),$(shell node -e "const last='$(_LAST_TAG)';const type='$(TYPE)';if(!last){process.stdout.write('v0.1.0');process.exit()}const[M,m,p]=last.slice(1).split('.').map(Number);const next=type==='major'?[M+1,0,0]:type==='minor'?[M,m+1,0]:[M,m,p+1];process.stdout.write('v'+next.join('.'))"))
@@ -31,7 +32,7 @@ RELEASE_VER := $(shell node -e "process.stdout.write('$(RELEASE_TAG)'.replace(/^
 
 .PHONY: help
 help:
-	@node -e "console.log(['','  WinRaid - development and release commands','','  Dev','    make dev            Start electron-vite dev server','    make build          Build renderer + main (no installer)','    make lint           Run ESLint on src/ and electron/','','  Release','    make release              Bump patch, build + push + GitHub Release','    make release minor        Bump minor version','    make release major        Bump major version','    make release TAG=v1.0.0   Use an explicit tag','    make tag                  Tag + push only (no build, no GH release)','    make dist                 Build installer only (no tag, no publish)','','  Helpers','    make version        Show latest release tag','    make clean          Remove build output (out/ and release/)','    make install        Install npm dependencies','','  Current: $(_LAST_TAG)  Next: $(RELEASE_TAG)',''].join('\n'))"
+	@node -e "console.log(['','  WinRaid - development and release commands','','  Dev','    make dev            Start electron-vite dev server','    make build          Build renderer + main (no installer)','    make test           Run Vitest unit tests','    make test-layout    Run Playwright CT layout tests (real browser)','    make test-all       Run all tests (unit + layout)','    make lint           Run ESLint on src/ and electron/','','  Release','    make release              Bump patch, build + push + GitHub Release','    make release minor        Bump minor version','    make release major        Bump major version','    make release TAG=v1.0.0   Use an explicit tag','    make tag                  Tag + push only (no build, no GH release)','    make dist                 Build installer only (no tag, no publish)','','  Helpers','    make version        Show latest release tag','    make clean          Remove build output (out/ and release/)','    make install        Install npm dependencies','','  Current: $(_LAST_TAG)  Next: $(RELEASE_TAG)',''].join('\n'))"
 
 # ─── Dev ──────────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,19 @@ dev:
 .PHONY: build
 build:
 	npx electron-vite build
+
+.PHONY: test
+test:
+	npx vitest run
+
+.PHONY: test-layout
+test-layout:
+	npx playwright test -c playwright-ct.config.mjs
+
+.PHONY: test-all
+test-all:
+	npx vitest run
+	npx playwright test -c playwright-ct.config.mjs
 
 .PHONY: lint
 lint:

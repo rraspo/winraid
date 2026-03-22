@@ -184,9 +184,11 @@ export default function BackupView({ backupRun, setBackupRun }) {
                     Browse
                   </Button>
                 </Tooltip>
-                <button className={styles.removeBtn} onClick={() => removeSource(i)} title="Remove source">
-                  <X size={13} />
-                </button>
+                <Tooltip tip="Remove source" side="left">
+                  <button className={styles.removeBtn} onClick={() => removeSource(i)}>
+                    <X size={13} />
+                  </button>
+                </Tooltip>
               </div>
             ))}
 
