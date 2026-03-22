@@ -14,7 +14,7 @@
   <a href="https://github.com/rraspo/winraid/releases/latest"><img src="https://img.shields.io/github/v/release/rraspo/winraid?style=flat-square&color=blue" alt="Latest release" /></a>
   <img src="https://img.shields.io/badge/platform-Windows%2010%20%2F%2011-0078D4?style=flat-square&logo=windows11&logoColor=white" alt="Windows 10/11" />
   <img src="https://img.shields.io/badge/electron-37-47848F?style=flat-square&logo=electron&logoColor=white" alt="Electron" />
-  <img src="https://img.shields.io/github/license/rraspo/winraid?style=flat-square" alt="MIT License" />
+  <img src="https://img.shields.io/github/license/rraspo/winraid?style=flat-square" alt="GPL-3.0 License" />
 </p>
 
 ---
@@ -86,4 +86,4 @@ npm run dist         # build installer → release/WinRaid-Setup.exe
 
 ## License
 
-MIT
+GPL-3.0
