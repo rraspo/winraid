@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { Pencil } from 'lucide-react'
 import ConnectionIcon, { LUCIDE_ICONS } from './ConnectionIcon'
+import Tooltip from './ui/Tooltip'
 import styles from './IconPicker.module.css'
 
 const METADATA_URL = 'https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/metadata.json'
@@ -86,16 +87,17 @@ export default function IconPicker({ value, onChange }) {
 
   return (
     <>
+      <Tooltip tip="Change icon" side="bottom">
       <button
         ref={triggerRef}
         type="button"
         className={styles.trigger}
         onClick={openPicker}
-        title="Change icon"
       >
         <ConnectionIcon icon={value} size={18} />
         <Pencil size={10} className={styles.triggerPencil} />
       </button>
+      </Tooltip>
 
       {open && createPortal(
         <div ref={popoverRef} className={styles.popover} style={{ top: pos.top, left: pos.left }}>

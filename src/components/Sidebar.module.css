@@ -229,6 +229,21 @@
   flex-shrink: 0;
 }
 
+/* Small pulsing dot shown when a connection's watcher is active */
+.connWatchDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--success);
+  flex-shrink: 0;
+  animation: connWatchPulse 2s ease-in-out infinite;
+}
+
+@keyframes connWatchPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
 .connActive .connItemType,
 .connEditing .connItemType {
   color: var(--accent);

@@ -1,6 +1,6 @@
 import chokidar from 'chokidar'
-import { stat } from 'fs/promises'
-import { basename } from 'path'
+import { stat, readdir } from 'fs/promises'
+import { basename, join } from 'path'
 import { log } from './logger.js'
 
 // ---------------------------------------------------------------------------
@@ -17,38 +17,44 @@ class WatcherInstance {
   constructor(connectionId) {
     this.connectionId   = connectionId
     this.watcher        = null
+    this.folder         = null
     this.paused         = false
     this.onFileReady    = null
     this.statusCb       = null
     this.inFlight       = 0
-    this.isInitialPhase = false
+    this.currentFile    = null   // filename currently undergoing stability polling
     this.debounceMap    = new Map()
   }
 
-  start(folder, callback, onStatus, options = {}) {
+  start(folder, callback, onStatus) {
     this.stop()
+    this.folder      = folder
     this.onFileReady = callback
     this.statusCb    = onStatus ?? null
     this.paused      = false
 
-    const ignoreInitial = !(options.queueExisting ?? false)
-    this.isInitialPhase = !ignoreInitial
-
+    // Always ignoreInitial — we run our own directory walk (_scanExisting)
+    // which is reliable across chokidar versions on Windows.
     this.watcher = chokidar.watch(folder, {
       ignored: (filePath) => {
         const name = basename(filePath)
         return name.startsWith('.') || name.endsWith('.tmp') || name.endsWith('.part')
       },
       persistent: true,
-      ignoreInitial,
+      ignoreInitial: true,
     })
 
-    this.watcher.on('add',    (filePath) => this._onFsEvent(filePath, this.isInitialPhase))
+    this.watcher.on('add',    (filePath) => this._onFsEvent(filePath, false))
     this.watcher.on('change', (filePath) => this._onFsEvent(filePath, false))
-    this.watcher.on('ready',  ()         => { this.isInitialPhase = false })
     this.watcher.on('error',  (err)      => log('error', `Watcher [${this.connectionId}] error: ${err.message}`))
 
     log('info', `Watcher [${this.connectionId}] watching: ${folder}`)
+
+    // Walk the folder to pick up files that appeared while the watcher was stopped.
+    // shouldSkipOnRescan() in queue.js prevents re-queuing already-transferred files.
+    this._scanExisting(folder).catch((err) => {
+      log('error', `Watcher [${this.connectionId}] initial scan failed: ${err.message}`)
+    })
   }
 
   stop() {
@@ -58,11 +64,12 @@ class WatcherInstance {
     }
     for (const t of this.debounceMap.values()) clearTimeout(t)
     this.debounceMap.clear()
-    this.onFileReady    = null
-    this.statusCb       = null
-    this.inFlight       = 0
-    this.paused         = false
-    this.isInitialPhase = false
+    this.folder      = null
+    this.onFileReady = null
+    this.statusCb    = null
+    this.inFlight    = 0
+    this.currentFile = null
+    this.paused      = false
   }
 
   pause() {
@@ -83,6 +90,40 @@ class WatcherInstance {
   // Internal helpers
   // -------------------------------------------------------------------------
 
+  /**
+   * Recursively walk the watched folder and feed every file through the
+   * normal _onFsEvent pipeline with isInitial=true. This replaces chokidar's
+   * ignoreInitial:false behaviour which is unreliable on Windows with v4.
+   */
+  async _scanExisting(dir) {
+    if (this.paused || !this.watcher) return
+
+    let entries
+    try {
+      entries = await readdir(dir, { withFileTypes: true })
+    } catch (err) {
+      log('warn', `Watcher [${this.connectionId}] cannot read dir ${dir}: ${err.message}`)
+      return
+    }
+
+    for (const entry of entries) {
+      if (this.paused || !this.watcher) return
+
+      const name = entry.name
+      // Apply the same ignore rules as the chokidar watcher
+      if (name.startsWith('.') || name.endsWith('.tmp') || name.endsWith('.part')) continue
+
+      const fullPath = join(dir, name)
+      if (entry.isDirectory()) {
+        await this._scanExisting(fullPath)
+      } else if (entry.isFile()) {
+        this._onFsEvent(fullPath, true)
+      }
+    }
+
+    this.statusCb?.(listWatcherStates())
+  }
+
   _onFsEvent(filePath, isInitial = false) {
     if (this.paused) return
 
@@ -93,10 +134,12 @@ class WatcherInstance {
     const timer = setTimeout(() => {
       this.debounceMap.delete(filePath)
       this.inFlight++
-      this.statusCb?.({ state: 'enqueueing', file: basename(filePath) })
+      this.currentFile = basename(filePath)
+      this.statusCb?.(listWatcherStates())
       this._waitForStable(filePath, isInitial).finally(() => {
         this.inFlight = Math.max(0, this.inFlight - 1)
-        if (this.inFlight === 0) this.statusCb?.({ state: 'watching' })
+        if (this.inFlight === 0) this.currentFile = null
+        this.statusCb?.(listWatcherStates())
       })
     }, DEBOUNCE_MS)
 
@@ -131,7 +174,9 @@ class WatcherInstance {
 
     if (!this.paused && this.onFileReady) {
       log('info', `File ready [${this.connectionId}]: ${filePath}`)
-      this.onFileReady(filePath, { isInitial })
+      Promise.resolve(this.onFileReady(filePath, { isInitial })).catch((err) => {
+        log('error', `File detected callback failed [${this.connectionId}] ${filePath}: ${err.message}`)
+      })
     }
   }
 }
@@ -142,19 +187,38 @@ class WatcherInstance {
 const watchers = new Map()
 
 /**
+ * Returns a plain object keyed by connectionId describing every known watcher,
+ * whether active or stopped. Active entries include folder, state, and file.
+ * @returns {Record<string, { watching: boolean, folder: string|null, state: string|null, file: string|null }>}
+ */
+export function listWatcherStates() {
+  const result = {}
+  for (const [id, instance] of watchers) {
+    const inFlight = instance.inFlight > 0
+    result[id] = {
+      watching: instance.watcher !== null && !instance.paused,
+      folder:   instance.folder ?? null,
+      state:    instance.watcher === null ? null : inFlight ? 'enqueueing' : 'watching',
+      file:     inFlight ? (instance.currentFile ?? null) : null,
+    }
+  }
+  return result
+}
+
+/**
  * Start watching a folder for a specific connection.
  * Creates a new WatcherInstance if one doesn't exist for this connectionId.
  */
-export function startWatcher(connectionId, folder, callback, onStatus, options = {}) {
+export function startWatcher(connectionId, folder, callback, onStatus) {
   let instance = watchers.get(connectionId)
   if (!instance) {
     instance = new WatcherInstance(connectionId)
     watchers.set(connectionId, instance)
   }
-  instance.start(folder, callback, onStatus, options)
+  instance.start(folder, callback, onStatus)
 }
 
-/** Stop a specific connection's watcher. */
+/** Stop a specific connection's watcher and remove it from the map. */
 export function stopWatcher(connectionId) {
   const instance = watchers.get(connectionId)
   if (instance) {
@@ -164,8 +228,8 @@ export function stopWatcher(connectionId) {
   }
 }
 
-/** Stop all watchers (used on app quit). */
-export function stopAll() {
+/** Stop all watchers (used on app quit or global pause). */
+export function stopAllWatchers() {
   for (const [id, instance] of watchers) {
     instance.stop()
     log('info', `Watcher [${id}] stopped.`)
@@ -173,7 +237,7 @@ export function stopAll() {
   watchers.clear()
 }
 
-/** Pause a specific connection's watcher. */
+/** Pause a specific connection's watcher (keeps it registered but suspends events). */
 export function pauseWatcher(connectionId) {
   watchers.get(connectionId)?.pause()
 }
@@ -183,29 +247,7 @@ export function resumeWatcher(connectionId) {
   watchers.get(connectionId)?.resume()
 }
 
-/** Pause all watchers. */
-export function pauseAll() {
-  for (const instance of watchers.values()) instance.pause()
-}
-
-/** Resume all watchers. */
-export function resumeAll() {
-  for (const instance of watchers.values()) instance.resume()
-}
-
-/** Get the status of all active watchers. Returns Map<connectionId, { watching, paused }>. */
-export function getStatus() {
-  const status = {}
-  for (const [id, instance] of watchers) {
-    status[id] = {
-      watching: instance.watcher !== null,
-      paused: instance.paused,
-    }
-  }
-  return status
-}
-
-/** Check if a specific connection has an active watcher. */
+/** Check if a specific connection has an active (non-paused) watcher. */
 export function isWatching(connectionId) {
   return watchers.get(connectionId)?.isWatching ?? false
 }

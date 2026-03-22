@@ -73,6 +73,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
   const [verifyCheckResult,  setVerifyCheckResult]  = useState(null)
   const [verifyError,        setVerifyError]        = useState(null)
   const [showVerifyConfirm,  setShowVerifyConfirm]  = useState(false)
+  const [folderOverlapError, setFolderOverlapError] = useState(null)
 
   function setTop(key, value) {
     setConn((c) => ({ ...c, [key]: value }))
@@ -104,7 +105,10 @@ export default function ConnectionView({ existing, onSave, onClose }) {
 
   async function handleBrowseLocal() {
     const folder = await window.winraid?.selectFolder()
-    if (folder) setTop('localFolder', folder)
+    if (folder) {
+      setTop('localFolder', folder)
+      setFolderOverlapError(null)
+    }
   }
 
   async function handleTest() {
@@ -125,6 +129,34 @@ export default function ConnectionView({ existing, onSave, onClose }) {
 
   async function handleSave() {
     if (!conn.name.trim()) return
+    setFolderOverlapError(null)
+
+    // Validate that this connection's local folder doesn't overlap with any other
+    // connection's local folder (no parent/child relationships allowed).
+    if (conn.localFolder) {
+      const allConns = await window.winraid?.config.get('connections') ?? []
+      const others   = allConns.filter((c) => c.id !== conn.id && c.localFolder)
+      const sep      = '\\'  // Windows path separator; also handle forward slash below
+
+      const normalise = (p) => p.replace(/\//g, '\\').replace(/\\+$/, '')
+      const thisFolder = normalise(conn.localFolder)
+
+      for (const other of others) {
+        const otherFolder = normalise(other.localFolder)
+        // Check if thisFolder is a parent of otherFolder or vice versa
+        if (
+          thisFolder === otherFolder ||
+          otherFolder.startsWith(thisFolder + sep) ||
+          thisFolder.startsWith(otherFolder + sep)
+        ) {
+          setFolderOverlapError(
+            `Watch folder overlaps with "${other.name}" (${other.localFolder}). Each connection must watch a unique, non-nested folder.`
+          )
+          return
+        }
+      }
+    }
+
     setSaving(true)
     const toSave = {
       ...conn,
@@ -160,15 +192,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
     setShowVerifyConfirm(false)
     setVerifying(true)
     setVerifyError(null)
-    const cfg = {
-      host:       conn.sftp.host,
-      port:       Number(conn.sftp.port) || 22,
-      username:   conn.sftp.username,
-      password:   conn.sftp.password || undefined,
-      keyPath:    conn.sftp.keyPath  || undefined,
-      remotePath: conn.sftp.remotePath,
-    }
-    const res = await window.winraid?.remote.verifyClean(cfg, conn.localFolder)
+    const res = await window.winraid?.remote.verifyClean(conn.id, conn.localFolder)
     setVerifying(false)
     if (!res?.ok) {
       setVerifyError(res?.error || 'Verify & Clean failed')
@@ -345,7 +369,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                 <input
                   className={styles.input}
                   value={conn.localFolder}
-                  onChange={(e) => setTop('localFolder', e.target.value)}
+                  onChange={(e) => { setTop('localFolder', e.target.value); setFolderOverlapError(null) }}
                   placeholder="C:\Users\you\Downloads"
                   spellCheck={false}
                 />
@@ -406,6 +430,12 @@ export default function ConnectionView({ existing, onSave, onClose }) {
               </div>
             )}
 
+            {folderOverlapError && (
+              <div className={styles.testRow}>
+                <span className={styles.testError}>{folderOverlapError}</span>
+              </div>
+            )}
+
           </div>
         </div>
 
@@ -447,8 +477,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
       {verifyCheckResult && (
         <VerifyResultDialog
           result={verifyCheckResult}
-          localFolder={conn.localFolder}
-          onEnqueue={(paths) => window.winraid?.queue.enqueueBatch(conn.localFolder, paths)}
+          onEnqueue={(paths) => window.winraid?.queue.enqueueBatch(conn.id, conn.localFolder, paths)}
           onDelete={(paths) => window.winraid?.remote.verifyDelete(conn.localFolder, paths)}
           onClose={() => setVerifyCheckResult(null)}
         />
@@ -759,7 +788,7 @@ function VerifyConfirmDialog({ localFolder, onConfirm, onClose }) {
 // ---------------------------------------------------------------------------
 // VerifyResultDialog — shows check results with per-group action buttons
 // ---------------------------------------------------------------------------
-function VerifyResultDialog({ result, localFolder, onEnqueue, onDelete, onClose }) {
+function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
   const [enqueueing,   setEnqueueing]   = useState(false)
   const [enqueued,     setEnqueued]     = useState(false)
   const [notFoundDone, setNotFoundDone] = useState(false)

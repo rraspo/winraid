@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'fs'
-import { mkdir, stat } from 'fs/promises'
+import { access, mkdir, stat } from 'fs/promises'
 import { win32, dirname } from 'path'
 import { spawnSync } from 'child_process'
 import { log } from '../logger.js'
@@ -63,6 +63,37 @@ function copyWithProgress(src, dest, totalBytes, onProgress) {
 
     reader.pipe(writer)
   })
+}
+
+// ---------------------------------------------------------------------------
+// Remote existence check — stateless, just probes a UNC path
+// ---------------------------------------------------------------------------
+
+/**
+ * Open a checker for batch file-existence lookups on an SMB share.
+ * Call .exists(relPath) to check a single file, .close() when done.
+ *
+ * @param {{ host, share, username, password, remotePath }} cfg
+ * @returns {Promise<{ exists(relPath: string): Promise<boolean>, close(): void }>}
+ */
+export async function openRemoteChecker(cfg) {
+  const uncShare = `\\\\${cfg.host}\\${cfg.share}`
+  if (cfg.username) {
+    netUse(uncShare, cfg.username, cfg.password)
+  }
+  const baseDir = win32.join(uncShare, cfg.remotePath)
+  return {
+    async exists(relPath) {
+      const full = win32.join(baseDir, relPath.replace(/\//g, '\\'))
+      try {
+        await access(full)
+        return true
+      } catch {
+        return false
+      }
+    },
+    close() { /* no persistent resource for SMB */ },
+  }
 }
 
 // ---------------------------------------------------------------------------

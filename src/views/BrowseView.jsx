@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import {
   Folder, File, Image, Film, ChevronRight, HardDrive, Download, RefreshCw,
-  AlertCircle, TriangleAlert, List, LayoutGrid, MoreHorizontal,
+  AlertCircle, TriangleAlert, List, LayoutGrid, MoreHorizontal, Loader,
+  Trash2, FolderInput, FolderPlus, X as XIcon,
 } from 'lucide-react'
 import styles from './BrowseView.module.css'
 import EditorModal from '../components/EditorModal'
 import QuickLookOverlay from '../components/QuickLookOverlay'
+import Tooltip from '../components/ui/Tooltip'
 
 const EDITABLE_EXTENSIONS = new Set([
   'json', 'yml', 'yaml', 'sh', 'bash', 'zsh',
@@ -102,14 +104,15 @@ function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit, onMove, onDele
 
   return (
     <div ref={wrapRef} className={styles.menuWrap}>
-      <button
-        className={styles.menuDotBtn}
-        onClick={toggle}
-        disabled={busy}
-        title="Actions"
-      >
-        <MoreHorizontal size={14} />
-      </button>
+      <Tooltip tip="Actions" side="bottom">
+        <button
+          className={styles.menuDotBtn}
+          onClick={toggle}
+          disabled={busy}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+      </Tooltip>
 
       {open && (
         <div className={styles.menuDropdown} style={{ top: pos.top, right: pos.right }}>
@@ -206,7 +209,8 @@ function Thumbnail({ name, remotePath, connectionId, size }) {
 
   // Fallback icons
   if (isGrid) {
-    if (isImageFile(name) || isVideoFile(name)) return <Film size={40} className={styles.gridIconFile} />
+    if (isImageFile(name)) return <Image size={40} className={styles.gridIconFile} />
+    if (isVideoFile(name)) return <Film size={40} className={styles.gridIconFile} />
     return <File size={40} className={styles.gridIconFile} />
   }
   if (isImageFile(name)) return <Image size={14} className={styles.iconFile} />
@@ -217,21 +221,42 @@ function Thumbnail({ name, remotePath, connectionId, size }) {
 // ---------------------------------------------------------------------------
 // GridCard
 // ---------------------------------------------------------------------------
-function GridCard({ entry, entryPath, connectionId, isDir, busy, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete }) {
+function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isDragSource, isDropTarget, isLastVisited, onSelect, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
     : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" />
 
   return (
     <div
-      className={[styles.gridCard, isDir ? styles.gridCardDir : styles.gridCardFile].join(' ')}
+      className={[
+        styles.gridCard,
+        isDir ? styles.gridCardDir : styles.gridCardFile,
+        isSelected ? styles.gridCardSelected : '',
+        isDragSource ? styles.dragging : '',
+        isDropTarget ? styles.dropTarget : '',
+        isLastVisited ? styles.lastVisited : '',
+      ].join(' ')}
+      draggable={!busy}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={isDir ? onDragOver : undefined}
+      onDragLeave={isDir ? onDragLeave : undefined}
+      onDrop={isDir ? onDrop : undefined}
       onClick={isDir ? () => onNavigate(entryPath) : () => onQuickLook(entry, entryPath)}
     >
-      <div className={styles.gridThumb}>{icon}</div>
+      <div className={styles.gridThumb}>
+        {icon}
+        <label className={styles.gridCheckbox} onClick={(e) => e.stopPropagation()}>
+          <input type="checkbox" checked={isSelected} onChange={(e) => onSelect(entry.name, e)} />
+          <span className={styles.checkmark} />
+        </label>
+      </div>
 
       <div className={styles.gridMeta}>
         <div className={styles.gridMetaRow}>
-          <span className={styles.gridName} title={entry.name}>{entry.name}</span>
+          <div className={styles.gridNameWrap}>
+            <Tooltip tip={entry.name} followMouse><span className={styles.gridName}>{entry.name}</span></Tooltip>
+          </div>
           <EntryMenu
             isDir={isDir}
             isEditable={!isDir && isEditableFile(entry.name)}
@@ -425,24 +450,41 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   const [editingFile, setEditingFile]   = useState(null)
   const [deleteTarget, setDeleteTarget] = useState(null)
   const [moveTarget, setMoveTarget]     = useState(null)
+  const [newFolderName, setNewFolderName] = useState(null)  // string when prompt is open, null when closed
   const [viewMode, setViewMode]         = useState(() => localStorage.getItem('browse-view') ?? 'list')
   const [selectedFile, setSelectedFile] = useState(null)
   const [showQuickLook, setShowQuickLook] = useState(false)
-  // True once the starting path has been recorded in history. Reset on remount.
-  // Prevents a duplicate push when browseRestore sets the path programmatically.
-  const hasPushedInitialRef = useRef(false)
+  const [dragSource, setDragSource]       = useState(null)   // { name, path }
+  const [dropTargetPath, setDropTargetPath] = useState(null)  // remote dir path being hovered
+  const [moveInFlight, setMoveInFlight]   = useState(null)    // { name, from, to } while move is running
+  const [lastVisitedDir, setLastVisitedDir] = useState(null) // folder name to highlight after navigating up
+  const [selected, setSelected]           = useState(new Set())  // Set of entry names
+  const [bulkAction, setBulkAction]       = useState(null)   // 'delete' | 'move' | null
+  const [bulkMoveDest, setBulkMoveDest]   = useState('')
+  const dwellTimer = useRef(null)  // auto-navigate timer when hovering a folder while dragging
 
   useEffect(() => {
     localStorage.setItem('browse-view', viewMode)
   }, [viewMode])
 
+  // Clean up dwell timer on unmount
+  useEffect(() => () => clearTimeout(dwellTimer.current), [])
+
+
   // Restore navigation state when App drives a back/forward to a browse entry
   useEffect(() => {
     if (!browseRestore) return
-    hasPushedInitialRef.current = true  // being restored — no need to push initial
     // Only clear entries when the path actually changes. If we are just toggling
     // Quick Look on the same folder, keeping entries avoids a needless refetch.
     if (browseRestore.path !== path) { // eslint-disable-line react-hooks/exhaustive-deps
+      // Highlight the folder we came from when going back to a parent
+      if (path.startsWith(browseRestore.path) && path !== browseRestore.path) {
+        const remainder = path.slice(browseRestore.path === '/' ? 1 : browseRestore.path.length + 1)
+        const immediateChild = remainder.split('/')[0]
+        setLastVisitedDir(immediateChild || null)
+      } else {
+        setLastVisitedDir(null)
+      }
       setPath(browseRestore.path)
       setEntries([])
     }
@@ -467,15 +509,8 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
     load()
   }, [])
 
-  // Derive cfg and localFolder from the currently selected connection.
-  // cfg must be memoized — a spread creates a new object every render, which
-  // would cause fetchDir's useCallback to re-create on every render and trigger
-  // the fetchDir useEffect in an infinite loop.
   const selectedConn = connections.find((c) => c.id === selectedId) ?? null
-  const cfg = useMemo(
-    () => selectedConn ? { ...selectedConn.sftp } : null,
-    [selectedId, connections] // eslint-disable-line react-hooks/exhaustive-deps
-  )
+  const cfgRemotePath = selectedConn?.sftp?.remotePath ?? ''
   const localFolder = selectedConn?.localFolder ?? ''
 
   function handleSelectConnection(id) {
@@ -491,11 +526,11 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   }
 
   const fetchDir = useCallback(async (targetPath) => {
-    if (!cfg?.host) return
+    if (!selectedId) return
     setLoading(true)
     setError('')
     setStatus(null)
-    const res = await window.winraid?.remote.list(cfg, targetPath)
+    const res = await window.winraid?.remote.list(selectedId, targetPath)
     setLoading(false)
     if (res?.ok) {
       setEntries(res.entries)
@@ -503,22 +538,21 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
       setError(res?.error || 'Failed to list directory')
       setEntries([])
     }
-  }, [cfg])
+  }, [selectedId])
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    if (cfg) fetchDir(path)
-  }, [cfg, path, fetchDir])
-
-  function pushInitialIfNeeded() {
-    if (!hasPushedInitialRef.current) {
-      hasPushedInitialRef.current = true
-      onHistoryPush?.({ kind: 'browse', path, quickLookFile: null })
-    }
-  }
+    if (selectedId) fetchDir(path)
+  }, [selectedId, path, fetchDir])
 
   function navigate(newPath) {
-    pushInitialIfNeeded()
+    // When navigating to a parent/ancestor, highlight the folder we came from
+    if (path.startsWith(newPath) && path !== newPath) {
+      const remainder = path.slice(newPath === '/' ? 1 : newPath.length + 1)
+      const immediateChild = remainder.split('/')[0]
+      setLastVisitedDir(immediateChild || null)
+    } else {
+      setLastVisitedDir(null)
+    }
     setPath(newPath)
     setEntries([])
     setShowQuickLook(false)
@@ -527,7 +561,6 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   }
 
   function openQuickLook(entry, entryPath) {
-    pushInitialIfNeeded()
     setSelectedFile({ ...entry, path: entryPath })
     setShowQuickLook(true)
     onHistoryPush?.({ kind: 'browse', path, quickLookFile: { ...entry, path: entryPath } })
@@ -555,7 +588,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
         return
       }
     }
-    const res = await window.winraid?.remote.checkout(cfg, remotePath, targetFolder)
+    const res = await window.winraid?.remote.checkout(selectedId, remotePath, targetFolder)
     setOpInFlight(false)
     if (res?.ok) {
       if (newSyncRoot && selectedConn) {
@@ -574,8 +607,8 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   }
 
   function handleCheckout(remotePath) {
-    if (!cfg || !localFolder || opInFlight) return
-    if (isOutsideRoot(remotePath, cfg.remotePath)) {
+    if (!selectedId || !localFolder || opInFlight) return
+    if (isOutsideRoot(remotePath, cfgRemotePath)) {
       setConfirmTarget(remotePath)
     } else {
       doCheckout(remotePath)
@@ -588,7 +621,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   }
 
   async function handleSetRoot(remotePath) {
-    if (!cfg || !selectedConn) return
+    if (!selectedId || !selectedConn) return
     const updatedConns = connections.map((c) =>
       c.id === selectedConn.id
         ? { ...c, sftp: { ...c.sftp, remotePath } }
@@ -603,13 +636,14 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
     setDeleteTarget(null)
     setOpInFlight(true)
     setStatus(null)
-    const res = await window.winraid?.remote.delete(cfg, target.path, target.isDir)
+    const res = await window.winraid?.remote.delete(selectedId, target.path, target.isDir)
     setOpInFlight(false)
     if (res?.ok) {
       setEntries((prev) => prev.filter((e) => e.name !== target.name))
       setStatus({ ok: true, msg: `Deleted ${target.path}` })
     } else {
       setStatus({ ok: false, msg: res?.error || 'Delete failed' })
+      fetchDir(path)
     }
   }
 
@@ -617,19 +651,192 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
     setMoveTarget(null)
     setOpInFlight(true)
     setStatus(null)
-    const res = await window.winraid?.remote.move(cfg, srcPath, dstPath)
+    const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
     setOpInFlight(false)
+    await fetchDir(path)
     if (res?.ok) {
       setStatus({ ok: true, msg: `Moved to ${dstPath}` })
-      fetchDir(path)
     } else {
       setStatus({ ok: false, msg: res?.error || 'Move failed' })
     }
   }
 
-  const busy     = opInFlight
-  const noConfig = !cfg?.host
+  async function handleCreateFolder() {
+    const name = newFolderName?.trim()
+    if (!name || !selectedId) return
+    setNewFolderName(null)
+    setOpInFlight(true)
+    setStatus(null)
+    const folderPath = joinRemote(path, name)
+    const res = await window.winraid?.remote.mkdir(selectedId, folderPath)
+    setOpInFlight(false)
+    if (res?.ok) {
+      await fetchDir(path)
+      setStatus({ ok: true, msg: `Created folder ${name}` })
+    } else {
+      setStatus({ ok: false, msg: res?.error || 'Failed to create folder' })
+    }
+  }
+
+  // ── Selection helpers ────────────────────────────────────────────────────
+  function toggleSelect(name, e) {
+    if (e) e.stopPropagation()
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(name)) next.delete(name)
+      else next.add(name)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === entries.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(entries.map((e) => e.name)))
+    }
+  }
+
+  function clearSelection() { setSelected(new Set()) }
+
+  // Clear selection when navigating to a different directory
+  useEffect(() => { setSelected(new Set()) }, [path])
+
+  const selectedEntries = useMemo(
+    () => entries.filter((e) => selected.has(e.name)),
+    [entries, selected],
+  )
+
+  // ── Bulk operations ────────────────────────────────────────────────────
+  async function handleBulkDelete() {
+    setBulkAction(null)
+    setOpInFlight(true)
+    setStatus(null)
+    let ok = 0, fail = 0
+    for (const entry of selectedEntries) {
+      const entryPath = joinRemote(path, entry.name)
+      const isDir = entry.type === 'dir'
+      const res = await window.winraid?.remote.delete(selectedId, entryPath, isDir)
+      if (res?.ok) ok++
+      else fail++
+    }
+    setOpInFlight(false)
+    clearSelection()
+    await fetchDir(path)
+    if (fail === 0) {
+      setStatus({ ok: true, msg: `Deleted ${ok} item${ok !== 1 ? 's' : ''}` })
+    } else {
+      setStatus({ ok: false, msg: `Deleted ${ok}, failed ${fail}` })
+    }
+  }
+
+  async function handleBulkMove() {
+    const dest = bulkMoveDest.trim()
+    if (!dest) return
+    setBulkAction(null)
+    setBulkMoveDest('')
+    setOpInFlight(true)
+    setStatus(null)
+    let ok = 0, fail = 0
+    for (const entry of selectedEntries) {
+      const srcPath = joinRemote(path, entry.name)
+      const dstPath = joinRemote(dest, entry.name)
+      if (srcPath === dstPath) continue
+      const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
+      if (res?.ok) ok++
+      else fail++
+    }
+    setOpInFlight(false)
+    clearSelection()
+    await fetchDir(path)
+    if (fail === 0) {
+      setStatus({ ok: true, msg: `Moved ${ok} item${ok !== 1 ? 's' : ''} to ${dest}` })
+    } else {
+      setStatus({ ok: false, msg: `Moved ${ok}, failed ${fail}` })
+    }
+  }
+
+  async function handleBulkCheckout() {
+    if (!selectedId || !localFolder) return
+    setOpInFlight(true)
+    setStatus(null)
+    let ok = 0, fail = 0
+    for (const entry of selectedEntries) {
+      const entryPath = joinRemote(path, entry.name)
+      const res = await window.winraid?.remote.checkout(selectedId, entryPath, localFolder)
+      if (res?.ok) ok++
+      else fail++
+    }
+    setOpInFlight(false)
+    clearSelection()
+    if (fail === 0) {
+      setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''}` })
+    } else {
+      setStatus({ ok: false, msg: `Downloaded ${ok}, failed ${fail}` })
+    }
+  }
+
+  // ── Drag-and-drop handlers ──────────────────────────────────────────────
+  function handleDragStart(e, entry, entryPath) {
+    setDragSource({ name: entry.name, path: entryPath })
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', entryPath)
+  }
+
+  function handleDragEnd() {
+    setDragSource(null)
+    setDropTargetPath(null)
+    clearTimeout(dwellTimer.current)
+  }
+
+  function handleDragOverFolder(e, folderPath) {
+    // Don't allow dropping onto self or into the same source path
+    if (!dragSource || dragSource.path === folderPath) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    if (dropTargetPath !== folderPath) {
+      setDropTargetPath(folderPath)
+      // Start dwell timer — auto-navigate into the folder after 600ms
+      clearTimeout(dwellTimer.current)
+      if (folderPath !== path) {
+        dwellTimer.current = setTimeout(() => {
+          navigate(folderPath)
+        }, 600)
+      }
+    }
+  }
+
+  function handleDragLeaveFolder() {
+    setDropTargetPath(null)
+    clearTimeout(dwellTimer.current)
+  }
+
+  async function handleDrop(e, targetDirPath) {
+    e.preventDefault()
+    setDropTargetPath(null)
+    clearTimeout(dwellTimer.current)
+    if (!dragSource || !selectedId) return
+    const srcPath = dragSource.path
+    const dstPath = joinRemote(targetDirPath, dragSource.name)
+    if (srcPath === dstPath) return
+    setDragSource(null)
+    setMoveInFlight({ name: dragSource.name, from: srcPath, to: dstPath })
+    setStatus(null)
+    const moveName = dragSource.name
+    const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
+    setMoveInFlight(null)
+    await fetchDir(path)
+    if (res?.ok) {
+      setStatus({ ok: true, msg: `Moved ${moveName} to ${targetDirPath}` })
+    } else {
+      setStatus({ ok: false, msg: res?.error || 'Move failed' })
+    }
+  }
+
+  const busy     = opInFlight || !!moveInFlight
+  const noConfig = !selectedId || !selectedConn?.sftp?.host
   const crumbs   = buildBreadcrumbs()
+
 
   // Flat list of non-folder entries with their full remote path, used for
   // Quick Look navigation (prev / next arrows).
@@ -644,13 +851,13 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
     <div className={styles.container}>
 
       {editingFile && (
-        <EditorModal cfg={cfg} filePath={editingFile} onClose={() => setEditingFile(null)} />
+        <EditorModal connectionId={selectedId} filePath={editingFile} onClose={() => setEditingFile(null)} />
       )}
       {showQuickLook && selectedFile && (
         <QuickLookOverlay
           file={selectedFile}
           connectionId={selectedId}
-          cfg={cfg}
+          remoteBasePath={cfgRemotePath}
           files={fileEntries}
           onNavigate={(f) => {
             setSelectedFile(f)
@@ -663,7 +870,7 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
       {confirmTarget && (
         <ConfirmModal
           remotePath={confirmTarget}
-          cfgRemotePath={cfg.remotePath}
+          cfgRemotePath={cfgRemotePath}
           localFolder={localFolder}
           onConfirm={handleConfirm}
           onCancel={() => setConfirmTarget(null)}
@@ -682,6 +889,80 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
           onConfirm={handleMove}
           onCancel={() => setMoveTarget(null)}
         />
+      )}
+      {bulkAction === 'delete' && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <span className={[styles.modalIconWrap, styles.modalIconDanger].join(' ')}>
+                <AlertCircle size={20} />
+              </span>
+              <div>
+                <h2 className={styles.modalTitle}>
+                  Delete {selected.size} item{selected.size !== 1 ? 's' : ''}?
+                </h2>
+                <p className={styles.modalSubtitle}>
+                  {selectedEntries.map((e) => e.name).join(', ')} will be permanently deleted. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className={styles.modalActions}>
+              <button className={styles.modalCancel} onClick={() => setBulkAction(null)}>Cancel</button>
+              <button className={styles.modalConfirm} onClick={handleBulkDelete}>
+                Delete {selected.size} item{selected.size !== 1 ? 's' : ''}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {bulkAction === 'move' && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modal}>
+            <div className={styles.modalHeader}>
+              <span className={styles.modalIconWrap}>
+                <FolderInput size={20} />
+              </span>
+              <div>
+                <h2 className={styles.modalTitle}>
+                  Move {selected.size} item{selected.size !== 1 ? 's' : ''}
+                </h2>
+                <p className={styles.modalSubtitle}>
+                  Move {selectedEntries.map((e) => e.name).join(', ')} to a new location.
+                </p>
+              </div>
+            </div>
+            <div className={styles.modalFields}>
+              <div className={styles.fieldRow}>
+                <label className={styles.fieldLabel}>Destination folder</label>
+                <input
+                  className={styles.fieldInput}
+                  value={bulkMoveDest}
+                  onChange={(e) => setBulkMoveDest(e.target.value)}
+                  spellCheck={false}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className={styles.modalActions}>
+              <button className={styles.modalCancel} onClick={() => { setBulkAction(null); setBulkMoveDest('') }}>Cancel</button>
+              <button
+                className={styles.modalConfirmAccent}
+                onClick={handleBulkMove}
+                disabled={!bulkMoveDest.trim() || bulkMoveDest.trim() === path}
+              >
+                Move
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {moveInFlight && (
+        <div className={styles.moveOverlay}>
+          <Loader size={24} className={styles.spinning} />
+          <span className={styles.moveOverlayText}>Moving {moveInFlight.name}</span>
+          <span className={styles.moveOverlayPath}>{moveInFlight.from} → {moveInFlight.to}</span>
+        </div>
       )}
 
       {/* Header */}
@@ -703,61 +984,76 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
         <div className={styles.headerRight}>
           {!noConfig && (
             <>
-              {cfg?.remotePath && path !== cfg.remotePath && (
-                <button
-                  className={styles.goRootBtn}
-                  onClick={() => navigate(cfg.remotePath)}
-                  disabled={loading}
-                  title={`Jump to sync root: ${cfg.remotePath}`}
-                >
-                  ↑ Go to root
-                </button>
+              {cfgRemotePath && path !== cfgRemotePath && (
+                <Tooltip tip={`Jump to sync root: ${cfgRemotePath}`} side="bottom">
+                  <button
+                    className={styles.goRootBtn}
+                    onClick={() => navigate(cfgRemotePath)}
+                    disabled={loading}
+                  >
+                    ↑ Go to root
+                  </button>
+                </Tooltip>
               )}
-              <button
-                className={styles.setRootBtn}
-                onClick={() => handleSetRoot(path)}
-                disabled={busy || loading || cfg?.remotePath === path}
-                title="Set current folder as sync root"
-              >
-                Set root here
-              </button>
-              <button
-                className={styles.checkoutBtn}
-                onClick={() => handleCheckout(path)}
-                disabled={busy || loading}
-                title={`Check out current folder structure to ${localFolder}`}
-              >
-                <Download size={13} />
-                Check out here
-              </button>
+              <Tooltip tip="Set current folder as sync root" side="bottom">
+                <button
+                  className={styles.setRootBtn}
+                  onClick={() => handleSetRoot(path)}
+                  disabled={busy || loading || cfgRemotePath === path}
+                >
+                  Set root here
+                </button>
+              </Tooltip>
+              <Tooltip tip={`Check out current folder structure to ${localFolder}`} side="bottom">
+                <button
+                  className={styles.checkoutBtn}
+                  onClick={() => handleCheckout(path)}
+                  disabled={busy || loading}
+                >
+                  <Download size={13} />
+                  Check out here
+                </button>
+              </Tooltip>
             </>
           )}
 
           <div className={styles.viewToggle}>
-            <button
-              className={[styles.viewBtn, viewMode === 'list' ? styles.viewBtnActive : ''].join(' ')}
-              onClick={() => setViewMode('list')}
-              title="List view"
-            >
-              <List size={14} />
-            </button>
-            <button
-              className={[styles.viewBtn, viewMode === 'grid' ? styles.viewBtnActive : ''].join(' ')}
-              onClick={() => setViewMode('grid')}
-              title="Grid view"
-            >
-              <LayoutGrid size={14} />
-            </button>
+            <Tooltip tip="List view" side="bottom">
+              <button
+                className={[styles.viewBtn, viewMode === 'list' ? styles.viewBtnActive : ''].join(' ')}
+                onClick={() => setViewMode('list')}
+              >
+                <List size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip tip="Grid view" side="bottom">
+              <button
+                className={[styles.viewBtn, viewMode === 'grid' ? styles.viewBtnActive : ''].join(' ')}
+                onClick={() => setViewMode('grid')}
+              >
+                <LayoutGrid size={14} />
+              </button>
+            </Tooltip>
           </div>
 
-          <button
-            className={styles.refreshBtn}
-            onClick={() => fetchDir(path)}
-            disabled={loading || noConfig}
-            title="Refresh"
-          >
-            <RefreshCw size={13} className={loading ? styles.spinning : ''} />
-          </button>
+          <Tooltip tip="New folder" side="bottom">
+            <button
+              className={styles.refreshBtn}
+              onClick={() => setNewFolderName('')}
+              disabled={busy || loading || noConfig}
+            >
+              <FolderPlus size={13} />
+            </button>
+          </Tooltip>
+          <Tooltip tip="Refresh" side="left">
+            <button
+              className={styles.refreshBtn}
+              onClick={() => fetchDir(path)}
+              disabled={loading || noConfig}
+            >
+              <RefreshCw size={13} className={loading ? styles.spinning : ''} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -779,9 +1075,16 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
               <span key={c.path} className={styles.crumbGroup}>
                 {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
                 <button
-                  className={[styles.crumb, c.path === path ? styles.crumbActive : ''].join(' ')}
+                  className={[
+                    styles.crumb,
+                    c.path === path ? styles.crumbActive : '',
+                    dropTargetPath === c.path ? styles.crumbDropTarget : '',
+                  ].join(' ')}
                   onClick={() => c.path !== path && navigate(c.path)}
-                  disabled={c.path === path}
+                  disabled={c.path === path && !dragSource}
+                  onDragOver={(e) => handleDragOverFolder(e, c.path)}
+                  onDragLeave={handleDragLeaveFolder}
+                  onDrop={(e) => handleDrop(e, c.path)}
                 >
                   {i === 0 ? <HardDrive size={11} /> : c.label}
                 </button>
@@ -804,16 +1107,52 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
 
           {/* List view */}
           {viewMode === 'list' && (
-            <div className={styles.listWrapper}>
+            <div
+              className={[styles.listWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
+              onDragOver={(e) => { if (dragSource) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
+              onDrop={(e) => handleDrop(e, path)}
+            >
               {entries.length === 0 && !loading && !error && (
                 <div className={styles.emptyDir}>Empty folder</div>
               )}
               {entries.length > 0 && (
                 <div className={styles.colHeader}>
+                  <label className={styles.checkbox} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={entries.length > 0 && selected.size === entries.length}
+                      ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < entries.length }}
+                      onChange={toggleSelectAll}
+                    />
+                    <span className={styles.checkmark} />
+                  </label>
                   <span className={styles.colName}>Name</span>
                   <span className={styles.colSize}>Size</span>
                   <span className={styles.colDate}>Modified</span>
                   <span className={styles.colActions} />
+                </div>
+              )}
+              {newFolderName !== null && (
+                <div className={styles.newFolderRow}>
+                  <Folder size={14} className={styles.iconDir} />
+                  <input
+                    className={styles.newFolderInput}
+                    value={newFolderName}
+                    onChange={(e) => setNewFolderName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleCreateFolder()
+                      if (e.key === 'Escape') setNewFolderName(null)
+                    }}
+                    placeholder="Folder name"
+                    autoFocus
+                    spellCheck={false}
+                  />
+                  <button className={styles.newFolderConfirm} onClick={handleCreateFolder} disabled={!newFolderName?.trim()}>
+                    Create
+                  </button>
+                  <button className={styles.newFolderCancel} onClick={() => setNewFolderName(null)}>
+                    <XIcon size={13} />
+                  </button>
                 </div>
               )}
               {entries.map((entry) => {
@@ -827,10 +1166,27 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                 return (
                   <div
                     key={entry.name}
-                    className={[styles.row, isDir ? styles.rowDir : ''].join(' ')}
+                    className={[
+                      styles.row,
+                      isDir ? styles.rowDir : '',
+                      selected.has(entry.name) ? styles.rowSelected : '',
+                      dragSource?.path === entryPath ? styles.dragging : '',
+                      isDir && dropTargetPath === entryPath ? styles.dropTarget : '',
+                      isDir && lastVisitedDir === entry.name ? styles.lastVisited : '',
+                    ].join(' ')}
+                    draggable={!busy}
+                    onDragStart={(e) => handleDragStart(e, entry, entryPath)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={isDir ? (e) => handleDragOverFolder(e, entryPath) : undefined}
+                    onDragLeave={isDir ? handleDragLeaveFolder : undefined}
+                    onDrop={isDir ? (e) => { e.stopPropagation(); handleDrop(e, entryPath) } : undefined}
                     onClick={!isDir ? () => openQuickLook(entry, entryPath) : undefined}
                     style={!isDir ? { cursor: 'pointer' } : undefined}
                   >
+                    <label className={styles.checkbox} onClick={(e) => e.stopPropagation()}>
+                      <input type="checkbox" checked={selected.has(entry.name)} onChange={(e) => toggleSelect(entry.name, e)} />
+                      <span className={styles.checkmark} />
+                    </label>
                     <div className={styles.rowName}>
                       {icon}
                       {isDir ? (
@@ -862,8 +1218,41 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
 
           {/* Grid view */}
           {viewMode === 'grid' && (
-            <div className={styles.gridWrapper}>
-              {entries.length === 0 && !loading && !error && (
+            <div
+              className={[styles.gridWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
+              onDragOver={(e) => { if (dragSource) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
+              onDrop={(e) => handleDrop(e, path)}
+            >
+              {newFolderName !== null && (
+                <div className={styles.newFolderCard}>
+                  <div className={styles.newFolderCardIcon}>
+                    <FolderPlus size={32} className={styles.iconDir} />
+                  </div>
+                  <div className={styles.newFolderCardBody}>
+                    <input
+                      className={styles.newFolderInput}
+                      value={newFolderName}
+                      onChange={(e) => setNewFolderName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleCreateFolder()
+                        if (e.key === 'Escape') setNewFolderName(null)
+                      }}
+                      placeholder="Folder name"
+                      autoFocus
+                      spellCheck={false}
+                    />
+                    <div className={styles.newFolderCardActions}>
+                      <button className={styles.newFolderConfirm} onClick={handleCreateFolder} disabled={!newFolderName?.trim()}>
+                        Create
+                      </button>
+                      <button className={styles.newFolderCancel} onClick={() => setNewFolderName(null)}>
+                        <XIcon size={12} />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {entries.length === 0 && !loading && !error && newFolderName === null && (
                 <div className={styles.emptyDir}>Empty folder</div>
               )}
               {entries.map((entry) => {
@@ -877,17 +1266,56 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
                     connectionId={selectedId}
                     isDir={isDir}
                     busy={busy}
+                    isSelected={selected.has(entry.name)}
+                    isDragSource={dragSource?.path === entryPath}
+                    isDropTarget={isDir && dropTargetPath === entryPath}
+                    isLastVisited={isDir && lastVisitedDir === entry.name}
+                    onSelect={toggleSelect}
                     onNavigate={navigate}
                     onQuickLook={openQuickLook}
                     onCheckout={handleCheckout}
                     onEdit={setEditingFile}
                     onMove={setMoveTarget}
                     onDelete={setDeleteTarget}
+                    onDragStart={(e) => handleDragStart(e, entry, entryPath)}
+                    onDragEnd={handleDragEnd}
+                    onDragOver={(e) => handleDragOverFolder(e, entryPath)}
+                    onDragLeave={handleDragLeaveFolder}
+                    onDrop={(e) => { e.stopPropagation(); handleDrop(e, entryPath) }}
                   />
                 )
               })}
             </div>
           )}
+
+          {/* Bulk action drawer — always rendered for animation, toggled via class */}
+          <div className={[styles.bulkBar, selected.size > 0 ? styles.bulkBarOpen : ''].join(' ')}>
+            <span className={styles.bulkCount}>
+              {selected.size} selected
+            </span>
+            <div className={styles.bulkActions}>
+              <Tooltip tip="Download selected" side="top">
+                <button className={styles.bulkBtn} onClick={handleBulkCheckout} disabled={busy}>
+                  <Download size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip tip="Move selected" side="top">
+                <button className={styles.bulkBtn} onClick={() => { setBulkAction('move'); setBulkMoveDest(path) }} disabled={busy}>
+                  <FolderInput size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip tip="Delete selected" side="top">
+                <button className={[styles.bulkBtn, styles.bulkBtnDanger].join(' ')} onClick={() => setBulkAction('delete')} disabled={busy}>
+                  <Trash2 size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip tip="Clear selection" side="top">
+                <button className={styles.bulkBtn} onClick={clearSelection}>
+                  <XIcon size={13} />
+                </button>
+              </Tooltip>
+            </div>
+          </div>
         </>
       )}
     </div>
