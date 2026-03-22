@@ -12,7 +12,8 @@
       "Bash(npx playwright:*)",
       "Bash(npm run:*)",
       "Bash(npm test:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebFetch(domain:img.shields.io)"
     ]
   }
 }
