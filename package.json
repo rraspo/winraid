@@ -9,13 +9,15 @@
     "build": "electron-vite build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:layout": "playwright test -c playwright-ct.config.mjs",
-    "test:all": "vitest run && playwright test -c playwright-ct.config.mjs",
     "lint": "eslint src electron",
     "clean:gyp": "node -e \"require('fs').rmSync('node_modules/ssh2/lib/protocol/crypto/build/node_gyp_bins', {recursive: true, force: true})\"",
     "dist": "npm run build && npm run clean:gyp && electron-builder",
     "dist:win": "npm run build && npm run clean:gyp && electron-builder --win",
-    "dist:dir": "npm run build && npm run clean:gyp && electron-builder --dir"
+    "dist:dir": "npm run build && npm run clean:gyp && electron-builder --dir",
+    "release": "node scripts/release.js",
+    "tag": "node scripts/tag.js",
+    "version:show": "node scripts/version.js",
+    "clean": "node scripts/clean.js"
   },
   "dependencies": {
     "chokidar": "^4.0.3",
@@ -28,8 +30,6 @@
     "@codemirror/legacy-modes": "^6.4.2",
     "@eslint/js": "^9.39.3",
     "@fontsource/inter": "^5.1.0",
-    "@playwright/experimental-ct-react": "^1.58.2",
-    "@playwright/test": "^1.58.2",
     "@tanstack/react-table": "^8.20.6",
     "@tanstack/react-virtual": "^3.11.0",
     "@testing-library/jest-dom": "^6.9.1",
