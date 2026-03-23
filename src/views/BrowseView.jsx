@@ -235,7 +235,7 @@ function Thumbnail({ name, remotePath, connectionId, size }) {
 // ---------------------------------------------------------------------------
 // GridCard
 // ---------------------------------------------------------------------------
-function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isDragSource, isDropTarget, isLastVisited, isHighlighted, highlightRef, onSelect, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop }) {
+function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isDragSource, isDropTarget, isLastVisited, isHighlighted, highlightRef, onSelect, onNavigate, onQuickLook, onCheckout, onEdit, onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop, style }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
     : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" />
@@ -252,6 +252,7 @@ function GridCard({ entry, entryPath, connectionId, isDir, busy, isSelected, isD
         isLastVisited ? styles.lastVisited : '',
         isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
       ].join(' ')}
+      style={style}
       draggable={!busy}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
@@ -480,6 +481,41 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
   const [bulkMoveDest, setBulkMoveDest]   = useState('')
   const dwellTimer = useRef(null)  // auto-navigate timer when hovering a folder while dragging
   const listScrollRef = useRef(null)
+  const gridScrollRef = useRef(null)
+
+  // ── Grid virtualizer ────────────────────────────────────────────────────
+  const GRID_PAD      = 16   // --space-4
+  const GRID_GAP      = 12   // --space-3
+  const GRID_CARD_MIN = 120
+  const GRID_META_H   = 56   // fixed meta area below the 1:1 thumbnail
+
+  // Initialize from window width (sidebar is 220px) — available synchronously,
+  // same as the reference calling render() directly. ResizeObserver corrects it.
+  const [gridWidth, setGridWidth] = useState(() => Math.max(0, window.innerWidth - 220))
+
+  const gridCols  = Math.max(1, Math.floor((gridWidth - GRID_PAD * 2 + GRID_GAP) / (GRID_CARD_MIN + GRID_GAP)))
+  const gridCardW = (gridWidth - GRID_PAD * 2 - GRID_GAP * (gridCols - 1)) / gridCols
+  const gridRowH  = Math.round(gridCardW) + GRID_META_H
+
+  useEffect(() => {
+    const el = gridScrollRef.current
+    if (!el || viewMode !== 'grid') return
+    const ro = new ResizeObserver(([entry]) => {
+      setGridWidth(entry.contentBoxSize?.[0]?.inlineSize ?? el.clientWidth)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [viewMode])
+
+  const gridVirtualizer = useVirtualizer({
+    count: gridCols > 0 ? Math.ceil(entries.length / gridCols) : 0,
+    getScrollElement: () => gridScrollRef.current,
+    estimateSize: () => gridRowH,
+    gap: GRID_GAP,
+    paddingStart: GRID_PAD,
+    paddingEnd: GRID_PAD,
+    overscan: 2,
+  })
 
   const rowVirtualizer = useVirtualizer({
     count: entries.length,
@@ -1316,35 +1352,38 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
           {/* Grid view */}
           {viewMode === 'grid' && (
             <div
+              ref={gridScrollRef}
               className={[styles.gridWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
               onDragOver={(e) => { if (dragSource) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
               onDrop={(e) => handleDrop(e, path)}
             >
               {newFolderName !== null && (
-                <div className={styles.newFolderCard}>
-                  <div className={styles.newFolderCardIcon}>
-                    <FolderPlus size={32} className={styles.iconDir} />
-                  </div>
-                  <div className={styles.newFolderCardBody}>
-                    <input
-                      className={styles.newFolderInput}
-                      value={newFolderName}
-                      onChange={(e) => setNewFolderName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleCreateFolder()
-                        if (e.key === 'Escape') setNewFolderName(null)
-                      }}
-                      placeholder="Folder name"
-                      autoFocus
-                      spellCheck={false}
-                    />
-                    <div className={styles.newFolderCardActions}>
-                      <button className={styles.newFolderConfirm} onClick={handleCreateFolder} disabled={!newFolderName?.trim()}>
-                        Create
-                      </button>
-                      <button className={styles.newFolderCancel} onClick={() => setNewFolderName(null)}>
-                        <XIcon size={12} />
-                      </button>
+                <div style={{ padding: `${GRID_PAD}px ${GRID_PAD}px 0` }}>
+                  <div className={styles.newFolderCard}>
+                    <div className={styles.newFolderCardIcon}>
+                      <FolderPlus size={32} className={styles.iconDir} />
+                    </div>
+                    <div className={styles.newFolderCardBody}>
+                      <input
+                        className={styles.newFolderInput}
+                        value={newFolderName}
+                        onChange={(e) => setNewFolderName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleCreateFolder()
+                          if (e.key === 'Escape') setNewFolderName(null)
+                        }}
+                        placeholder="Folder name"
+                        autoFocus
+                        spellCheck={false}
+                      />
+                      <div className={styles.newFolderCardActions}>
+                        <button className={styles.newFolderConfirm} onClick={handleCreateFolder} disabled={!newFolderName?.trim()}>
+                          Create
+                        </button>
+                        <button className={styles.newFolderCancel} onClick={() => setNewFolderName(null)}>
+                          <XIcon size={12} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1352,38 +1391,80 @@ export default function BrowseView({ onHistoryPush, browseRestore }) {
               {entries.length === 0 && !loading && !error && newFolderName === null && (
                 <div className={styles.emptyDir}>Empty folder</div>
               )}
-              {entries.map((entry) => {
-                const entryPath = joinRemote(path, entry.name)
-                const isDir     = entry.type === 'dir'
+              {entries.length > 0 && (
+                <div style={{ height: gridVirtualizer.getTotalSize(), position: 'relative' }}>
+                  {gridVirtualizer.getVirtualItems().map((vRow) => {
+                    const rowStart   = vRow.index * gridCols
+                    const rowEntries = entries.slice(rowStart, rowStart + gridCols)
+                    return (
+                      <div
+                        key={vRow.index}
+                        data-index={vRow.index}
+                        ref={gridVirtualizer.measureElement}
+                        style={{
+                          position: 'absolute', top: 0, left: 0, width: '100%',
+                          transform: `translateY(${vRow.start}px)`,
+                          display: 'flex',
+                          gap: `${GRID_GAP}px`,
+                          padding: `0 ${GRID_PAD}px`,
+                          boxSizing: 'border-box',
+                        }}
+                      >
+                        {rowEntries.map((entry) => {
+                          const entryPath = joinRemote(path, entry.name)
+                          const isDir     = entry.type === 'dir'
+                          return (
+                            <GridCard
+                              key={entry.name}
+                              entry={entry}
+                              entryPath={entryPath}
+                              connectionId={selectedId}
+                              isDir={isDir}
+                              busy={busy}
+                              isSelected={selected.has(entry.name)}
+                              isDragSource={dragSource?.path === entryPath}
+                              isDropTarget={isDir && dropTargetPath === entryPath}
+                              isLastVisited={isDir && lastVisitedDir === entry.name}
+                              isHighlighted={highlightFile === entry.name}
+                              highlightRef={highlightRef}
+                              onSelect={toggleSelect}
+                              onNavigate={navigate}
+                              onQuickLook={openQuickLook}
+                              onCheckout={handleCheckout}
+                              onEdit={setEditingFile}
+                              onMove={setMoveTarget}
+                              onDelete={setDeleteTarget}
+                              onDragStart={(e) => handleDragStart(e, entry, entryPath)}
+                              onDragEnd={handleDragEnd}
+                              onDragOver={(e) => handleDragOverFolder(e, entryPath)}
+                              onDragLeave={handleDragLeaveFolder}
+                              onDrop={(e) => { e.stopPropagation(); handleDrop(e, entryPath) }}
+                              style={{ width: gridCardW, flexShrink: 0 }}
+                            />
+                          )
+                        })}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Entry count bar */}
+          {!loading && !error && entries.length > 0 && (
+            <div className={styles.countBar}>
+              {(() => {
+                const dirs  = entries.filter(e => e.type === 'dir').length
+                const files = entries.length - dirs
                 return (
-                  <GridCard
-                    key={entry.name}
-                    entry={entry}
-                    entryPath={entryPath}
-                    connectionId={selectedId}
-                    isDir={isDir}
-                    busy={busy}
-                    isSelected={selected.has(entry.name)}
-                    isDragSource={dragSource?.path === entryPath}
-                    isDropTarget={isDir && dropTargetPath === entryPath}
-                    isLastVisited={isDir && lastVisitedDir === entry.name}
-                    isHighlighted={highlightFile === entry.name}
-                    highlightRef={highlightRef}
-                    onSelect={toggleSelect}
-                    onNavigate={navigate}
-                    onQuickLook={openQuickLook}
-                    onCheckout={handleCheckout}
-                    onEdit={setEditingFile}
-                    onMove={setMoveTarget}
-                    onDelete={setDeleteTarget}
-                    onDragStart={(e) => handleDragStart(e, entry, entryPath)}
-                    onDragEnd={handleDragEnd}
-                    onDragOver={(e) => handleDragOverFolder(e, entryPath)}
-                    onDragLeave={handleDragLeaveFolder}
-                    onDrop={(e) => { e.stopPropagation(); handleDrop(e, entryPath) }}
-                  />
+                  <>
+                    {dirs  > 0 && <span>{dirs}  {dirs  === 1 ? 'folder' : 'folders'}</span>}
+                    {files > 0 && <span>{files} {files === 1 ? 'file'   : 'files'}</span>}
+                    {dirs  > 0 && files > 0 && <span className={styles.countTotal}>{entries.length} total</span>}
+                  </>
                 )
-              })}
+              })()}
             </div>
           )}
 
