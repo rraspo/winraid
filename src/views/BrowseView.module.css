@@ -563,11 +563,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-4);
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: var(--space-3);
-  align-content: start;
+  position: relative;
 }
 
 .gridCard {
@@ -850,6 +846,22 @@
 .gridCardSelected {
   border-color: var(--accent) !important;
   background: rgba(91, 164, 245, 0.08) !important;
+}
+
+/* ── Entry count bar ─────────────────────────────────────────────────── */
+.countBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 5px var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.countTotal {
+  color: var(--text-muted);
 }
 
 /* ── Bulk action drawer (bottom) ────────────────────────────────────── */
