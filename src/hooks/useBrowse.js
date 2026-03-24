@@ -34,7 +34,6 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   const [selectedFile,    setSelectedFile]    = useState(null)
   const [showQuickLook,   setShowQuickLook]   = useState(false)
   const [dragSource,      setDragSource]      = useState(null)
-  const [dropTargetPath,  setDropTargetPath]  = useState(null)
   const [moveInFlight,    setMoveInFlight]    = useState(null)
   const [lastVisitedDir,  setLastVisitedDir]  = useState(null)
   const [highlightFile,   setHighlightFile]   = useState(null)
@@ -49,11 +48,15 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   // Latest-value refs — updated every render so event handlers can read current
   // state without capturing stale closures or needing them in useCallback deps.
   const dragSourceRef     = useRef(dragSource)
-  const dropTargetPathRef = useRef(dropTargetPath)
+  // dropTargetPathRef is the sole source of truth for the current drop target —
+  // there is no mirroring state. Handlers update it directly and apply the
+  // highlight via DOM attribute manipulation to avoid re-rendering the tree.
+  const dropTargetPathRef = useRef(null)
+  const pathRef           = useRef(path)
 
-  browseRestoreRef.current  = browseRestore
-  dragSourceRef.current     = dragSource
-  dropTargetPathRef.current = dropTargetPath
+  browseRestoreRef.current = browseRestore
+  dragSourceRef.current    = dragSource
+  pathRef.current          = path
 
   // ── Persistence ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -223,8 +226,9 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   }, [selectedId, path, fetchDir])
 
   const navigate = useCallback((newPath) => {
-    if (path.startsWith(newPath) && path !== newPath) {
-      const remainder = path.slice(newPath === '/' ? 1 : newPath.length + 1)
+    const curPath = pathRef.current
+    if (curPath.startsWith(newPath) && curPath !== newPath) {
+      const remainder = curPath.slice(newPath === '/' ? 1 : newPath.length + 1)
       const immediateChild = remainder.split('/')[0]
       setLastVisitedDir(immediateChild || null)
     } else {
@@ -235,13 +239,13 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     setShowQuickLook(false)
     setSelectedFile(null)
     onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null })
-  }, [path, onHistoryPush])
+  }, [onHistoryPush])
 
   const openQuickLook = useCallback((entry, entryPath) => {
     setSelectedFile({ ...entry, path: entryPath })
     setShowQuickLook(true)
-    onHistoryPush?.({ kind: 'browse', path, quickLookFile: { ...entry, path: entryPath } })
-  }, [path, onHistoryPush])
+    onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: { ...entry, path: entryPath } })
+  }, [onHistoryPush])
 
   const doCheckout = useCallback(async (remotePath, clearFirst = false, targetFolder = localFolder, newSyncRoot = null) => {
     setOpInFlight(true)
@@ -451,34 +455,51 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
 
   const handleDragEnd = useCallback(() => {
     setDragSource(null)
-    setDropTargetPath(null)
+    if (dropTargetPathRef.current !== null) {
+      const el = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
+      if (el) el.removeAttribute('data-drop-target')
+      dropTargetPathRef.current = null
+    }
     clearTimeout(dwellTimer.current)
   }, [])
 
   // dragSourceRef and dropTargetPathRef let this stay stable during the entire
   // drag interaction — avoids recreating the handler (and re-rendering every
-  // visible card) on every dragover event.
+  // visible card) on every dragover event. Highlight is applied directly via
+  // DOM attribute manipulation so no React state change (and no re-render)
+  // is triggered on each dragover event.
   const handleDragOverFolder = useCallback((e, folderPath) => {
     if (!dragSourceRef.current || dragSourceRef.current.path === folderPath) return
     e.preventDefault()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
     if (dropTargetPathRef.current !== folderPath) {
-      setDropTargetPath(folderPath)
+      // Clear the previous target's attribute before setting the new one.
+      if (dropTargetPathRef.current !== null) {
+        const prev = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
+        if (prev) prev.removeAttribute('data-drop-target')
+      }
+      e.currentTarget.setAttribute('data-drop-target', 'true')
+      dropTargetPathRef.current = folderPath
       clearTimeout(dwellTimer.current)
-      if (folderPath !== path) {
+      if (folderPath !== pathRef.current) {
         dwellTimer.current = setTimeout(() => navigate(folderPath), 600)
       }
     }
-  }, [path, navigate])
+  }, [navigate])
 
-  const handleDragLeaveFolder = useCallback(() => {
-    setDropTargetPath(null)
+  const handleDragLeaveFolder = useCallback((e) => {
+    e.currentTarget.removeAttribute('data-drop-target')
+    dropTargetPathRef.current = null
     clearTimeout(dwellTimer.current)
   }, [])
 
   const handleDrop = useCallback(async (e, targetDirPath) => {
     e.preventDefault()
-    setDropTargetPath(null)
+    if (dropTargetPathRef.current !== null) {
+      const el = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
+      if (el) el.removeAttribute('data-drop-target')
+      dropTargetPathRef.current = null
+    }
     clearTimeout(dwellTimer.current)
     const src = dragSourceRef.current
     if (!src || !selectedId) return
@@ -505,7 +526,7 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     connections, selectedId, path, entries, loading, error, status,
     opInFlight, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
-    dragSource, dropTargetPath, moveInFlight, lastVisitedDir, highlightFile,
+    dragSource, moveInFlight, lastVisitedDir, highlightFile,
     selected, bulkAction, bulkMoveDest,
     // Setters exposed for shell (modals, header buttons)
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,

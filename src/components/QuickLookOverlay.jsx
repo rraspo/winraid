@@ -27,18 +27,18 @@ function panStyle(zoom, pan) {
 function ProgressRing({ progress }) {
   const r          = 16
   const stroke     = 3
-  const size       = (r + stroke) * 2
-  const cx         = size / 2
-  const cy         = size / 2
+  const svgSize    = (r + stroke) * 2
+  const cx         = svgSize / 2
+  const cy         = svgSize / 2
   const circ       = 2 * Math.PI * r
   const dashOffset = circ * (1 - Math.min(progress, 1))
 
   return (
     <svg
       className={styles.progressRing}
-      width={size}
-      height={size}
-      viewBox={`0 0 ${size} ${size}`}
+      width={svgSize}
+      height={svgSize}
+      viewBox={`0 0 ${svgSize} ${svgSize}`}
       aria-hidden="true"
     >
       <circle
@@ -105,13 +105,15 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
           if (cancelled) return
           chunks.push(value)
           received += value.byteLength
-          if (total > 0) setProgress(received / total)
+          if (total > 0) setProgress(Math.min(received / total, 1))
         }
 
         if (cancelled) return
 
         // Production CSP allows blob: (img-src includes blob:), so createObjectURL
         // is safe in both dev and packaged builds.
+        // Synchronous from here to setDone(true) — no await points, so the
+        // cleanup function cannot interleave and revoke blobUrl prematurely.
         blobUrl = URL.createObjectURL(new Blob(chunks, { type: mime }))
         setActiveSrc(blobUrl)
         setProgress(1)

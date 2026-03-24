@@ -8,7 +8,7 @@ import styles from '../../views/BrowseList.module.css'
 
 const BrowseListRow = memo(function BrowseListRow({
   entry, entryPath, virtualRow, connectionId,
-  busy, isSelected, isDragSource, isDropTarget, isLastVisited, isHighlighted, highlightRef,
+  busy, isSelected, isDragSource, isLastVisited, isHighlighted, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, toggleSelect,
   handleCheckout, setEditingFile, setMoveTarget, setDeleteTarget,
@@ -23,12 +23,12 @@ const BrowseListRow = memo(function BrowseListRow({
   return (
     <div
       ref={isHighlighted ? highlightRef : undefined}
+      data-entry-path={entryPath}
       className={[
         styles.row,
         isDir ? styles.rowDir : '',
         isSelected ? styles.rowSelected : '',
         isDragSource ? styles.dragging : '',
-        isDropTarget ? styles.dropTarget : '',
         isLastVisited ? styles.lastVisited : '',
         isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
       ].join(' ')}

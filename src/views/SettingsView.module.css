@@ -115,6 +115,18 @@
 .saveMsg.ok    { color: var(--success); background: var(--success-subtle); }
 .saveMsg.error { color: var(--error);   background: var(--error-subtle); }
 
+/* ---- Thumbnail cache ---- */
+.cacheRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cacheSize {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
 /* ---- About / Updates ---- */
 .aboutRow {
   display: flex;
