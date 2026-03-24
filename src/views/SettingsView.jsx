@@ -3,6 +3,7 @@ import { RefreshCw, Download } from 'lucide-react'
 
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
+import { formatSize } from '../utils/format'
 import styles from './SettingsView.module.css'
 
 const HINTS = {
@@ -14,9 +15,15 @@ export default function SettingsView() {
   const [watching, setWatching] = useState(false)
   const [version, setVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
+  const [cacheBytes, setCacheBytes] = useState(0)
+  const [clearing, setClearing] = useState(false)
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.cache.thumbSize().then((res) => setCacheBytes(res.bytes)).catch(() => {})
   }, [])
 
   // Listen for update status events from the main process
@@ -41,6 +48,14 @@ export default function SettingsView() {
     })
     return () => unsub?.()
   }, [])
+
+  async function handleClearCache() {
+    setClearing(true)
+    await window.winraid?.cache.clearThumbs()
+    const res = await window.winraid?.cache.thumbSize().catch(() => ({ bytes: 0 }))
+    setCacheBytes(res?.bytes ?? 0)
+    setClearing(false)
+  }
 
   async function handleWatcherToggle() {
     if (watching) {
@@ -100,6 +115,18 @@ export default function SettingsView() {
               The scanner watches each connection's local folder and queues new or changed files for transfer.
               On restart it automatically picks up files that appeared while stopped.
             </p>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>Thumbnail cache</div>
+          <div className={styles.sectionBody}>
+            <div className={styles.cacheRow}>
+              <span className={styles.cacheSize}>{formatSize(cacheBytes)}</span>
+              <Button size="sm" variant="ghost" onClick={handleClearCache} disabled={clearing}>
+                {clearing ? 'Clearing...' : 'Clear cache'}
+              </Button>
+            </div>
           </div>
         </section>
 

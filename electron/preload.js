@@ -20,6 +20,14 @@ contextBridge.exposeInMainWorld('winraid', {
   // -- App -----------------------------------------------------------------
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  // -- Thumbnail cache -----------------------------------------------------
+  cache: {
+    /** Returns the total size of the thumbnail cache in bytes. */
+    thumbSize:   () => ipcRenderer.invoke('cache:thumb-size'),
+    /** Delete all cached thumbnails. */
+    clearThumbs: () => ipcRenderer.invoke('cache:clear-thumbs'),
+  },
+
   // -- Config --------------------------------------------------------------
   config: {
     /** Returns the full config object if key is omitted, or a single value. */
