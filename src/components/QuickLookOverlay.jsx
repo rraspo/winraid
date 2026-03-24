@@ -19,17 +19,134 @@ function panStyle(zoom, pan) {
   return { transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center' }
 }
 
-function ImagePreview({ src, zoom, pan, mediaRef }) {
+/**
+ * SVG arc progress ring.
+ * progress: 0-1. Arc starts empty and fills clockwise as bytes arrive.
+ * Only rendered while loading (parent hides it when done).
+ */
+function ProgressRing({ progress }) {
+  const r          = 16
+  const stroke     = 3
+  const size       = (r + stroke) * 2
+  const cx         = size / 2
+  const cy         = size / 2
+  const circ       = 2 * Math.PI * r
+  const dashOffset = circ * (1 - Math.min(progress, 1))
+
+  return (
+    <svg
+      className={styles.progressRing}
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      aria-hidden="true"
+    >
+      <circle
+        className={styles.progressRingTrack}
+        cx={cx} cy={cy} r={r}
+        strokeWidth={stroke}
+        fill="none"
+      />
+      <circle
+        className={styles.progressRingArc}
+        cx={cx} cy={cy} r={r}
+        strokeWidth={stroke}
+        fill="none"
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        strokeDashoffset={dashOffset}
+        style={{ transition: 'stroke-dashoffset 0.1s linear' }}
+      />
+    </svg>
+  )
+}
+
+function ImagePreview({ src, size, zoom, pan, mediaRef }) {
+  const [activeSrc, setActiveSrc] = useState(src + '?thumb=1')
+  const [progress,  setProgress]  = useState(0)   // 0-1
+  const [done,      setDone]      = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    let reader    = null
+
+    // Browser cache hit — show full-res immediately, no ring
+    const probe = new window.Image()
+    probe.src = src
+    if (probe.complete && probe.naturalWidth > 0) {
+      setActiveSrc(src)
+      setProgress(1)
+      setDone(true)
+      return
+    }
+
+    // Show thumb while full-res downloads
+    setActiveSrc(src + '?thumb=1')
+    setProgress(0)
+    setDone(false)
+
+    const ac = new AbortController()
+
+    ;(async () => {
+      try {
+        const response = await fetch(src, { signal: ac.signal })
+        if (!response.ok || !response.body) throw new Error('bad response')
+
+        reader = response.body.getReader()
+        const chunks = []
+        let received = 0
+        const total  = size > 0 ? size : 0
+
+        for (;;) {
+          const { done: streamDone, value } = await reader.read()
+          if (streamDone) break
+          if (cancelled) return
+          chunks.push(value)
+          received += value.byteLength
+          if (total > 0) setProgress(received / total)
+        }
+
+        if (cancelled) return
+
+        // Use a data: URI so the image loads under both dev and production CSP.
+        // Production img-src allows data: but not blob:, so URL.createObjectURL
+        // would be blocked silently in packaged builds.
+        const blob   = new Blob(chunks)
+        const buffer = await blob.arrayBuffer()
+        if (cancelled) return
+        const bytes  = new Uint8Array(buffer)
+        let binary   = ''
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
+        const dataUrl = `data:image/jpeg;base64,${btoa(binary)}`
+        setActiveSrc(dataUrl)
+        setProgress(1)
+        setDone(true)
+      } catch (err) {
+        if (cancelled || err.name === 'AbortError') return
+        // Fetch failed — fall back to letting the browser load natively
+        setActiveSrc(src)
+        setDone(true)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      ac.abort()
+      reader?.cancel().catch(() => {})
+    }
+  }, [src, size])
+
   return (
     <div className={styles.mediaWrap}>
       <img
         ref={mediaRef}
         className={styles.previewImage}
-        src={src}
+        src={activeSrc}
         alt=""
         draggable={false}
         style={panStyle(zoom, pan)}
       />
+      {!done && size > 0 && <ProgressRing progress={progress} />}
     </div>
   )
 }
@@ -375,7 +492,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
   function renderPreview() {
     switch (type) {
-      case 'image': return <ImagePreview src={src} zoom={zoom} pan={pan} mediaRef={mediaRef} />
+      case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'video': return <VideoPreview src={src} loop={loop} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'audio': return <AudioPreview file={file} src={src} />
       case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
