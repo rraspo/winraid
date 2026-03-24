@@ -6,7 +6,7 @@ import styles from './BrowseGrid.module.css'
 
 const BrowseGrid = memo(function BrowseGrid({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
-  path, selectedId, busy, selected, dragSource, dropTargetPath, lastVisitedDir,
+  path, selectedId, busy, selected, dragSource, lastVisitedDir,
   highlightFile, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, toggleSelect,
@@ -67,7 +67,6 @@ const BrowseGrid = memo(function BrowseGrid({
                       busy={busy}
                       isSelected={selected.has(entry.name)}
                       isDragSource={dragSource?.path === entryPath}
-                      isDropTarget={isDir && dropTargetPath === entryPath}
                       isLastVisited={isDir && lastVisitedDir === entry.name}
                       isHighlighted={highlightFile === entry.name}
                       highlightRef={highlightRef}

@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { Image, Film, File } from 'lucide-react'
 import VideoThumb from './VideoThumb'
 import { isImageFile, isVideoFile } from '../../utils/fileTypes'
 import styles from './Thumbnail.module.css'
 
-export default function Thumbnail({ name, remotePath, connectionId, size }) {
+const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size }) {
   const [error, setError] = useState(false)
-  const url    = `nas-stream://${connectionId}${remotePath}`
+  const url    = `nas-stream://${connectionId}${remotePath}?thumb=1`
   const isGrid = size === 'grid'
 
   if (!error && isImageFile(name)) {
@@ -16,6 +16,7 @@ export default function Thumbnail({ name, remotePath, connectionId, size }) {
         loading="lazy"
         className={isGrid ? styles.thumbGrid : styles.thumbList}
         onError={() => setError(true)}
+        decoding="async"
         alt=""
       />
     )
@@ -40,4 +41,6 @@ export default function Thumbnail({ name, remotePath, connectionId, size }) {
   if (isImageFile(name)) return <Image size={14} className={styles.iconFile} />
   if (isVideoFile(name)) return <Film  size={14} className={styles.iconFile} />
   return <File size={14} className={styles.iconFile} />
-}
+})
+
+export default Thumbnail
