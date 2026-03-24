@@ -6,7 +6,7 @@ import styles from './BrowseList.module.css'
 
 const BrowseList = memo(function BrowseList({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
-  path, selectedId, busy, selected, dragSource, dropTargetPath, lastVisitedDir,
+  path, selectedId, busy, selected, dragSource, lastVisitedDir,
   highlightFile, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, toggleSelect, toggleSelectAll,
@@ -72,7 +72,6 @@ const BrowseList = memo(function BrowseList({
                 busy={busy}
                 isSelected={selected.has(entry.name)}
                 isDragSource={dragSource?.path === entry.entryPath}
-                isDropTarget={entry.type === 'dir' && dropTargetPath === entry.entryPath}
                 isLastVisited={entry.type === 'dir' && lastVisitedDir === entry.name}
                 isHighlighted={highlightFile === entry.name}
                 highlightRef={highlightRef}
