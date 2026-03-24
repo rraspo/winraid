@@ -14,7 +14,8 @@
       "Bash(npm test:*)",
       "Bash(ls:*)",
       "WebFetch(domain:img.shields.io)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(powershell -Command \":*)"
     ]
   }
 }
