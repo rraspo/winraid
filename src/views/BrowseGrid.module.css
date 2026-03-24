@@ -1,0 +1,16 @@
+.gridWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* Extra bottom padding when bulk bar is visible so last row isn't covered */
+.hasSelection { padding-bottom: 52px; }
+
+/* ── Empty dir ────────────────────────────────────────────────────────────── */
+.emptyDir {
+  padding: var(--space-4);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}

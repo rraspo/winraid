@@ -1,0 +1,85 @@
+/* ── List variant ─────────────────────────────────────────────────────────── */
+.newFolderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-hover);
+}
+
+.newFolderInput {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-input);
+  background: var(--bg-input);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  outline: none;
+}
+
+.newFolderInput:focus { border-color: var(--accent); }
+
+.newFolderConfirm {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.newFolderConfirm:disabled             { opacity: 0.4; cursor: default; }
+.newFolderConfirm:hover:not(:disabled) { opacity: 0.85; }
+
+.newFolderCancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+}
+
+.newFolderCancel:hover { background: var(--bg-hover); color: var(--text); }
+
+/* ── Grid variant ─────────────────────────────────────────────────────────── */
+.newFolderCard {
+  border-radius: var(--radius-md);
+  border: 1.5px dashed var(--accent);
+  background: rgba(91, 164, 245, 0.04);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.newFolderCardIcon {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.5;
+}
+
+.newFolderCardBody {
+  padding: 6px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.newFolderCardActions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.newFolderCardActions .newFolderConfirm { flex: 1; }
+.newFolderCardActions .newFolderCancel  { flex-shrink: 0; }
+
+/* ── Folder icon color (list variant) ───────────────────────────────────── */
+.iconDir { color: var(--accent); flex-shrink: 0; }

@@ -1,0 +1,49 @@
+.menuWrap { position: relative; flex-shrink: 0; }
+
+.menuDotBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.menuDotBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.menuDropdown {
+  position: fixed;
+  z-index: 200;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: var(--space-1) 0;
+  min-width: 148px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px var(--space-3);
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  transition: background-color var(--transition);
+}
+
+.menuItem:hover { background: var(--bg-hover); }
+
+.menuDivider {
+  height: 1px;
+  background: var(--border);
+  margin: var(--space-1) 0;
+}
+
+.menuItemDanger       { color: var(--error); }
+.menuItemDanger:hover { background: color-mix(in srgb, var(--error) 12%, transparent); }

@@ -48,7 +48,7 @@ if (!app.requestSingleInstanceLock()) {
 let mainWindow  = null
 let tray        = null
 let isPaused    = false
-let _backupAbort = false   // cancellation flag for backup:run
+let _backupCurrentToken = null  // per-run cancellation token for backup:run
 
 // Set of connectionIds that were watching before a pause-all operation,
 // used by resume-all to restart only those connections.
@@ -976,7 +976,12 @@ function registerIPC() {
 
   // -- Backup: NAS → local SFTP download -------------------------------------
   ipcMain.handle('backup:run', async (_e, cfg) => {
-    _backupAbort = false
+    // Per-run token: if a second run starts while one is in flight, the first
+    // is superseded and will abort itself when it next checks the token.
+    const myToken = {}
+    if (_backupCurrentToken) _backupCurrentToken.cancelled = true
+    _backupCurrentToken = myToken
+    myToken.cancelled = false
     const stats = { files: 0, skipped: 0, bytes: 0, totalBytes: 0, errors: [] }
 
     // Validate the renderer-supplied localDest against the user home directory.
@@ -1037,7 +1042,7 @@ function registerIPC() {
 
     try {
       for (const sourcePath of cfg.sources) {
-        if (_backupAbort) break
+        if (myToken.cancelled) break
 
         log('info', `Backup: walking ${sourcePath}`)
         const baseName = sourcePath.split('/').filter(Boolean).pop() || 'backup'
@@ -1053,7 +1058,7 @@ function registerIPC() {
         }
 
         for (const { remotePath, size, mtime, relPath } of files) {
-          if (_backupAbort) break
+          if (myToken.cancelled) break
 
           const localPath = join(cfg.localDest, ...relPath.split('/').filter(Boolean))
 
@@ -1104,7 +1109,7 @@ function registerIPC() {
     stats.totalBytes = calcDirSize(cfg.localDest)
     sendToRenderer('backup:progress', { file: null, stats })
 
-    if (_backupAbort) {
+    if (myToken.cancelled) {
       log('warn', `Backup cancelled — ${stats.files} downloaded, ${stats.skipped} skipped, ${stats.errors.length} error(s)`)
     } else {
       log('info', `Backup complete — ${stats.files} downloaded, ${stats.skipped} skipped, ${stats.errors.length} error(s)`)
@@ -1113,7 +1118,7 @@ function registerIPC() {
   })
 
   ipcMain.handle('backup:cancel', () => {
-    _backupAbort = true
+    if (_backupCurrentToken) _backupCurrentToken.cancelled = true
     return { ok: true }
   })
 
@@ -1370,6 +1375,7 @@ const MIME_BY_EXT = {
   m4v:  'video/mp4',
   webm: 'video/webm',
   mov:  'video/quicktime',
+  mkv:  'video/x-matroska',
   // Audio
   mp3:  'audio/mpeg',
   flac: 'audio/flac',
@@ -1703,6 +1709,14 @@ app.on('second-instance', () => {
     mainWindow.show()
     mainWindow.focus()
   }
+})
+
+app.on('before-quit', () => {
+  for (const entry of _sftpPool.values()) {
+    clearTimeout(entry.timer)
+    try { entry.client.end() } catch { /* best effort */ }
+  }
+  _sftpPool.clear()
 })
 
 app.on('window-all-closed', () => {

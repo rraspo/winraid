@@ -13,12 +13,11 @@ import { useNavHistory } from './hooks/useNavHistory'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
-// View registry
+// View registry (BrowseView is excluded — it is always mounted and CSS-hidden)
 // ---------------------------------------------------------------------------
 const VIEW_COMPONENTS = {
   dashboard: DashboardView,
   queue:     QueueView,
-  browse:    BrowseView,
   backup:    BackupView,
   settings:  SettingsView,
   logs:      LogView,
@@ -214,11 +213,14 @@ export default function App() {
   }
 
   // --- Render ----------------------------------------------------------------
+  // BrowseView is always mounted (CSS-hidden when not active) to preserve
+  // scroll position, path, and virtualizer state across view switches.
+  const browseViewProps = { browseRestore, onHistoryPush, connections, activeConnId }
+
   const ActiveView = VIEW_COMPONENTS[activeView] ?? DashboardView
   const activeViewProps =
     activeView === 'backup'    ? { backupRun, setBackupRun } :
     activeView === 'dashboard' ? { watcherStatus, onNavigate: navigateView, onEditConnection: openConnEdit, connections, activeConnId } :
-    activeView === 'browse'    ? { browseRestore, onHistoryPush } :
     activeView === 'queue'     ? { connections, onNavigate: navigateView, onBrowsePath: (connId, remotePath, highlightFile) => { setActiveConnId(connId); navigateView('browse'); setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() }) } } :
     {}
 
@@ -249,6 +251,10 @@ export default function App() {
             connections={connections}
           />
           <main className={styles.content}>
+            <BrowseView
+              {...browseViewProps}
+              style={{ display: activeView === 'browse' && connEdit === null ? '' : 'none' }}
+            />
             {connEdit !== null
               ? <ConnectionView
                   key={connEdit.conn?.id ?? 'new'}
@@ -256,7 +262,7 @@ export default function App() {
                   onSave={handleConnSave}
                   onClose={() => setConnEdit(null)}
                 />
-              : <ActiveView {...activeViewProps} />
+              : activeView !== 'browse' && <ActiveView {...activeViewProps} />
             }
           </main>
           <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} connections={connections} onNavigate={navigateView} />
