@@ -1764,12 +1764,17 @@ function registerNasStreamProtocol() {
       if (cached) {
         return new Response(cached, {
           status: 200,
-          headers: { 'Content-Type': mime, 'Cache-Control': CACHE },
+          headers: {
+            'Content-Type':   mime,
+            'Content-Length': String(cached.length),
+            'Accept-Ranges':  'bytes',
+            'Cache-Control':  CACHE,
+          },
         })
       }
 
-      const sftp_stream = sftp.createReadStream(remotePath)
-      const body = nodeStreamToReadableWithCache(sftp_stream, async (buf) => {
+      const readStream = sftp.createReadStream(remotePath)
+      const body = nodeStreamToReadableWithCache(readStream, async (buf) => {
         try {
           const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
           await mkdirAsync(fullDir, { recursive: true })
@@ -1778,7 +1783,7 @@ function registerNasStreamProtocol() {
           // Populate thumbnail cache if this is an image and the thumb is missing
           if (mime.startsWith('image/')) {
             const tcp = thumbCachePath(connId, remotePath)
-            const hasThumb = await readFileAsync(tcp).then(() => true).catch(() => false)
+            const hasThumb = await accessAsync(tcp).then(() => true).catch(() => false)
             if (!hasThumb) {
               const img = nativeImage.createFromBuffer(buf)
               if (!img.isEmpty()) {
@@ -1793,7 +1798,11 @@ function registerNasStreamProtocol() {
 
       return new Response(body, {
         status: 200,
-        headers: { 'Content-Type': mime, 'Cache-Control': CACHE },
+        headers: {
+          'Content-Type':  mime,
+          'Accept-Ranges': 'bytes',
+          'Cache-Control': CACHE,
+        },
       })
     } catch (err) {
       log('error', `nas-stream: handler error — ${err.message}`)
