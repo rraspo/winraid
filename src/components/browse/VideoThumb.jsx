@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { memo, useState, useEffect, useRef } from 'react'
 import styles from './VideoThumb.module.css'
 
-export default function VideoThumb({ url, className, onError }) {
+const VideoThumb = memo(function VideoThumb({ url, className, onError }) {
   const wrapRef  = useRef(null)
   const [active, setActive] = useState(false)
 
@@ -29,4 +29,6 @@ export default function VideoThumb({ url, className, onError }) {
       )}
     </div>
   )
-}
+})
+
+export default VideoThumb
