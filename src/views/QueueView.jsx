@@ -9,6 +9,7 @@ import {
 import { File, Video, Image, FileText, Archive, X, RotateCcw, ArrowUp, ArrowDown } from 'lucide-react'
 import Tooltip from '../components/ui/Tooltip'
 import styles from './QueueView.module.css'
+import { formatSize } from '../utils/format'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -19,14 +20,6 @@ function relativeTime(ts) {
   if (s < 60)   return `${s}s ago`
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
   return `${Math.floor(s / 3600)}h ago`
-}
-
-function formatSize(bytes) {
-  if (!bytes) return '\u2014'
-  if (bytes < 1024)       return `${bytes} B`
-  if (bytes < 1024 ** 2)  return `${(bytes / 1024).toFixed(0)} KB`
-  if (bytes < 1024 ** 3)  return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
 function getFileIcon(filename) {
