@@ -1821,7 +1821,7 @@ app.whenReady().then(async () => {
     ? "default-src 'self' nas-stream:; " +
       "script-src 'self'; " +
       "style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: nas-stream: https://cdn.jsdelivr.net; " +
+      "img-src 'self' data: blob: nas-stream: https://cdn.jsdelivr.net; " +
       "media-src 'self' nas-stream:; " +
       "connect-src 'self' https://cdn.jsdelivr.net https://raw.githubusercontent.com"
     : "default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: nas-stream:; " +
