@@ -68,6 +68,7 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
 
   useEffect(() => {
     let cancelled = false
+    let blobUrl   = null
     let reader    = null
 
     // Browser cache hit — show full-res immediately, no ring
@@ -92,6 +93,7 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
         const response = await fetch(src, { signal: ac.signal })
         if (!response.ok || !response.body) throw new Error('bad response')
 
+        const mime = response.headers.get('content-type') || 'image/jpeg'
         reader = response.body.getReader()
         const chunks = []
         let received = 0
@@ -108,17 +110,10 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
 
         if (cancelled) return
 
-        // Use a data: URI so the image loads under both dev and production CSP.
-        // Production img-src allows data: but not blob:, so URL.createObjectURL
-        // would be blocked silently in packaged builds.
-        const blob   = new Blob(chunks)
-        const buffer = await blob.arrayBuffer()
-        if (cancelled) return
-        const bytes  = new Uint8Array(buffer)
-        let binary   = ''
-        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i])
-        const dataUrl = `data:image/jpeg;base64,${btoa(binary)}`
-        setActiveSrc(dataUrl)
+        // Production CSP allows blob: (img-src includes blob:), so createObjectURL
+        // is safe in both dev and packaged builds.
+        blobUrl = URL.createObjectURL(new Blob(chunks, { type: mime }))
+        setActiveSrc(blobUrl)
         setProgress(1)
         setDone(true)
       } catch (err) {
@@ -133,6 +128,7 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
       cancelled = true
       ac.abort()
       reader?.cancel().catch(() => {})
+      if (blobUrl) URL.revokeObjectURL(blobUrl)
     }
   }, [src, size])
 
