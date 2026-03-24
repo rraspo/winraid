@@ -2,49 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
 import styles from './QuickLookOverlay.module.css'
-
-// ---------------------------------------------------------------------------
-// Extension sets — must match the sets used in BrowseView for consistency.
-// ---------------------------------------------------------------------------
-const IMAGE_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp'])
-const VIDEO_EXT = new Set(['mp4', 'm4v', 'webm', 'mov'])
-const AUDIO_EXT = new Set(['mp3', 'flac', 'wav', 'aac', 'ogg', 'm4a', 'opus'])
-const TEXT_EXT  = new Set([
-  'json', 'yml', 'yaml', 'sh', 'bash', 'zsh',
-  'conf', 'ini', 'env', 'toml', 'txt', 'xml', 'lua', 'py', 'nginx',
-])
-
-function extOf(name) {
-  const dot = name.lastIndexOf('.')
-  return dot === -1 ? '' : name.slice(dot + 1).toLowerCase()
-}
-
-function fileType(name) {
-  const ext = extOf(name)
-  if (IMAGE_EXT.has(ext)) return 'image'
-  if (VIDEO_EXT.has(ext)) return 'video'
-  if (AUDIO_EXT.has(ext)) return 'audio'
-  if (TEXT_EXT.has(ext))  return 'text'
-  return 'unknown'
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-function formatSize(bytes) {
-  if (!bytes) return '—'
-  if (bytes < 1024)      return `${bytes} B`
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
-}
-
-function formatDate(ts) {
-  if (!ts) return '—'
-  return new Date(ts).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-  })
-}
+import { formatSize, formatDate } from '../utils/format'
+import { fileType, getExt } from '../utils/fileTypes'
 
 function nasStreamUrl(connectionId, remotePath) {
   // nas-stream://{connectionId}{/remote/path}
@@ -161,7 +120,7 @@ function TextPreview({ connectionId, remotePath }) {
 }
 
 function UnknownPreview({ file }) {
-  const ext = extOf(file.name)
+  const ext = getExt(file.name)
   return (
     <div className={styles.unknownWrap}>
       <File size={56} className={styles.unknownIcon} />
@@ -299,9 +258,9 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const scrollThrottleRef = useRef(false)
   const previewAreaRef    = useRef(null)
   const mediaRef          = useRef(null)
-  const zoomRef           = useRef(zoom)
   const panRef            = useRef({ x: 0, y: 0 })
-  const invertPanRef      = useRef(invertPan)
+  const latestRef         = useRef({})
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev }
 
   function handleLoopChange(v) {
     setLoop(v)
@@ -327,19 +286,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
   function handleInvertPanChange(v) {
     setInvertPan(v)
-    invertPanRef.current = v
     localStorage.setItem('ql-invert-pan', String(v))
   }
-
-  // Keep refs in sync so event handlers (attached once) always see fresh values
-  const wheelModeRef = useRef(wheelMode)
-  useEffect(() => { wheelModeRef.current = wheelMode }, [wheelMode])
-  useEffect(() => { zoomRef.current = zoom }, [zoom])
-  useEffect(() => { invertPanRef.current = invertPan }, [invertPan])
-  const handleNextRef = useRef(handleNext)
-  const handlePrevRef = useRef(handlePrev)
-  useEffect(() => { handleNextRef.current = handleNext }, [handleNext])
-  useEffect(() => { handlePrevRef.current = handlePrev }, [handlePrev])
 
   // Wheel: zoom or scroll-navigate (passive:false so we can preventDefault)
   useEffect(() => {
@@ -349,12 +297,12 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       // Horizontal tilt wheel → navigate files (always, regardless of wheel mode)
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && e.deltaX !== 0) {
         e.preventDefault()
-        if (e.deltaX > 0) handleNextRef.current()
-        else handlePrevRef.current()
+        if (e.deltaX > 0) latestRef.current.handleNext()
+        else latestRef.current.handlePrev()
         return
       }
 
-      if (wheelModeRef.current === 'zoom') {
+      if (latestRef.current.wheelMode === 'zoom') {
         e.preventDefault()
         const delta = e.deltaY > 0 ? -0.1 : 0.1
         setZoom((z) => {
@@ -370,8 +318,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         if (scrollThrottleRef.current) return
         scrollThrottleRef.current = true
         setTimeout(() => { scrollThrottleRef.current = false }, 400)
-        if (e.deltaY > 0) handleNextRef.current()
-        else handlePrevRef.current()
+        if (e.deltaY > 0) latestRef.current.handleNext()
+        else latestRef.current.handlePrev()
       }
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -383,13 +331,13 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     const el = previewAreaRef.current
     if (!el) return
     function onMouseMove(e) {
-      if (zoomRef.current <= 1) return
+      const { zoom: z, invertPan: ip } = latestRef.current
+      if (z <= 1) return
       const rect    = el.getBoundingClientRect()
       const offsetX = e.clientX - (rect.left + rect.width  / 2)
       const offsetY = e.clientY - (rect.top  + rect.height / 2)
-      const z       = zoomRef.current
 
-      const sign = invertPanRef.current ? 1 : -1
+      const sign = ip ? 1 : -1
       let x = sign * offsetX * (z - 1)
       let y = sign * offsetY * (z - 1)
 
@@ -398,6 +346,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       if (media) {
         const maxX = Math.max(0, (media.offsetWidth  * z - rect.width)  / 2)
         const maxY = Math.max(0, (media.offsetHeight * z - rect.height) / 2)
+
         x = Math.max(-maxX, Math.min(maxX, x))
         y = Math.max(-maxY, Math.min(maxY, y))
       }

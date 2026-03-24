@@ -1,0 +1,199 @@
+.listWrapper {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Extra bottom padding when bulk bar is visible so last row isn't covered */
+.hasSelection { padding-bottom: 52px; }
+
+/* ── Column header row ────────────────────────────────────────────────────── */
+.colHeader {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  height: 32px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  position: sticky;
+  top: 0;
+  background: var(--bg-panel);
+  z-index: 1;
+}
+
+.colName    { flex: 1; min-width: 0; }
+.colSize    { width: 80px;  flex-shrink: 0; text-align: right; }
+.colDate    { width: 110px; flex-shrink: 0; text-align: right; }
+.colActions { width: 36px;  flex-shrink: 0; }
+
+/* ── Entry row ────────────────────────────────────────────────────────────── */
+.row {
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-4);
+  height: 40px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--font-size-sm);
+  transition: background-color var(--transition);
+}
+
+.row:hover { background-color: var(--bg-hover); }
+
+.rowDir { }
+
+/* ── Name cell ────────────────────────────────────────────────────────────── */
+.rowName {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+
+.iconDir  { color: var(--accent);     flex-shrink: 0; }
+.iconFile { color: var(--text-faint); flex-shrink: 0; }
+
+.nameBtn {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  text-align: left;
+  transition: color var(--transition);
+}
+
+.nameBtn:hover { color: var(--accent); }
+
+.nameText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+/* ── Size / date / actions cells ─────────────────────────────────────────── */
+.rowSize {
+  width: 80px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.rowDate {
+  width: 110px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--text-faint);
+  font-size: var(--font-size-xs);
+}
+
+.rowActions {
+  width: 36px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* ── Checkbox ─────────────────────────────────────────────────────────────── */
+.checkbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  cursor: pointer;
+  margin-right: var(--space-1);
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.row:hover > .checkbox,
+.rowSelected > .checkbox {
+  opacity: 1;
+}
+
+.colHeader > .checkbox { opacity: 0; }
+
+.hasSelection .colHeader > .checkbox { opacity: 1; }
+
+.checkbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.checkmark {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border-strong);
+  background: transparent;
+  transition: background-color 150ms ease, border-color 150ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.checkmark::after {
+  content: '';
+  display: none;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-0.5px, -0.5px);
+}
+
+.checkbox input:checked + .checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox input:checked + .checkmark::after { display: block; }
+
+.checkbox input:indeterminate + .checkmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.checkbox input:indeterminate + .checkmark::after {
+  display: block;
+  width: 8px;
+  height: 0;
+  border-width: 0 0 2px 0;
+  transform: none;
+}
+
+.checkbox:hover .checkmark { border-color: var(--accent); }
+
+/* ── Row selection ────────────────────────────────────────────────────────── */
+.rowSelected          { background: rgba(91, 164, 245, 0.10) !important; }
+.rowSelected:hover    { background: rgba(91, 164, 245, 0.15) !important; }
+
+/* ── Empty dir ────────────────────────────────────────────────────────────── */
+.emptyDir {
+  padding: var(--space-4);
+  color: var(--text-faint);
+  font-size: var(--font-size-sm);
+}
+
+/* ── Drag-and-drop states ─────────────────────────────────────────────────── */
+.dropTarget {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
+}
+
+.dragging { opacity: 0.45; }
+
+.lastVisited { background: rgba(91, 164, 245, 0.25) !important; }
