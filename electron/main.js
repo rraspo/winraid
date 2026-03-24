@@ -12,9 +12,10 @@ import {
   Notification,
   powerMonitor,
 } from 'electron'
-import { join, basename, relative, dirname, resolve, sep } from 'path'
+import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
 import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, utimesSync } from 'fs'
-import { readdir as readdirAsync, stat as statAsync } from 'fs/promises'
+import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync } from 'fs/promises'
+import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 
@@ -398,15 +399,15 @@ async function backupWalkRemote(sftp, remotePath, relBase) {
 }
 
 // Recursively sum the size of all files under a local directory.
-function calcDirSize(dirPath) {
+async function calcDirSize(dirPath) {
   let total = 0
   try {
-    for (const entry of readdirSync(dirPath, { withFileTypes: true })) {
+    for (const entry of await readdirAsync(dirPath, { withFileTypes: true })) {
       const full = join(dirPath, entry.name)
       if (entry.isDirectory()) {
-        total += calcDirSize(full)
+        total += await calcDirSize(full)
       } else {
-        try { total += statSync(full).size } catch { /* skip inaccessible */ }
+        try { total += (await statAsync(full)).size } catch { /* skip inaccessible */ }
       }
     }
   } catch { /* dir may not exist yet */ }
@@ -662,6 +663,48 @@ function registerIPC() {
 
   ipcMain.handle('log:clear', () => {
     clearLog()
+  })
+
+  // -- Thumbnail cache --------------------------------------------------------
+  ipcMain.handle('cache:thumb-size', async () => {
+    const thumbsDir = join(app.getPath('userData'), 'thumbs')
+
+    async function sumDir(dir) {
+      let total = 0
+      let entries
+      try {
+        entries = await readdirAsync(dir, { withFileTypes: true })
+      } catch {
+        return 0
+      }
+      for (const entry of entries) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) {
+          total += await sumDir(full)
+        } else {
+          try {
+            const st = await statAsync(full)
+            total += st.size
+          } catch {
+            // inaccessible — skip
+          }
+        }
+      }
+      return total
+    }
+
+    const bytes = await sumDir(thumbsDir)
+    return { bytes }
+  })
+
+  ipcMain.handle('cache:clear-thumbs', async () => {
+    const thumbsDir = join(app.getPath('userData'), 'thumbs')
+    try {
+      await rmAsync(thumbsDir, { recursive: true, force: true })
+      return { ok: true }
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
   })
 
   // -- SSH: test connection ---------------------------------------------------
@@ -1106,7 +1149,7 @@ function registerIPC() {
       conn.end()
     }
 
-    stats.totalBytes = calcDirSize(cfg.localDest)
+    stats.totalBytes = await calcDirSize(cfg.localDest)
     sendToRenderer('backup:progress', { file: null, stats })
 
     if (myToken.cancelled) {
@@ -1528,6 +1571,73 @@ function parseRange(rangeHeader, fileSize) {
   return { start, end }
 }
 
+// Wraps a Node.js Readable into a Web ReadableStream safe for use in
+// Electron protocol handlers. The `cancelled` flag prevents controller calls
+// (enqueue / close / error) after Chromium cancels the request — calling any
+// controller method on a cancelled stream throws a TypeError that crosses the
+// JS/C++ boundary and causes a dangling raw_ptr crash in the renderer process.
+function nodeStreamToReadable(nodeStream) {
+  let cancelled = false
+  return new ReadableStream({
+    start(controller) {
+      nodeStream.on('data',  (chunk) => { if (!cancelled) controller.enqueue(chunk) })
+      nodeStream.on('end',   ()      => { if (!cancelled) controller.close() })
+      nodeStream.on('error', (err)   => { if (!cancelled) controller.error(err) })
+    },
+    cancel() { cancelled = true; nodeStream.destroy() },
+  })
+}
+
+/**
+ * Wraps a Node.js readable stream in a WHATWG ReadableStream, forwarding
+ * chunks to the controller immediately (so the browser gets bytes as they
+ * arrive), while simultaneously collecting chunks for a side-effect cache
+ * write that fires after the stream ends.
+ *
+ * onCached(buf) is called once with the full buffer when the stream ends.
+ * It is NOT called if the stream is cancelled or errors.
+ */
+function nodeStreamToReadableWithCache(nodeStream, onCached) {
+  let cancelled = false
+  const chunks  = []
+  return new ReadableStream({
+    start(controller) {
+      nodeStream.on('data', (chunk) => {
+        if (cancelled) return
+        chunks.push(chunk)
+        controller.enqueue(chunk)
+      })
+      nodeStream.on('end', () => {
+        if (cancelled) return
+        controller.close()
+        onCached(Buffer.concat(chunks))
+      })
+      nodeStream.on('error', (err) => {
+        if (!cancelled) controller.error(err)
+      })
+    },
+    cancel() {
+      cancelled = true
+      nodeStream.destroy()
+    },
+  })
+}
+
+// Returns the absolute path where a thumbnail JPEG for remotePath should be
+// stored under userData/thumbs/{connId}/{sha256(remotePath)}.jpg
+function thumbCachePath(connId, remotePath) {
+  const hash = createHash('sha256').update(remotePath).digest('hex')
+  return join(app.getPath('userData'), 'thumbs', connId, hash + '.jpg')
+}
+
+// Returns the absolute path for the full-resolution cached copy of remotePath,
+// stored under userData/thumbs/{connId}/full/{sha256(remotePath)}.{ext}
+function fullCachePath(connId, remotePath) {
+  const hash = createHash('sha256').update(remotePath).digest('hex')
+  const ext  = extname(remotePath) || ''
+  return join(app.getPath('userData'), 'thumbs', connId, 'full', hash + ext)
+}
+
 function registerNasStreamProtocol() {
   // Privilege must be declared before app.whenReady() — done in the
   // protocol.registerSchemesAsPrivileged call below at module level.
@@ -1548,20 +1658,21 @@ function registerNasStreamProtocol() {
       }
       _poolTouch(connId)
 
-      // Stat the file to get its size (needed for Range calculations)
-      const attrs = await new Promise((res, rej) =>
-        sftp.stat(remotePath, (err, a) => err ? rej(err) : res(a))
-      ).catch(() => null)
-
-      if (!attrs) {
-        return new Response('File not found', { status: 404 })
-      }
-      const fileSize = attrs.size ?? 0
-      const mime     = mimeForPath(remotePath)
+      const mime        = mimeForPath(remotePath)
       const rangeHeader = request.headers.get('range')
+      const isThumb     = url.searchParams.get('thumb') === '1'
+      const CACHE       = 'private, max-age=300'
 
+      // Range request — stat first to validate bounds and build Content-Range
       if (rangeHeader) {
-        const range = parseRange(rangeHeader, fileSize)
+        const attrs = await new Promise((res, rej) =>
+          sftp.stat(remotePath, (err, a) => err ? rej(err) : res(a))
+        ).catch(() => null)
+
+        if (!attrs) return new Response('File not found', { status: 404 })
+
+        const fileSize = attrs.size ?? 0
+        const range    = parseRange(rangeHeader, fileSize)
         if (!range) {
           return new Response('Range Not Satisfiable', {
             status: 416,
@@ -1572,14 +1683,7 @@ function registerNasStreamProtocol() {
         const chunkSize = end - start + 1
 
         const stream = sftp.createReadStream(remotePath, { start, end })
-        const body   = new ReadableStream({
-          start(controller) {
-            stream.on('data',  (chunk) => controller.enqueue(chunk))
-            stream.on('end',   ()      => controller.close())
-            stream.on('error', (err)   => controller.error(err))
-          },
-          cancel() { stream.destroy() },
-        })
+        const body   = nodeStreamToReadable(stream)
 
         return new Response(body, {
           status: 206,
@@ -1588,28 +1692,108 @@ function registerNasStreamProtocol() {
             'Content-Length': String(chunkSize),
             'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
             'Accept-Ranges':  'bytes',
+            'Cache-Control':  CACHE,
           },
         })
       }
 
-      // No Range — serve the full file
-      const stream = sftp.createReadStream(remotePath)
-      const body   = new ReadableStream({
-        start(controller) {
-          stream.on('data',  (chunk) => controller.enqueue(chunk))
-          stream.on('end',   ()      => controller.close())
-          stream.on('error', (err)   => controller.error(err))
-        },
-        cancel() { stream.destroy() },
+      // No Range + image thumbnail — serve from disk cache (resize on first hit)
+      if (mime.startsWith('image/') && isThumb) {
+        const cachePath = thumbCachePath(connId, remotePath)
+
+        // Cache hit — serve without touching SFTP
+        const cached = await readFileAsync(cachePath).catch(() => null)
+        if (cached) {
+          return new Response(cached, {
+            status: 200,
+            headers: {
+              'Content-Type':  'image/jpeg',
+              'Cache-Control': CACHE,
+            },
+          })
+        }
+
+        // Cache miss — fetch full file from SFTP, resize, persist, serve
+        const stream = sftp.createReadStream(remotePath)
+        const chunks = []
+        await new Promise((resolve, reject) => {
+          stream.on('data',  (chunk) => chunks.push(chunk))
+          stream.on('end',   resolve)
+          stream.on('error', reject)
+        })
+        const buf = Buffer.concat(chunks)
+
+        // Save full-res copy so QuickLook can serve it without re-fetching
+        const fcp     = fullCachePath(connId, remotePath)
+        const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
+        await mkdirAsync(fullDir, { recursive: true })
+        await writeFileAsync(fcp, buf).catch(() => {})
+
+        const img = nativeImage.createFromBuffer(buf)
+        if (img.isEmpty()) {
+          // nativeImage could not decode the format — serve original bytes as-is
+          return new Response(buf, {
+            status: 200,
+            headers: {
+              'Content-Type':  mime,
+              'Cache-Control': CACHE,
+            },
+          })
+        }
+
+        const resized  = img.resize({ width: 240 })
+        const jpegBuf  = resized.toJPEG(80)
+        const cacheDir = join(app.getPath('userData'), 'thumbs', connId)
+        await mkdirAsync(cacheDir, { recursive: true })
+        await writeFileAsync(cachePath, jpegBuf).catch(() => {})
+
+        return new Response(jpegBuf, {
+          status: 200,
+          headers: {
+            'Content-Type':  'image/jpeg',
+            'Cache-Control': CACHE,
+          },
+        })
+      }
+
+      // No Range + full file (full-res image or non-image)
+      // Check the full-res disk cache first; on a miss, buffer from SFTP,
+      // persist both the full-res copy and (if absent) the thumbnail, then serve.
+      const fcp    = fullCachePath(connId, remotePath)
+      const cached = await readFileAsync(fcp).catch(() => null)
+      if (cached) {
+        return new Response(cached, {
+          status: 200,
+          headers: { 'Content-Type': mime, 'Cache-Control': CACHE },
+        })
+      }
+
+      const sftp_stream = sftp.createReadStream(remotePath)
+      const body = nodeStreamToReadableWithCache(sftp_stream, async (buf) => {
+        try {
+          const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
+          await mkdirAsync(fullDir, { recursive: true })
+          await writeFileAsync(fcp, buf).catch(() => {})
+
+          // Populate thumbnail cache if this is an image and the thumb is missing
+          if (mime.startsWith('image/')) {
+            const tcp = thumbCachePath(connId, remotePath)
+            const hasThumb = await readFileAsync(tcp).then(() => true).catch(() => false)
+            if (!hasThumb) {
+              const img = nativeImage.createFromBuffer(buf)
+              if (!img.isEmpty()) {
+                const thumbDir = join(app.getPath('userData'), 'thumbs', connId)
+                await mkdirAsync(thumbDir, { recursive: true })
+                await writeFileAsync(tcp, img.resize({ width: 240 }).toJPEG(80)).catch(() => {})
+              }
+            }
+          }
+        } catch (_) { /* cache write failure is non-fatal */ }
       })
 
       return new Response(body, {
         status: 200,
-        headers: {
-          'Content-Type':   mime,
-          'Content-Length': String(fileSize),
-          'Accept-Ranges':  'bytes',
-        },
+        headers: { 'Content-Type': mime, 'Cache-Control': CACHE },
       })
     } catch (err) {
       log('error', `nas-stream: handler error — ${err.message}`)
