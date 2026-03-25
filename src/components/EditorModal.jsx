@@ -88,7 +88,7 @@ export default function EditorModal({ connectionId, filePath, onClose }) {
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
-  })
+  }, [isDirty, saving, loading, handleSave])
 
   function handleDiscard() {
     setDraft(content)

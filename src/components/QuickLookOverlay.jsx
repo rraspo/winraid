@@ -91,7 +91,11 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
     ;(async () => {
       try {
         const response = await fetch(src, { signal: ac.signal })
-        if (!response.ok || !response.body) throw new Error('bad response')
+        if (!response.ok || !response.body) {
+          setActiveSrc(src)
+          setDone(true)
+          return
+        }
 
         const mime = response.headers.get('content-type') || 'image/jpeg'
         reader = response.body.getReader()

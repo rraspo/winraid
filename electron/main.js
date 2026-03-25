@@ -14,7 +14,7 @@ import {
 } from 'electron'
 import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
 import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, utimesSync } from 'fs'
-import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync } from 'fs/promises'
+import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync, unlink as unlinkAsync } from 'fs/promises'
 import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
@@ -50,6 +50,7 @@ let mainWindow  = null
 let tray        = null
 let isPaused    = false
 let _backupCurrentToken = null  // per-run cancellation token for backup:run
+let _backupCurrentConn  = null  // active SSH Client during backup:run — used to interrupt fastGet
 
 // Set of connectionIds that were watching before a pause-all operation,
 // used by resume-all to restart only those connections.
@@ -415,8 +416,8 @@ async function calcDirSize(dirPath) {
 }
 
 // Download a single file from the NAS to a local path, creating parent dirs.
-function backupDownloadFile(sftp, remotePath, localPath) {
-  mkdirSync(dirname(localPath), { recursive: true })
+async function backupDownloadFile(sftp, remotePath, localPath) {
+  await mkdirAsync(dirname(localPath), { recursive: true })
   return new Promise((resolve, reject) => {
     sftp.fastGet(remotePath, localPath, { concurrency: 4, chunkSize: 256 * 1024 },
       (err) => err ? reject(err) : resolve()
@@ -603,9 +604,13 @@ function registerIPC() {
     const cfg  = getConfig()
     const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
     if (!conn) return { ok: false, error: 'connection not found' }
+    if (!Array.isArray(relPaths)) return { ok: false, error: 'invalid relPaths' }
+    const resolvedBase = resolve(conn.localFolder)
     const q = await getQueue()
     for (const rel of relPaths) {
+      if (typeof rel !== 'string' || rel.includes('..')) continue
       const filePath = join(localFolder, ...rel.split('/'))
+      if (!resolve(filePath).startsWith(resolvedBase + sep)) continue
       const relPath  = conn.folderMode === 'flat' ? basename(filePath) : rel
       let fileSize = null
       try { fileSize = statSync(filePath).size } catch { /* file may have been removed */ }
@@ -648,8 +653,8 @@ function registerIPC() {
       if (resolved === homeDir || !resolved.startsWith(homePrefix)) {
         return { ok: false, error: 'Path is outside the user home directory.' }
       }
-      rmSync(folderPath, { recursive: true, force: true })
-      mkdirSync(folderPath, { recursive: true })
+      rmSync(resolved, { recursive: true, force: true })
+      mkdirSync(resolved, { recursive: true })
       return { ok: true }
     } catch (err) {
       return { ok: false, error: err.message }
@@ -974,7 +979,7 @@ function registerIPC() {
       for (const rel of relPaths) {
         const abs = join(resolvedLF, rel)
         // Path traversal guard
-        if (!abs.startsWith(resolvedLF + sep) && abs !== resolvedLF) {
+        if (!abs.startsWith(resolvedLF + sep)) {
           errors.push({ file: rel, error: 'Path traversal blocked.' })
           continue
         }
@@ -1081,6 +1086,7 @@ function registerIPC() {
       return { ok: false, error: `SSH connection failed: ${err.message}` }
     }
 
+    _backupCurrentConn = conn
     log('info', `Backup started — ${cfg.sources.length} source(s) → ${cfg.localDest}`)
 
     try {
@@ -1118,7 +1124,7 @@ function registerIPC() {
           // When the server omits mtime (returns 0), fall back to size-only comparison.
           // Use 1-second tolerance for servers/filesystems that round mtime to 2s boundaries.
           try {
-            const st = statSync(localPath)
+            const st = await statAsync(localPath)
             const localSec  = Math.floor(st.mtimeMs / 1000)
             const sizeMatch  = st.size === size
             const mtimeMatch = mtime === 0 || Math.abs(localSec - mtime) <= 1
@@ -1142,10 +1148,15 @@ function registerIPC() {
             log('error', `Backup: failed to download ${relPath} — ${e.message}`)
             stats.errors.push({ file: relPath, error: e.message })
             sendToRenderer('backup:progress', { file: relPath, status: 'error', stats })
+            if (myToken.cancelled) {
+              // Remove partial file left by interrupted fastGet
+              await unlinkAsync(localPath).catch(() => {})
+            }
           }
         }
       }
     } finally {
+      _backupCurrentConn = null
       conn.end()
     }
 
@@ -1162,11 +1173,20 @@ function registerIPC() {
 
   ipcMain.handle('backup:cancel', () => {
     if (_backupCurrentToken) _backupCurrentToken.cancelled = true
+    if (_backupCurrentConn) {
+      try { _backupCurrentConn.end() } catch {}
+      _backupCurrentConn = null
+    }
     return { ok: true }
   })
 
   // -- SSH: list remote directory (for the remote-path browser) ---------------
   ipcMain.handle('ssh:list-dir', async (_e, cfg) => {
+    try {
+      validateCfg(cfg)
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
     try {
       const { Client } = await import('ssh2')
 
@@ -1265,6 +1285,8 @@ function makeFileDetectedCallback(connectionId) {
       // Open remote checker once per scan (lazy, per-connection)
       if (_checker === undefined) {
         _checker = await openRemoteCheckerForConn(conn)
+        const { setWatcherChecker } = await import('./watcher.js')
+        setWatcherChecker(connectionId, _checker ?? null)
       }
       if (_checker) {
         try {
@@ -1276,12 +1298,16 @@ function makeFileDetectedCallback(connectionId) {
           // Connection dropped mid-scan — stop checking, let files queue normally
           _checker.close()
           _checker = null
+          const { setWatcherChecker } = await import('./watcher.js')
+          setWatcherChecker(connectionId, null)
         }
       }
     } else if (_checker) {
       // Initial scan is over — close the checker
       _checker.close()
       _checker = null
+      const { setWatcherChecker } = await import('./watcher.js')
+      setWatcherChecker(connectionId, null)
     }
 
     let fileSize = null
@@ -1528,6 +1554,8 @@ async function _poolConnect(connId) {
             _sftpPool.delete(connId)
           }, SFTP_POOL_TTL)
           _sftpPool.set(connId, { client, sftp: sftpHandle, timer })
+          client.on('close', () => _sftpPool.delete(connId))
+          client.on('error', () => _sftpPool.delete(connId))
           resolve(sftpHandle)
         })
       })
