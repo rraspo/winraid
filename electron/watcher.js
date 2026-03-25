@@ -24,6 +24,7 @@ class WatcherInstance {
     this.inFlight       = 0
     this.currentFile    = null   // filename currently undergoing stability polling
     this.debounceMap    = new Map()
+    this.checker        = null   // remote checker held open during initial scan
   }
 
   start(folder, callback, onStatus) {
@@ -67,6 +68,10 @@ class WatcherInstance {
     }
     for (const t of this.debounceMap.values()) clearTimeout(t)
     this.debounceMap.clear()
+    if (this.checker) {
+      try { this.checker.close() } catch {}
+      this.checker = null
+    }
     this.folder      = null
     this.onFileReady = null
     this.statusCb    = null
@@ -253,6 +258,12 @@ export function resumeWatcher(connectionId) {
 /** Check if a specific connection has an active (non-paused) watcher. */
 export function isWatching(connectionId) {
   return watchers.get(connectionId)?.isWatching ?? false
+}
+
+/** Register (or clear) the remote checker for a connection so stop() can close it. */
+export function setWatcherChecker(connectionId, checker) {
+  const instance = watchers.get(connectionId)
+  if (instance) instance.checker = checker
 }
 
 // ---------------------------------------------------------------------------

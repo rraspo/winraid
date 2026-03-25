@@ -14,7 +14,7 @@ const BrowseGrid = memo(function BrowseGrid({
 }) {
   const entries = entriesWithPaths
   const [gridScrollEl, setGridScrollEl] = useState(null)
-  const { gridVirtualizer, gridCols, gridRowH } = useGridVirtualizer(entries, gridScrollEl)
+  const { gridVirtualizer, gridCols } = useGridVirtualizer(entries, gridScrollEl)
 
   return (
     <div

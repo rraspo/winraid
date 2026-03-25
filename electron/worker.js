@@ -1,4 +1,4 @@
-import { getNextPending, updateJob, STATUS } from './queue.js'
+import { getNextPending, updateJob, listJobs, STATUS } from './queue.js'
 import { getConfig } from './config.js'
 import { sendToRenderer, notify } from './main.js'
 import { log } from './logger.js'
@@ -148,6 +148,9 @@ function markTransferring(job) {
 }
 
 function markDone(job) {
+  // If the job was cancelled while the transfer was in flight, respect the cancel.
+  const current = listJobs().find((j) => j.id === job.id)
+  if (current?.status === STATUS.ERROR) return
   updateJob(job.id, { status: STATUS.DONE, progress: 1 })
   sendToRenderer('queue:updated', {
     type: 'updated',

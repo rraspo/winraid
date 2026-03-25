@@ -17,12 +17,12 @@ import Tooltip from '../components/ui/Tooltip'
 import { useBrowse } from '../hooks/useBrowse'
 
 export default function BrowseView({ onHistoryPush, browseRestore, connections: connectionsProp, activeConnId: activeConnIdProp, style }) {
-  const browse = useBrowse({ onHistoryPush, browseRestore, connectionsProp, activeConnIdProp })
+  const browse = useBrowse({ onHistoryPush, browseRestore, connectionsProp })
   const {
     connections, selectedId, path, entries, loading, error, status,
     opInFlight, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
-    dragSource, dropTargetPath, moveInFlight,
+    dragSource, moveInFlight,
     selected, bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
@@ -231,7 +231,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
                   className={[
                     styles.crumb,
                     c.path === path ? styles.crumbActive : '',
-                    dropTargetPath === c.path ? styles.crumbDropTarget : '',
                   ].join(' ')}
                   onClick={() => c.path !== path && navigate(c.path)}
                   disabled={c.path === path && !dragSource}
@@ -271,7 +270,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               busy={browse.busy}
               selected={browse.selected}
               dragSource={browse.dragSource}
-              dropTargetPath={browse.dropTargetPath}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
               highlightRef={browse.highlightRef}
@@ -303,7 +301,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               busy={browse.busy}
               selected={browse.selected}
               dragSource={browse.dragSource}
-              dropTargetPath={browse.dropTargetPath}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
               highlightRef={browse.highlightRef}
