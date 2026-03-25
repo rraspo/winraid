@@ -16,7 +16,7 @@ function isOutsideRoot(remotePath, cfgRemotePath) {
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
-export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null, activeConnIdProp = null }) {
+export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null }) {
   const [connections,     setConnections]     = useState([])
   const [selectedId,      setSelectedId]      = useState(null)
   const [path,            setPath]            = useState('/')

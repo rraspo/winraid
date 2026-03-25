@@ -126,6 +126,7 @@ export default function BackupView({ backupRun, setBackupRun }) {
 
   async function handleCancel() {
     await window.winraid?.backup.cancel()
+    runningRef.current = false
     setBackupRun((s) => ({ ...s, runStatus: RUN_STATUS.CANCELLED }))
   }
 

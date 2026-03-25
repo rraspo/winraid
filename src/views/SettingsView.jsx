@@ -35,16 +35,9 @@ export default function SettingsView() {
   }, [])
 
   useEffect(() => {
-    // Track per-connection watcher state; derive aggregate `watching` flag
-    const watchMap = {}
+    // s is Record<connectionId, { watching, folder, state, file }>
     const unsub = window.winraid?.watcher.onStatus((s) => {
-      if (s.connectionId) {
-        watchMap[s.connectionId] = s.watching
-      } else {
-        // Bulk update (pause/resume all)
-        for (const id of Object.keys(watchMap)) watchMap[id] = s.watching
-      }
-      setWatching(Object.values(watchMap).some(Boolean))
+      setWatching(Object.values(s).some((v) => v.watching))
     })
     return () => unsub?.()
   }, [])
@@ -59,8 +52,7 @@ export default function SettingsView() {
 
   async function handleWatcherToggle() {
     if (watching) {
-      // Stop all watchers
-      await window.winraid?.watcher.stop()
+      await window.winraid?.watcher.pauseAll()
     } else {
       const cfg = await window.winraid?.config.get()
       const conns = cfg?.connections ?? []
