@@ -15,7 +15,8 @@
       "Bash(ls:*)",
       "WebFetch(domain:img.shields.io)",
       "Bash(git checkout:*)",
-      "Bash(powershell -Command \":*)"
+      "Bash(powershell -Command \":*)",
+      "Bash(git add:*)"
     ]
   }
 }
