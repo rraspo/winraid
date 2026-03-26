@@ -16,7 +16,10 @@
       "WebFetch(domain:img.shields.io)",
       "Bash(git checkout:*)",
       "Bash(powershell -Command \":*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(node:*)",
+      "Bash(scripts/start-server.sh --project-dir X:/WebstormProjects/winraid)",
+      "Bash(\"C:/Users/porras/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.5/skills/brainstorming/scripts/start-server.sh\" --project-dir \"X:/WebstormProjects/winraid\")"
     ]
   }
 }

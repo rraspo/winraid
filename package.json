@@ -1,6 +1,10 @@
 {
   "name": "winraid",
   "author": "rraspo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rraspo/winraid"
+  },
   "license": "GPL-3.0-only",
   "version": "1.4.1",
   "description": "Windows desktop app for homelab file sync — watch a local folder and push to NAS via SFTP/SMB",
