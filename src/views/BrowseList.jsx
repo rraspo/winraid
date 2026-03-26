@@ -6,10 +6,10 @@ import styles from './BrowseList.module.css'
 
 const BrowseList = memo(function BrowseList({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
-  path, selectedId, busy, selected, dragSource, lastVisitedDir,
+  path, selectedId, busy, selected, dragSourcePaths, lastVisitedDir,
   highlightFile, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
-  navigate, openQuickLook, toggleSelect, toggleSelectAll,
+  navigate, openQuickLook, handleItemPointer, toggleSelectAll,
   handleCheckout, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const entries = entriesWithPaths
@@ -26,7 +26,7 @@ const BrowseList = memo(function BrowseList({
     <div
       ref={setListScrollEl}
       className={[styles.listWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
-      onDragOver={(e) => { if (dragSource) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
+      onDragOver={(e) => { if (dragSourcePaths.size > 0) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
       onDrop={(e) => handleDrop(e, path)}
     >
       {entries.length === 0 && !loading && !error && (
@@ -68,10 +68,11 @@ const BrowseList = memo(function BrowseList({
                 entry={entry}
                 entryPath={entry.entryPath}
                 virtualRow={virtualRow}
+                index={virtualRow.index}
                 connectionId={selectedId}
                 busy={busy}
                 isSelected={selected.has(entry.name)}
-                isDragSource={dragSource?.path === entry.entryPath}
+                isDragSource={dragSourcePaths.has(entry.entryPath)}
                 isLastVisited={entry.type === 'dir' && lastVisitedDir === entry.name}
                 isHighlighted={highlightFile === entry.name}
                 highlightRef={highlightRef}
@@ -82,7 +83,7 @@ const BrowseList = memo(function BrowseList({
                 handleDrop={handleDrop}
                 navigate={navigate}
                 openQuickLook={openQuickLook}
-                toggleSelect={toggleSelect}
+                onItemPointer={handleItemPointer}
                 handleCheckout={handleCheckout}
                 setEditingFile={setEditingFile}
                 setMoveTarget={setMoveTarget}

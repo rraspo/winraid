@@ -80,6 +80,13 @@ describe('handleItemPointer — shift click (range)', () => {
     act(() => result.current.handleItemPointer(2, { shift: true }))
     expect(result.current.selected).toEqual(new Set(['a.txt', 'b.txt', 'c.txt']))
   })
+
+  it('does not move anchor after shift click', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(1, {}))        // anchor = 1
+    act(() => result.current.handleItemPointer(3, { shift: true }))
+    expect(result.current.anchorIndex).toBe(1)                // still 1
+  })
 })
 
 describe('toggleSelectAll / clearSelection', () => {
@@ -101,6 +108,51 @@ describe('toggleSelectAll / clearSelection', () => {
     act(() => result.current.handleItemPointer(0, {}))
     act(() => result.current.clearSelection())
     expect(result.current.selected.size).toBe(0)
+  })
+})
+
+describe('handleRubberBandEnd', () => {
+  it('replaces selection with intersected entries (no modifiers)', () => {
+    const { result } = setup()
+    act(() => result.current.handleRubberBandEnd([0, 2], {}))
+    expect(result.current.selected).toEqual(new Set(['a.txt', 'c.txt']))
+  })
+
+  it('clears selection when indexes is empty and no modifiers', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(0, {}))
+    act(() => result.current.handleRubberBandEnd([], {}))
+    expect(result.current.selected.size).toBe(0)
+  })
+
+  it('toggles intersected entries when ctrl is true', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(0, { ctrl: true }))   // select a.txt
+    act(() => result.current.handleRubberBandEnd([0, 2], { ctrl: true }))
+    // a.txt was selected -> toggled off; c.txt was not -> toggled on
+    expect(result.current.selected).toEqual(new Set(['c.txt']))
+  })
+
+  it('unions intersected entries with current selection when shift is true', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(0, { ctrl: true }))   // select a.txt
+    act(() => result.current.handleRubberBandEnd([2, 3], { shift: true }))
+    expect(result.current.selected).toEqual(new Set(['a.txt', 'c.txt', 'd.txt']))
+  })
+
+  it('does not clear selection when indexes is empty and ctrl is true', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(0, {}))
+    act(() => result.current.handleRubberBandEnd([], { ctrl: true }))
+    expect(result.current.selected).toEqual(new Set(['a.txt']))
+  })
+
+  it('sets rubberBand to null after end', () => {
+    const { result } = setup()
+    act(() => result.current.handleRubberBandStart(10, 20))
+    expect(result.current.rubberBand).not.toBeNull()
+    act(() => result.current.handleRubberBandEnd([0], {}))
+    expect(result.current.rubberBand).toBeNull()
   })
 })
 

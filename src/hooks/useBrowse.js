@@ -351,6 +351,7 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     viewMode,
     fetchDir,
     navigate,
+    setStatus,
   })
 
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────

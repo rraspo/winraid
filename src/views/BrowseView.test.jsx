@@ -180,7 +180,7 @@ describe('BrowseView', () => {
 
     // Simulate drag start on readme.txt
     const fileRow = screen.getByText('readme.txt').closest('.row')
-    fireEvent.dragStart(fileRow, { dataTransfer: { effectAllowed: '', setData: vi.fn() } })
+    fireEvent.dragStart(fileRow, { dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() } })
 
     // Drop on Documents folder
     const dirRow = screen.getByText('Documents').closest('.row')
@@ -213,7 +213,7 @@ describe('BrowseView', () => {
 
     // Simulate drag-drop move: drag readme.txt onto Documents
     const fileRow = screen.getByText('readme.txt').closest('.row')
-    fireEvent.dragStart(fileRow, { dataTransfer: { effectAllowed: '', setData: vi.fn() } })
+    fireEvent.dragStart(fileRow, { dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() } })
 
     const dirRow = screen.getByText('Documents').closest('.row')
     fireEvent.dragOver(dirRow)

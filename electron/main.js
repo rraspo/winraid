@@ -13,7 +13,7 @@ import {
   powerMonitor,
 } from 'electron'
 import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
-import { readFileSync, existsSync, mkdirSync, rmSync, readdirSync, statSync, utimesSync } from 'fs'
+import { readFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync, unlink as unlinkAsync } from 'fs/promises'
 import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
@@ -1361,13 +1361,17 @@ export function notify(title, body) {
 // Auto-updater (production only)
 // ---------------------------------------------------------------------------
 let _autoUpdater = null
+let _updaterUnavailableReason = null
 
 function _sendUpdateStatus(status, info) {
   mainWindow?.webContents?.send('update:status', { status, ...info })
 }
 
 async function initAutoUpdater() {
-  if (!app.isPackaged) return
+  if (!app.isPackaged) {
+    _updaterUnavailableReason = 'Not available in development mode'
+    return
+  }
 
   try {
     const { autoUpdater } = await import('electron-updater')
@@ -1402,6 +1406,7 @@ async function initAutoUpdater() {
 
     autoUpdater.checkForUpdatesAndNotify()
   } catch (err) {
+    _updaterUnavailableReason = `Updater failed to initialize: ${err.message}`
     log('error', `Auto-updater init failed: ${err.message}`)
   }
 }
@@ -1409,7 +1414,7 @@ async function initAutoUpdater() {
 // IPC: manual update check + install
 function registerUpdateIPC() {
   ipcMain.handle('update:check', async () => {
-    if (!_autoUpdater) return { ok: false, error: 'Updater not available (dev mode)' }
+    if (!_autoUpdater) return { ok: false, error: _updaterUnavailableReason ?? 'Updater not available' }
     try {
       const result = await _autoUpdater.checkForUpdates()
       return { ok: true, version: result?.updateInfo?.version ?? null }

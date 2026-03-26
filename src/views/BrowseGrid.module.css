@@ -14,3 +14,13 @@
   color: var(--text-faint);
   font-size: var(--font-size-sm);
 }
+
+/* ── Lasso rubber-band rect ───────────────────────────────────────────────── */
+.lassoRect {
+  position: absolute;
+  background: var(--accent-subtle);
+  border: 1.5px solid var(--accent);
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 10;
+}
