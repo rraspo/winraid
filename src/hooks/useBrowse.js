@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useSelection } from './useSelection'
+import { useDragDrop } from './useDragDrop'
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (no JSX, no external deps)
@@ -33,29 +35,17 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   const [viewMode,        setViewMode]        = useState(() => localStorage.getItem('browse-view') ?? 'list')
   const [selectedFile,    setSelectedFile]    = useState(null)
   const [showQuickLook,   setShowQuickLook]   = useState(false)
-  const [dragSource,      setDragSource]      = useState(null)
-  const [moveInFlight,    setMoveInFlight]    = useState(null)
   const [lastVisitedDir,  setLastVisitedDir]  = useState(null)
   const [highlightFile,   setHighlightFile]   = useState(null)
-  const [selected,        setSelected]        = useState(new Set())
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
-  const dwellTimer        = useRef(null)
   const cancelledRef      = useRef(false)
   const browseRestoreRef  = useRef(browseRestore)
   const prevPath          = useRef(path)
   const initialPushed     = useRef(false)
-  // Latest-value refs — updated every render so event handlers can read current
-  // state without capturing stale closures or needing them in useCallback deps.
-  const dragSourceRef     = useRef(dragSource)
-  // dropTargetPathRef is the sole source of truth for the current drop target —
-  // there is no mirroring state. Handlers update it directly and apply the
-  // highlight via DOM attribute manipulation to avoid re-rendering the tree.
-  const dropTargetPathRef = useRef(null)
   const pathRef           = useRef(path)
 
   browseRestoreRef.current = browseRestore
-  dragSourceRef.current    = dragSource
   pathRef.current          = path
 
   // ── Persistence ────────────────────────────────────────────────────────────
@@ -64,9 +54,14 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   }, [viewMode])
 
   // ── Cleanup ────────────────────────────────────────────────────────────────
-  useEffect(() => () => {
-    cancelledRef.current = true
-    clearTimeout(dwellTimer.current)
+  // Reset on (re-)mount so React 18 StrictMode's double-invocation of cleanup
+  // doesn't leave cancelledRef stuck as true, which would cause all bulk ops
+  // to skip setOpInFlight(false) and leave busy permanently true.
+  useEffect(() => {
+    cancelledRef.current = false
+    return () => {
+      cancelledRef.current = true
+    }
   }, [])
 
   // ── Sync connections from parent (keeps hook in step when user edits a connection) ──
@@ -182,17 +177,6 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     [entries, path],
   )
 
-  const dirCount  = useMemo(() => entries.filter((e) => e.type === 'dir').length, [entries])
-  const fileCount = entries.length - dirCount
-
-  const busy     = opInFlight || !!moveInFlight
-  const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
-
-  const selectedEntries = useMemo(
-    () => entries.filter((e) => selected.has(e.name)),
-    [entries, selected],
-  )
-
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleSelectConnection = useCallback((id) => {
     const conn = connections.find((c) => c.id === id)
@@ -306,8 +290,12 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     setDeleteTarget(null)
     setOpInFlight(true)
     setStatus(null)
-    const res = await window.winraid?.remote.delete(selectedId, target.path, target.isDir)
-    setOpInFlight(false)
+    let res
+    try {
+      res = await window.winraid?.remote.delete(selectedId, target.path, target.isDir)
+    } finally {
+      setOpInFlight(false)
+    }
     if (res?.ok) {
       setEntries((prev) => prev.filter((e) => e.name !== target.name))
       setStatus({ ok: true, msg: `Deleted ${target.path}` })
@@ -321,8 +309,12 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     setMoveTarget(null)
     setOpInFlight(true)
     setStatus(null)
-    const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
-    setOpInFlight(false)
+    let res
+    try {
+      res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
+    } finally {
+      setOpInFlight(false)
+    }
     await fetchDir(path)
     if (res?.ok) {
       setStatus({ ok: true, msg: `Moved to ${dstPath}` })
@@ -348,28 +340,30 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     }
   }, [newFolderName, selectedId, path, fetchDir])
 
-  // ── Selection ──────────────────────────────────────────────────────────────
-  const toggleSelect = useCallback((name, e) => {
-    if (e) e.stopPropagation()
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }, [])
+  // ── Sub-hook composition ───────────────────────────────────────────────────
+  const selection = useSelection({ entries, path })
 
-  const toggleSelectAll = useCallback(() => {
-    if (selected.size === entries.length) {
-      setSelected(new Set())
-    } else {
-      setSelected(new Set(entries.map((e) => e.name)))
-    }
-  }, [selected, entries])
+  const dragDrop = useDragDrop({
+    selected: selection.selected,
+    entries:  entriesWithPaths,
+    selectedId,
+    path,
+    viewMode,
+    fetchDir,
+    navigate,
+  })
 
-  const clearSelection = useCallback(() => setSelected(new Set()), [])
+  // ── Derived values (depend on sub-hooks) ───────────────────────────────────
+  const dirCount  = useMemo(() => entries.filter((e) => e.type === 'dir').length, [entries])
+  const fileCount = entries.length - dirCount
 
-  useEffect(() => { setSelected(new Set()) }, [path])
+  const busy     = opInFlight || !!dragDrop.moveInFlight
+  const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
+
+  const selectedEntries = useMemo(
+    () => entries.filter((e) => selection.selected.has(e.name)),
+    [entries, selection.selected],
+  )
 
   // ── Bulk operations ────────────────────────────────────────────────────────
   const handleBulkDelete = useCallback(async () => {
@@ -387,14 +381,14 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
-    clearSelection()
+    selection.clearSelection()
     await fetchDir(path)
     if (fail === 0) {
       setStatus({ ok: true, msg: `Deleted ${ok} item${ok !== 1 ? 's' : ''}` })
     } else {
       setStatus({ ok: false, msg: `Deleted ${ok}, failed ${fail}` })
     }
-  }, [selectedEntries, selectedId, path, fetchDir, clearSelection])
+  }, [selectedEntries, selectedId, path, fetchDir, selection])
 
   const handleBulkMove = useCallback(async () => {
     const dest = bulkMoveDest.trim()
@@ -415,14 +409,14 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
-    clearSelection()
+    selection.clearSelection()
     await fetchDir(path)
     if (fail === 0) {
       setStatus({ ok: true, msg: `Moved ${ok} item${ok !== 1 ? 's' : ''} to ${dest}` })
     } else {
       setStatus({ ok: false, msg: `Moved ${ok}, failed ${fail}` })
     }
-  }, [bulkMoveDest, selectedEntries, selectedId, path, fetchDir, clearSelection])
+  }, [bulkMoveDest, selectedEntries, selectedId, path, fetchDir, selection])
 
   const handleBulkCheckout = useCallback(async () => {
     if (!selectedId || !localFolder) return
@@ -438,111 +432,33 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
-    clearSelection()
+    selection.clearSelection()
     if (fail === 0) {
       setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''}` })
     } else {
       setStatus({ ok: false, msg: `Downloaded ${ok}, failed ${fail}` })
     }
-  }, [selectedId, localFolder, selectedEntries, clearSelection])
-
-  // ── Drag-and-drop ──────────────────────────────────────────────────────────
-  const handleDragStart = useCallback((e, entry, entryPath) => {
-    setDragSource({ name: entry.name, path: entryPath })
-    e.dataTransfer.effectAllowed = 'move'
-    e.dataTransfer.setData('text/plain', entryPath)
-  }, [])
-
-  const handleDragEnd = useCallback(() => {
-    setDragSource(null)
-    if (dropTargetPathRef.current !== null) {
-      const el = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
-      if (el) el.removeAttribute('data-drop-target')
-      dropTargetPathRef.current = null
-    }
-    clearTimeout(dwellTimer.current)
-  }, [])
-
-  // dragSourceRef and dropTargetPathRef let this stay stable during the entire
-  // drag interaction — avoids recreating the handler (and re-rendering every
-  // visible card) on every dragover event. Highlight is applied directly via
-  // DOM attribute manipulation so no React state change (and no re-render)
-  // is triggered on each dragover event.
-  const handleDragOverFolder = useCallback((e, folderPath) => {
-    if (!dragSourceRef.current || dragSourceRef.current.path === folderPath) return
-    e.preventDefault()
-    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
-    if (dropTargetPathRef.current !== folderPath) {
-      // Clear the previous target's attribute before setting the new one.
-      if (dropTargetPathRef.current !== null) {
-        const prev = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
-        if (prev) prev.removeAttribute('data-drop-target')
-      }
-      e.currentTarget.setAttribute('data-drop-target', 'true')
-      dropTargetPathRef.current = folderPath
-      clearTimeout(dwellTimer.current)
-      if (folderPath !== pathRef.current) {
-        dwellTimer.current = setTimeout(() => navigate(folderPath), 600)
-      }
-    }
-  }, [navigate])
-
-  const handleDragLeaveFolder = useCallback((e) => {
-    e.currentTarget.removeAttribute('data-drop-target')
-    dropTargetPathRef.current = null
-    clearTimeout(dwellTimer.current)
-  }, [])
-
-  const handleDrop = useCallback(async (e, targetDirPath) => {
-    e.preventDefault()
-    if (dropTargetPathRef.current !== null) {
-      const el = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
-      if (el) el.removeAttribute('data-drop-target')
-      dropTargetPathRef.current = null
-    }
-    clearTimeout(dwellTimer.current)
-    const src = dragSourceRef.current
-    if (!src || !selectedId) return
-    const srcPath = src.path
-    if (targetDirPath === srcPath || targetDirPath.startsWith(srcPath + '/')) return
-    const dstPath = joinRemote(targetDirPath, src.name)
-    if (srcPath === dstPath) return
-    setDragSource(null)
-    setMoveInFlight({ name: src.name, from: srcPath, to: dstPath })
-    setStatus(null)
-    const moveName = src.name
-    const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
-    setMoveInFlight(null)
-    await fetchDir(path)
-    if (res?.ok) {
-      setStatus({ ok: true, msg: `Moved ${moveName} to ${targetDirPath}` })
-    } else {
-      setStatus({ ok: false, msg: res?.error || 'Move failed' })
-    }
-  }, [selectedId, path, fetchDir])
+  }, [selectedId, localFolder, selectedEntries, selection])
 
   return {
-    // State
+    // useBrowse own state/handlers
     connections, selectedId, path, entries, loading, error, status,
     opInFlight, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
-    dragSource, moveInFlight, lastVisitedDir, highlightFile,
-    selected, bulkAction, bulkMoveDest,
-    // Setters exposed for shell (modals, header buttons)
+    lastVisitedDir, highlightFile,
+    bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
     setSelectedFile, setShowQuickLook,
-    // Derived
     selectedConn, cfgRemotePath, localFolder, crumbs,
     fileEntries, entriesWithPaths, dirCount, fileCount, busy, noConfig, selectedEntries,
-    // Callback ref
     highlightRef,
-    // Handlers
     handleSelectConnection, fetchDir, navigate, openQuickLook,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDelete, handleMove, handleCreateFolder,
-    toggleSelect, toggleSelectAll, clearSelection,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
-    handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
+    // Sub-hook APIs — spread flat for backward compatibility
+    ...selection,
+    ...dragDrop,
   }
 }
