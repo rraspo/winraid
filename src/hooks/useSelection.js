@@ -8,6 +8,15 @@ export function useSelection({ entries, path }) {
   // Auto-clear selection when navigating to a different directory
   useEffect(() => { setSelected(new Set()) }, [path])
 
+  // Escape clears selection
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === 'Escape') setSelected(new Set())
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
+
   const handleItemPointer = useCallback((index, { ctrl = false, shift = false } = {}) => {
     const name = entries[index]?.name
     if (!name) return
