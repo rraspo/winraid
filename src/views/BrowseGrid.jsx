@@ -18,8 +18,9 @@ const BrowseGrid = memo(function BrowseGrid({
   const [gridScrollEl, setGridScrollEl] = useState(null)
   const { gridVirtualizer, gridCols } = useGridVirtualizer(entries, gridScrollEl)
 
-  const isLassoing = useRef(false)
-  const lassoMods  = useRef({ ctrl: false, shift: false })
+  const isLassoing  = useRef(false)
+  const lassoMods   = useRef({ ctrl: false, shift: false })
+  const lassoAnchor = useRef({ x: 0, y: 0 })
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
@@ -28,21 +29,24 @@ const BrowseGrid = memo(function BrowseGrid({
     isLassoing.current = true
     lassoMods.current  = { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }
     const rect = e.currentTarget.getBoundingClientRect()
-    handleRubberBandStart(e.clientX - rect.left, e.clientY - rect.top + e.currentTarget.scrollTop)
+    const x = e.clientX - rect.left
+    const y = e.clientY - rect.top + e.currentTarget.scrollTop
+    lassoAnchor.current = { x, y }
+    handleRubberBandStart(x, y)
   }, [handleRubberBandStart])
 
   const handleMouseMove = useCallback((e) => {
     if (!isLassoing.current) return
     const rect = e.currentTarget.getBoundingClientRect()
-    const x0 = rubberBand?.x ?? 0
-    const y0 = rubberBand?.y ?? 0
+    const x0 = lassoAnchor.current.x
+    const y0 = lassoAnchor.current.y
     const x1 = e.clientX - rect.left
     const y1 = e.clientY - rect.top + e.currentTarget.scrollTop
     handleRubberBandMove(
       Math.min(x0, x1), Math.min(y0, y1),
       Math.abs(x1 - x0), Math.abs(y1 - y0),
     )
-  }, [handleRubberBandMove, rubberBand])
+  }, [handleRubberBandMove])
 
   const handleMouseUp = useCallback((e) => {
     if (!isLassoing.current) return

@@ -156,6 +156,16 @@ describe('handleRubberBandEnd', () => {
   })
 })
 
+describe('Escape key clears selection', () => {
+  it('clears selection when Escape is pressed', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(0, {}))
+    expect(result.current.selected.size).toBe(1)
+    act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })) })
+    expect(result.current.selected.size).toBe(0)
+  })
+})
+
 describe('auto-clear on path change', () => {
   it('clears selection when path prop changes', () => {
     const { result, rerender } = renderHook(
