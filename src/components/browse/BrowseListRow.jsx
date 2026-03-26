@@ -7,10 +7,10 @@ import { isImageFile, isVideoFile, isEditableFile } from '../../utils/fileTypes'
 import styles from '../../views/BrowseList.module.css'
 
 const BrowseListRow = memo(function BrowseListRow({
-  entry, entryPath, virtualRow, connectionId,
+  entry, entryPath, virtualRow, connectionId, index,
   busy, isSelected, isDragSource, isLastVisited, isHighlighted, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
-  navigate, openQuickLook, toggleSelect,
+  navigate, openQuickLook, onItemPointer,
   handleCheckout, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const isDir = entry.type === 'dir'
@@ -19,6 +19,26 @@ const BrowseListRow = memo(function BrowseListRow({
     : (isImageFile(entry.name) || isVideoFile(entry.name))
       ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="list" />
       : <File size={14} className={styles.iconFile} />
+
+  function handleRowClick(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      onItemPointer(index, { ctrl: true })
+      return
+    }
+    if (e.shiftKey) {
+      e.preventDefault()
+      onItemPointer(index, { shift: true })
+      return
+    }
+    if (isDir) navigate(entryPath)
+    else openQuickLook(entry, entryPath)
+  }
+
+  function handleCheckboxClick(e) {
+    e.stopPropagation()
+    onItemPointer(index, { ctrl: true })
+  }
 
   return (
     <div
@@ -45,20 +65,16 @@ const BrowseListRow = memo(function BrowseListRow({
       onDragOver={isDir ? (e) => handleDragOverFolder(e, entryPath) : undefined}
       onDragLeave={isDir ? handleDragLeaveFolder : undefined}
       onDrop={isDir ? (e) => { e.stopPropagation(); handleDrop(e, entryPath) } : undefined}
-      onClick={!isDir ? () => openQuickLook(entry, entryPath) : undefined}
+      onClick={handleRowClick}
     >
-      <label className={styles.checkbox} onClick={(e) => e.stopPropagation()}>
-        <input
-          type="checkbox"
-          checked={isSelected}
-          onChange={(e) => toggleSelect(entry.name, e)}
-        />
+      <label className={styles.checkbox} onClick={handleCheckboxClick}>
+        <input type="checkbox" checked={isSelected} onChange={() => {}} />
         <span className={styles.checkmark} />
       </label>
       <div className={styles.rowName}>
         {icon}
         {isDir ? (
-          <button className={styles.nameBtn} onClick={() => navigate(entryPath)}>
+          <button className={styles.nameBtn} onClick={(e) => { e.stopPropagation(); navigate(entryPath) }}>
             {entry.name}
           </button>
         ) : (

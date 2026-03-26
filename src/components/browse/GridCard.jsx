@@ -8,14 +8,34 @@ import { isEditableFile } from '../../utils/fileTypes'
 import styles from './GridCard.module.css'
 
 const GridCard = memo(function GridCard({
-  entry, entryPath, connectionId, isDir, busy,
+  entry, entryPath, connectionId, isDir, busy, index,
   isSelected, isDragSource, isLastVisited, isHighlighted,
-  highlightRef, onSelect, onNavigate, onQuickLook, onCheckout, onEdit,
+  highlightRef, onItemPointer, onNavigate, onQuickLook, onCheckout, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
 }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
     : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" />
+
+  function handleCardClick(e) {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      onItemPointer(index, { ctrl: true })
+      return
+    }
+    if (e.shiftKey) {
+      e.preventDefault()
+      onItemPointer(index, { shift: true })
+      return
+    }
+    if (isDir) onNavigate(entryPath)
+    else onQuickLook(entry, entryPath)
+  }
+
+  function handleCheckboxClick(e) {
+    e.stopPropagation()
+    onItemPointer(index, { ctrl: true })
+  }
 
   return (
     <div
@@ -35,12 +55,12 @@ const GridCard = memo(function GridCard({
       onDragOver={isDir ? (e) => onDragOver(e, entryPath) : undefined}
       onDragLeave={isDir ? onDragLeave : undefined}
       onDrop={isDir ? (e) => { e.stopPropagation(); onDrop(e, entryPath) } : undefined}
-      onClick={isDir ? () => onNavigate(entryPath) : () => onQuickLook(entry, entryPath)}
+      onClick={handleCardClick}
     >
       <div className={styles.gridThumb}>
         {icon}
-        <label className={styles.gridCheckbox} onClick={(e) => e.stopPropagation()}>
-          <input type="checkbox" checked={isSelected} onChange={(e) => onSelect(entry.name, e)} />
+        <label className={styles.gridCheckbox} onClick={handleCheckboxClick}>
+          <input type="checkbox" checked={isSelected} onChange={() => {}} />
           <span className={styles.checkmark} />
         </label>
       </div>

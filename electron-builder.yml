@@ -39,4 +39,6 @@ nsis:
 # Set GH_TOKEN env var before running dist.
 publish:
   provider: github
+  owner: rraspo
+  repo: winraid
   releaseType: release
