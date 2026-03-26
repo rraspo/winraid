@@ -16,24 +16,26 @@ import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
 import { useBrowse } from '../hooks/useBrowse'
 
-export default function BrowseView({ onHistoryPush, browseRestore, connections: connectionsProp, activeConnId: activeConnIdProp, style }) {
+export default function BrowseView({ onHistoryPush, browseRestore, connections: connectionsProp, style }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, connectionsProp })
   const {
     connections, selectedId, path, entries, loading, error, status,
-    opInFlight, confirmTarget, editingFile, deleteTarget, moveTarget,
-    newFolderName, viewMode, selectedFile, showQuickLook,
-    dragSource, moveInFlight,
+    confirmTarget, editingFile, deleteTarget, moveTarget,
+    viewMode, selectedFile, showQuickLook,
+    dragSource, dragSourcePaths, moveInFlight,
     selected, bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
     setSelectedFile, setShowQuickLook,
-    selectedConn, cfgRemotePath, localFolder, crumbs,
+    cfgRemotePath, localFolder, crumbs,
     fileEntries, selectedEntries, dirCount, fileCount, busy, noConfig,
-    handleSelectConnection, fetchDir, navigate, openQuickLook,
+    handleSelectConnection, fetchDir, navigate,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDelete, handleMove,
     handleBulkDelete, handleBulkMove, handleBulkCheckout, clearSelection,
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
+    handleItemPointer, toggleSelectAll,
+    handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
   } = browse
 
   return (
@@ -111,8 +113,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
       {moveInFlight && (
         <div className={styles.moveOverlay}>
           <Loader size={24} className={styles.spinning} />
-          <span className={styles.moveOverlayText}>Moving {moveInFlight.name}</span>
-          <span className={styles.moveOverlayPath}>{moveInFlight.from} &rarr; {moveInFlight.to}</span>
+          <span className={styles.moveOverlayText}>Moving {moveInFlight}</span>
         </div>
       )}
 
@@ -269,7 +270,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               selectedId={browse.selectedId}
               busy={browse.busy}
               selected={browse.selected}
-              dragSource={browse.dragSource}
+              dragSourcePaths={dragSourcePaths}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
               highlightRef={browse.highlightRef}
@@ -280,8 +281,8 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               handleDrop={browse.handleDrop}
               navigate={browse.navigate}
               openQuickLook={browse.openQuickLook}
-              toggleSelect={browse.toggleSelect}
-              toggleSelectAll={browse.toggleSelectAll}
+              handleItemPointer={handleItemPointer}
+              toggleSelectAll={toggleSelectAll}
               handleCheckout={browse.handleCheckout}
               setEditingFile={browse.setEditingFile}
               setMoveTarget={browse.setMoveTarget}
@@ -300,7 +301,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               selectedId={browse.selectedId}
               busy={browse.busy}
               selected={browse.selected}
-              dragSource={browse.dragSource}
+              dragSourcePaths={dragSourcePaths}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
               highlightRef={browse.highlightRef}
@@ -311,7 +312,11 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               handleDrop={browse.handleDrop}
               navigate={browse.navigate}
               openQuickLook={browse.openQuickLook}
-              toggleSelect={browse.toggleSelect}
+              handleItemPointer={handleItemPointer}
+              handleRubberBandStart={handleRubberBandStart}
+              handleRubberBandMove={handleRubberBandMove}
+              handleRubberBandEnd={handleRubberBandEnd}
+              rubberBand={rubberBand}
               handleCheckout={browse.handleCheckout}
               setEditingFile={browse.setEditingFile}
               setMoveTarget={browse.setMoveTarget}
