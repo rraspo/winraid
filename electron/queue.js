@@ -112,6 +112,7 @@ export function enqueue(srcPath, opts = {}) {
     status:    STATUS.PENDING,
     progress:  0,
     errorMsg:  '',
+    errorAt:   null,
     operation,
     connectionId,
     retries:   0,
@@ -147,12 +148,12 @@ export function getNextPending() {
  * Partial update — only the fields you pass are written.
  *
  * @param {string} id
- * @param {{ status?: string, progress?: number, errorMsg?: string, retries?: number }} fields
+ * @param {{ status?: string, progress?: number, errorMsg?: string, errorAt?: number|null, retries?: number }} fields
  */
 export function updateJob(id, fields) {
   const job = jobs().find((j) => j.id === id)
   if (!job) return
-  for (const key of ['status', 'progress', 'errorMsg', 'retries']) {
+  for (const key of ['status', 'progress', 'errorMsg', 'errorAt', 'retries']) {
     if (fields[key] !== undefined) job[key] = fields[key]
   }
   persist()
@@ -168,6 +169,7 @@ export function retryJob(id) {
   job.status   = STATUS.PENDING
   job.progress = 0
   job.errorMsg = ''
+  job.errorAt  = null
   job.retries += 1
   persist()
   log('info', `Retrying job ${id.slice(0, 8)} (attempt ${job.retries})`)

@@ -47,7 +47,7 @@ const columnHelper = createColumnHelper()
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function QueueView({ connections = [], onBrowsePath }) {
+export default function QueueView({ connections = [], onBrowsePath, onNavigateLogs }) {
   const [jobs, setJobs] = useState([])
   const [sorting, setSorting] = useState([])
   const [columnSizing, setColumnSizing] = useState({})
@@ -60,11 +60,14 @@ export default function QueueView({ connections = [], onBrowsePath }) {
   }, [connections])
 
   function handleRowClick(job) {
+    if (job.status === 'ERROR') {
+      if (onNavigateLogs) onNavigateLogs({ filename: job.filename, errorAt: job.errorAt ?? Date.now() })
+      return
+    }
     if (!onBrowsePath || !job.connectionId) return
     const conn = connections.find((c) => c.id === job.connectionId)
     if (!conn) return
     const remotePath = conn.sftp?.remotePath || conn.smb?.remotePath || '/'
-    // For mirror modes the relPath includes subdirectories — navigate to the containing folder
     const relDir = job.relPath?.replace(/[/\\][^/\\]+$/, '')
     const dest = (conn.folderMode !== 'flat' && relDir && relDir !== job.relPath)
       ? `${remotePath}/${relDir}`.replace(/\/+/g, '/')

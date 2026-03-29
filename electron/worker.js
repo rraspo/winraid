@@ -105,9 +105,16 @@ async function processJob(job) {
       await removeEmptyDirs(conn.localFolder, job.srcPath)
     }
   } catch (err) {
-    markError(job, err.message ?? String(err))
-    notify('Transfer failed', `${job.filename}: ${err.message}`)
-    log('error', `Failed: ${job.filename} — ${err.message}`)
+    const errorAt    = Date.now()
+    const friendly   = friendlyError(err)
+    const connName   = conn?.name ?? job.connectionId?.slice(0, 8) ?? '?'
+    const remoteBase = conn?.sftp?.remotePath ?? conn?.smb?.remotePath ?? '?'
+    const remotePath = remoteBase !== '?'
+      ? `${remoteBase}/${job.relPath ?? job.filename}`.replace(/\/+/g, '/')
+      : '?'
+    markError(job, friendly, errorAt)
+    notify('Transfer failed', `${job.filename}: ${friendly}`)
+    log('error', `Failed: ${job.filename} [${connName}] src=${job.srcPath} → ${remotePath} — ${err.message}`)
   }
 }
 
@@ -158,11 +165,22 @@ function markDone(job) {
   })
 }
 
-function markError(job, errorMsg) {
-  updateJob(job.id, { status: STATUS.ERROR, errorMsg })
+function friendlyError(err) {
+  const msg = err.message ?? String(err)
+  if (err.code === 'ENOENT' || msg.startsWith('ENOENT')) return 'Source file not found'
+  if (msg === 'No such file') return 'Remote path not found'
+  if (err.code === 'ECONNREFUSED' || msg.includes('ECONNREFUSED')) return 'Connection refused'
+  if (err.code === 'ETIMEDOUT' || msg.includes('timed out') || msg.includes('ETIMEDOUT')) return 'Connection timed out'
+  if (msg.toLowerCase().includes('authentication failed') || msg.includes('All configured authentication methods failed')) return 'Authentication failed'
+  if (msg.includes('Permission denied')) return 'Permission denied'
+  return msg.length > 60 ? msg.slice(0, 57) + '\u2026' : msg
+}
+
+function markError(job, errorMsg, errorAt = Date.now()) {
+  updateJob(job.id, { status: STATUS.ERROR, errorMsg, errorAt })
   sendToRenderer('queue:updated', {
     type: 'updated',
-    job: { ...job, status: STATUS.ERROR, errorMsg },
+    job: { ...job, status: STATUS.ERROR, errorMsg, errorAt },
   })
 }
 
