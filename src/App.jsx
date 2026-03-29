@@ -143,6 +143,7 @@ export default function App() {
   const { push, back, forward } = useNavHistory()
   const historyInitRef = useRef(false)
   const [browseRestore, setBrowseRestore] = useState(null)
+  const [logNav, setLogNav] = useState(null)
 
   // Push the initial entry once on mount
   useEffect(() => {
@@ -155,7 +156,13 @@ export default function App() {
     setConnEdit(null)
     setActiveView(view)
     setBrowseRestore(null)
+    if (view !== 'logs') setLogNav(null)
     push({ kind: 'view', view })
+  }
+
+  function handleNavigateLogs({ filename, errorAt }) {
+    setLogNav({ filename, errorAt })
+    navigateView('logs')
   }
 
   function restoreEntry(entry) {
@@ -221,7 +228,8 @@ export default function App() {
   const activeViewProps =
     activeView === 'backup'    ? { backupRun, setBackupRun } :
     activeView === 'dashboard' ? { watcherStatus, onNavigate: navigateView, onEditConnection: openConnEdit, connections, activeConnId } :
-    activeView === 'queue'     ? { connections, onNavigate: navigateView, onBrowsePath: (connId, remotePath, highlightFile) => { setActiveConnId(connId); navigateView('browse'); setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() }) } } :
+    activeView === 'queue'     ? { connections, onNavigate: navigateView, onNavigateLogs: handleNavigateLogs, onBrowsePath: (connId, remotePath, highlightFile) => { setActiveConnId(connId); navigateView('browse'); setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() }) } } :
+    activeView === 'logs'      ? { logNav } :
     {}
 
   // ID of the connection whose form is currently open — used by Sidebar to
