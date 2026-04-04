@@ -14,9 +14,11 @@ export default function SizeView({ connectionId, connection }) {
   const [scanMeta,   setScanMeta]   = useState(null)
   const [elapsed,    setElapsed]    = useState(0)
   const [scanError,  setScanError]  = useState(null)
+  const [chartSize,  setChartSize]  = useState(300)
   const treeRef            = useRef(null)
   const timerRef           = useRef(null)
   const progressDeadlineRef = useRef(null)
+  const chartAreaRef       = useRef(null)
 
   // Reset state when connection changes
   useEffect(() => {
@@ -33,6 +35,21 @@ export default function SizeView({ connectionId, connection }) {
   useEffect(() => () => {
     clearInterval(timerRef.current)
     clearTimeout(progressDeadlineRef.current)
+  }, [])
+
+  // Measure chartArea and keep sunburst sized to fill it
+  useEffect(() => {
+    const el = chartAreaRef.current
+    if (!el) return
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect
+      const legendWidth = 180
+      const gap = 16
+      const availW = width - legendWidth - gap
+      setChartSize(Math.max(120, Math.min(availW, height) - 32))
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   // Subscribe to IPC push events
@@ -220,12 +237,12 @@ export default function SizeView({ connectionId, connection }) {
         <button className={styles.rescanBtn} onClick={startScan}>Re-scan</button>
       </div>
 
-      <div className={styles.chartArea}>
+      <div className={styles.chartArea} ref={chartAreaRef}>
         {tree && (
           <SizeSunburst
             data={tree}
-            width={220}
-            height={220}
+            width={chartSize}
+            height={chartSize}
             focusedPath={focused}
             onArcClick={handleArcClick}
             onCenterClick={handleCenterClick}
