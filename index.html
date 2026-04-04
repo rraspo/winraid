@@ -15,8 +15,8 @@
         script-src  'self' 'unsafe-inline' 'unsafe-eval';
         style-src   'self' 'unsafe-inline';
         font-src    'self' data:;
-        img-src     'self' data: nas-stream:;
-        media-src   'self' nas-stream:;
+        img-src     'self' data: blob: nas-stream:;
+        media-src   'self' blob: nas-stream:;
         connect-src 'self' nas-stream:;
       "
     />

@@ -624,6 +624,15 @@ function registerIPC() {
     sendToRenderer('queue:updated', { type: 'cleared' })
   })
 
+  ipcMain.handle('queue:clear-stale', async () => {
+    const q = await getQueue()
+    const removedIds = q.clearStale()
+    for (const jobId of removedIds) {
+      sendToRenderer('queue:updated', { type: 'removed', jobId })
+    }
+    return { removed: removedIds.length }
+  })
+
   ipcMain.handle('queue:cancel', async (_e, jobId) => {
     const q = await getQueue()
     const jobs = q.listJobs()
@@ -1557,8 +1566,18 @@ function makeFileDetectedCallback(connectionId) {
 async function openRemoteCheckerForConn(conn) {
   try {
     if (conn.type === 'sftp') {
+      const sftpCfg = { ...conn.sftp }
+      // Decrypt password stored as enc:<base64> before opening the checker connection
+      if (typeof sftpCfg.password === 'string' && sftpCfg.password.startsWith('enc:')) {
+        const { safeStorage } = await import('electron')
+        try {
+          sftpCfg.password = safeStorage.decryptString(Buffer.from(sftpCfg.password.slice(4), 'base64'))
+        } catch {
+          sftpCfg.password = ''
+        }
+      }
       const { openRemoteChecker } = await import('./backends/sftp.js')
-      return await openRemoteChecker(conn.sftp)
+      return await openRemoteChecker(sftpCfg)
     }
     if (conn.type === 'smb') {
       const { openRemoteChecker } = await import('./backends/smb.js')
