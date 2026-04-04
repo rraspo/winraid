@@ -357,16 +357,15 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     if (hasNext) onNavigate(files[currentIdx + 1])
   }, [hasNext, currentIdx, files, onNavigate])
 
-  // Keyboard bindings
+  // Arrow key navigation (Escape is handled in useBrowse to avoid stale-closure issues)
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === 'Escape')      { e.preventDefault(); onClose() }
       if (e.key === 'ArrowLeft')   { e.preventDefault(); handlePrev() }
       if (e.key === 'ArrowRight')  { e.preventDefault(); handleNext() }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose, handlePrev, handleNext])
+  }, [handlePrev, handleNext])
 
   const [copied,    setCopied]    = useState(false)
   const [loop,      setLoop]      = useState(() => localStorage.getItem('ql-video-loop') === 'true')

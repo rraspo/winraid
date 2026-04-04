@@ -1,0 +1,21 @@
+.svg {
+  display: block;
+  overflow: visible;
+}
+
+.arc {
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.arc:hover {
+  opacity: 0.7;
+}
+
+.centerHole {
+  cursor: pointer;
+}
+
+.centerHole:hover {
+  fill: var(--bg-card);
+}

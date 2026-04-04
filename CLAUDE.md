@@ -114,6 +114,7 @@ The boundary between agents is the `window.winraid` IPC surface in `preload.js`.
 config.get(key?) / config.set(key, value)
 watcher.start(connId) / .stop(connId) / .list() / .onStatus(cb) / .pauseAll() / .resumeAll()
 queue.list() / .retry(id) / .remove(id) / .cancel(id) / .clearDone()
+      .pause() / .resume()
       .onUpdated(cb) / .onProgress(cb) / .enqueueBatch(connId, folder, relPaths)
 remote.list(connId, path) / .checkout(connId, path, local)
        .delete(connId, path, isDir) / .move(connId, src, dst) / .mkdir(connId, path)
