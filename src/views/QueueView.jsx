@@ -311,6 +311,12 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
           )}
         </div>
         <div className={styles.headerRight}>
+          <button
+            className={styles.clearBtn}
+            onClick={() => window.winraid?.queue.clearStale()}
+          >
+            Clear stale
+          </button>
           {doneCount > 0 && (
             <button
               className={styles.clearBtn}

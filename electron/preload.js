@@ -71,7 +71,9 @@ contextBridge.exposeInMainWorld('winraid', {
     /** Removes a single ERROR job permanently. */
     remove:    (jobId)   => ipcRenderer.invoke('queue:remove', jobId),
     /** Removes all DONE jobs from the persistent store. */
-    clearDone: ()        => ipcRenderer.invoke('queue:clear-done'),
+    clearDone:   ()      => ipcRenderer.invoke('queue:clear-done'),
+    /** Removes PENDING and ERROR jobs whose source file no longer exists on disk. */
+    clearStale:  ()      => ipcRenderer.invoke('queue:clear-stale'),
     /** Enqueue a batch of files (relative paths) from a local folder for a specific connection. */
     enqueueBatch: (connectionId, localFolder, relPaths) => ipcRenderer.invoke('queue:enqueue-batch', connectionId, localFolder, relPaths),
     /** Cancel a PENDING job (removes it) or a TRANSFERRING job (marks it ERROR). */

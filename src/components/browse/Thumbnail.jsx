@@ -6,7 +6,8 @@ import styles from './Thumbnail.module.css'
 
 const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size }) {
   const [error, setError] = useState(false)
-  const url    = `nas-stream://${connectionId}${remotePath}?thumb=1`
+  const encodedPath = remotePath.split('/').map(encodeURIComponent).join('/')
+  const url    = `nas-stream://${connectionId}${encodedPath}?thumb=1`
   const isGrid = size === 'grid'
 
   if (!error && isImageFile(name)) {

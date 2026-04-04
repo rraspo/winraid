@@ -7,8 +7,10 @@ import { fileType, getExt } from '../utils/fileTypes'
 
 function nasStreamUrl(connectionId, remotePath) {
   // nas-stream://{connectionId}{/remote/path}
-  // The path already starts with '/', so we append it directly to the origin.
-  return `nas-stream://${connectionId}${remotePath}`
+  // Encode each path segment so filenames with special characters (spaces,
+  // brackets, etc.) don't break URL parsing in the protocol handler.
+  const encodedPath = remotePath.split('/').map(encodeURIComponent).join('/')
+  return `nas-stream://${connectionId}${encodedPath}`
 }
 
 // ---------------------------------------------------------------------------
