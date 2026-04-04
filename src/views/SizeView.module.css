@@ -248,9 +248,9 @@
   right: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  font-size: var(--font-size-sm);
-  max-width: 200px;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  max-width: 240px;
   background: color-mix(in srgb, var(--bg-panel) 85%, transparent);
   backdrop-filter: blur(4px);
   border: 1px solid var(--border);
@@ -258,15 +258,58 @@
   padding: var(--space-3);
 }
 
+.legendParentRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  padding: 2px var(--space-1);
+  margin: -2px calc(-1 * var(--space-1));
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: var(--space-2);
+  margin-bottom: 0;
+}
+
+.legendParentRow:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.legendParentLabel {
+  font-family: monospace;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.legendParentName {
+  flex: 1;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .legendRow {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  border-radius: var(--radius-xs);
+  padding: 1px var(--space-1);
+  margin: -1px calc(-1 * var(--space-1));
+}
+
+.legendRowDrillable {
+  cursor: pointer;
+}
+
+.legendRowDrillable:hover .legendName {
+  color: var(--accent);
 }
 
 .legendSwatch {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 2px;
   flex-shrink: 0;
 }
@@ -277,11 +320,33 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--transition);
+}
+
+.browseBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.legendRow:hover .browseBtn,
+.legendParentRow:hover .browseBtn {
+  opacity: 1;
+}
+
+.browseBtn:hover {
+  color: var(--accent);
 }
 
 .legendSize {
   color: var(--text-muted);
-  margin-left: var(--space-2);
   flex-shrink: 0;
 }
 

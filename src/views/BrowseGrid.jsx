@@ -12,7 +12,7 @@ const BrowseGrid = memo(function BrowseGrid({
   navigate, openQuickLook, handleItemPointer,
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd,
   rubberBand,
-  handleCheckout, setEditingFile, setMoveTarget, setDeleteTarget,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const entries = entriesWithPaths
   const [gridScrollEl, setGridScrollEl] = useState(null)
@@ -159,7 +159,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       onItemPointer={handleItemPointer}
                       onNavigate={navigate}
                       onQuickLook={openQuickLook}
-                      onCheckout={handleCheckout}
+                      onDownload={handleDownload}
                       onEdit={setEditingFile}
                       onMove={setMoveTarget}
                       onDelete={setDeleteTarget}
