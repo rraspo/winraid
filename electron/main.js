@@ -18,6 +18,7 @@ import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeF
 import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
+import { validateRemotePath } from './validation.js'
 
 // ---------------------------------------------------------------------------
 // Custom protocol scheme declaration — must happen synchronously before
