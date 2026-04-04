@@ -20,7 +20,7 @@ export default function SizeView({ connectionId, connection }) {
   const progressDeadlineRef = useRef(null)
   const chartAreaRef       = useRef(null)
 
-  // Reset state when connection changes
+  // Reset state and load cache when connection changes
   useEffect(() => {
     setPhase(PHASE.IDLE)
     setTree(null)
@@ -29,6 +29,14 @@ export default function SizeView({ connectionId, connection }) {
     setScanMeta(null)
     setElapsed(0)
     treeRef.current = null
+
+    window.winraid?.remote.sizeLoadCache?.(connectionId).then((cached) => {
+      if (!cached) return
+      treeRef.current = cached.tree
+      setTree(cached.tree)
+      setScanMeta(cached.scanMeta)
+      setPhase(PHASE.RESULTS)
+    }).catch(() => {})
   }, [connectionId])
 
   // Clear the elapsed timer and progress deadline on unmount
@@ -43,10 +51,7 @@ export default function SizeView({ connectionId, connection }) {
     if (!el) return
     const ro = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
-      const legendWidth = 180
-      const gap = 16
-      const availW = width - legendWidth - gap
-      setChartSize(Math.max(120, Math.min(availW, height) - 32))
+      setChartSize(Math.max(120, Math.min(width, height)))
     })
     ro.observe(el)
     return () => ro.disconnect()
@@ -96,8 +101,10 @@ export default function SizeView({ connectionId, connection }) {
         if (payload.connectionId !== connectionId) return
         clearTimeout(progressDeadlineRef.current)
         clearInterval(timerRef.current)
-        setScanMeta({ totalFolders: payload.totalFolders, elapsedMs: payload.elapsedMs, scannedAt: Date.now() })
+        const meta = { totalFolders: payload.totalFolders, elapsedMs: payload.elapsedMs, scannedAt: Date.now() }
+        setScanMeta(meta)
         setPhase(PHASE.RESULTS)
+        window.winraid.remote.sizeSaveCache?.(connectionId, { tree: treeRef.current, scanMeta: meta })
       }),
 
       window.winraid.remote.onSizeError((payload) => {
@@ -234,19 +241,32 @@ export default function SizeView({ connectionId, connection }) {
             </span>
           ))}
         </div>
+        {scanMeta && (() => {
+          const ageMs = Date.now() - scanMeta.scannedAt
+          const stale = ageMs > 60 * 60 * 1000        // > 1 hour
+          const old   = ageMs > 24 * 60 * 60 * 1000  // > 24 hours
+          if (!stale) return null
+          return (
+            <span className={old ? styles.staleBadgeOld : styles.staleBadge}>
+              {old ? 'Outdated' : 'Stale'} · {formatElapsed(ageMs)} ago
+            </span>
+          )
+        })()}
         <button className={styles.rescanBtn} onClick={startScan}>Re-scan</button>
       </div>
 
       <div className={styles.chartArea} ref={chartAreaRef}>
         {tree && (
-          <SizeSunburst
-            data={tree}
-            width={chartSize}
-            height={chartSize}
-            focusedPath={focused}
-            onArcClick={handleArcClick}
-            onCenterClick={handleCenterClick}
-          />
+          <div className={styles.sunburstWrap}>
+            <SizeSunburst
+              data={tree}
+              width={chartSize}
+              height={chartSize}
+              focusedPath={focused}
+              onArcClick={handleArcClick}
+              onCenterClick={handleCenterClick}
+            />
+          </div>
         )}
         {tree && (
           <div className={styles.legend}>

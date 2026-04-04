@@ -187,5 +187,9 @@ contextBridge.exposeInMainWorld('winraid', {
     onSizeDone:  (cb) => on('size:done', cb),
     /** Subscribe to scan error event. Payload: { connectionId, error } */
     onSizeError: (cb) => on('size:error', cb),
+    /** Load persisted scan result for a connection. Returns { tree, scanMeta } or null. */
+    sizeLoadCache: (connectionId) => ipcRenderer.invoke('size:load-cache', connectionId),
+    /** Persist scan result for a connection. */
+    sizeSaveCache: (connectionId, data) => ipcRenderer.invoke('size:save-cache', connectionId, data),
   },
 })
