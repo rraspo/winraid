@@ -19,3 +19,27 @@
 .centerHole:hover {
   fill: var(--bg-card);
 }
+
+.tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.tooltipName {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tooltipDetail {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-top: 2px;
+}

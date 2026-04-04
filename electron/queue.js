@@ -1,6 +1,6 @@
 import { app } from 'electron'
 import { join } from 'path'
-import { mkdirSync, readFileSync, writeFileSync, renameSync } from 'fs'
+import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { log } from './logger.js'
 
@@ -232,4 +232,26 @@ export function clearDone() {
   _jobs = list.filter((j) => j.status !== STATUS.DONE)
   persist()
   log('info', `Cleared ${before - _jobs.length} completed job(s).`)
+}
+
+/**
+ * Returns ids of all PENDING and ERROR jobs whose srcPath no longer exists
+ * on the local filesystem, then removes them from the store.
+ * TRANSFERRING jobs are skipped — the file is actively being sent.
+ *
+ * @param {(path: string) => boolean} existsFn  Injectable for testing (default: fs.existsSync)
+ * @returns {string[]} Ids of the removed jobs
+ */
+export function clearStale(existsFn) {
+  const exists = existsFn ?? existsSync
+  const list   = jobs()
+  const stale  = list.filter(
+    (j) => (j.status === STATUS.PENDING || j.status === STATUS.ERROR) && !exists(j.srcPath)
+  )
+  if (stale.length === 0) return []
+  const staleIds = stale.map((j) => j.id)
+  _jobs = list.filter((j) => !staleIds.includes(j.id))
+  persist()
+  log('info', `Cleared ${stale.length} stale job(s) whose source files no longer exist.`)
+  return staleIds
 }
