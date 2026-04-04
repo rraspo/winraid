@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { MoreHorizontal } from 'lucide-react'
 import styles from './EntryMenu.module.css'
 
-export default function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit, onMove, onDelete }) {
+export default function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete }) {
   const [open, setOpen] = useState(false)
   const [pos,  setPos]  = useState({ top: 0, left: 0 })
   const wrapRef    = useRef(null)
@@ -73,11 +73,9 @@ export default function EntryMenu({ isDir, isEditable, busy, onCheckout, onEdit,
           className={styles.menuDropdown}
           style={{ top: pos.top, left: pos.left, right: pos.right }}
         >
-          {isDir && (
-            <button className={styles.menuItem} onClick={act(onCheckout)}>
-              Check out
-            </button>
-          )}
+          <button className={styles.menuItem} onClick={act(onDownload)}>
+            Download
+          </button>
           {isEditable && (
             <button className={styles.menuItem} onClick={act(onEdit)}>
               Edit

@@ -24,7 +24,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     connections, selectedId, path, entries, loading, error, status,
     confirmTarget, editingFile, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
-    dragSource, dragSourcePaths, moveInFlight,
+    dragSource, dragSourcePaths, moveInFlight, downloadProgress,
     selected, bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
@@ -33,6 +33,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     fileEntries, selectedEntries, dirCount, fileCount, busy, noConfig,
     fetchDir, navigate,
     handleCheckout, handleConfirm,
+    handleDownload,
     handleDelete, handleMove,
     handleBulkDelete, handleBulkMove, handleBulkCheckout, clearSelection,
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
@@ -128,6 +129,18 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
         <div className={styles.moveOverlay}>
           <Loader size={24} className={styles.spinning} />
           <span className={styles.moveOverlayText}>Moving {moveInFlight}</span>
+        </div>
+      )}
+
+      {downloadProgress && (
+        <div className={styles.moveOverlay}>
+          <Loader size={24} className={styles.spinning} />
+          <span className={styles.moveOverlayText}>
+            {downloadProgress.totalFiles > 1
+              ? `Downloading ${downloadProgress.name}... ${downloadProgress.filesProcessed} / ${downloadProgress.totalFiles} files`
+              : `Downloading ${downloadProgress.name}...${downloadProgress.totalBytes > 0 ? ` ${Math.round((downloadProgress.bytesTransferred / downloadProgress.totalBytes) * 100)}%` : ''}`
+            }
+          </span>
         </div>
       )}
 
@@ -264,7 +277,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               openQuickLook={browse.openQuickLook}
               handleItemPointer={handleItemPointer}
               toggleSelectAll={toggleSelectAll}
-              handleCheckout={browse.handleCheckout}
+              handleDownload={handleDownload}
               setEditingFile={browse.setEditingFile}
               setMoveTarget={browse.setMoveTarget}
               setDeleteTarget={browse.setDeleteTarget}
@@ -298,7 +311,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               handleRubberBandMove={handleRubberBandMove}
               handleRubberBandEnd={handleRubberBandEnd}
               rubberBand={rubberBand}
-              handleCheckout={browse.handleCheckout}
+              handleDownload={handleDownload}
               setEditingFile={browse.setEditingFile}
               setMoveTarget={browse.setMoveTarget}
               setDeleteTarget={browse.setDeleteTarget}

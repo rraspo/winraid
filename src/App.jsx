@@ -369,7 +369,14 @@ export default function App() {
                   key={tab.id}
                   style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none', height: '100%' }}
                 >
-                  <SizeView connectionId={tab.connId} connection={conn} />
+                  <SizeView
+                    connectionId={tab.connId}
+                    connection={conn}
+                    onBrowsePath={(remotePath) => {
+                      openTab(tab.connId, 'browse')
+                      setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: tab.connId, highlightFile: null, token: Date.now() })
+                    }}
+                  />
                 </div>
               )
             })}
