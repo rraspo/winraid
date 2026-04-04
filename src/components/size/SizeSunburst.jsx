@@ -119,7 +119,7 @@ const SizeSunburst = React.memo(function SizeSunburst({
         <text
           textAnchor="middle"
           fill="var(--text)"
-          fontSize={12}
+          fontSize={Math.max(11, Math.round(holeR * 0.38))}
           fontWeight={600}
           dy={-3}
           style={{ pointerEvents: 'none' }}
@@ -129,8 +129,8 @@ const SizeSunburst = React.memo(function SizeSunburst({
         <text
           textAnchor="middle"
           fill="var(--text-muted)"
-          fontSize={10}
-          dy={11}
+          fontSize={Math.max(9, Math.round(holeR * 0.28))}
+          dy={Math.round(holeR * 0.38) + 4}
           style={{ pointerEvents: 'none' }}
         >
           total
