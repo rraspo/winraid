@@ -512,7 +512,7 @@ function registerIPC() {
 
   ipcMain.handle('watcher:start', async (_e, connectionId) => {
     if (typeof connectionId !== 'string' || !connectionId.trim()) {
-      return { ok: false, error: 'invalid connectionId' }
+      return { ok: false, error: 'Invalid connectionId' }
     }
     const { getConfig } = await import('./config.js')
     const cfg  = getConfig()
@@ -547,7 +547,7 @@ function registerIPC() {
 
   ipcMain.handle('watcher:stop', async (_e, connectionId) => {
     if (typeof connectionId !== 'string' || !connectionId.trim()) {
-      return { ok: false, error: 'invalid connectionId' }
+      return { ok: false, error: 'Invalid connectionId' }
     }
     const w = await getWatcher()
     w.stopWatcher(connectionId)
@@ -673,7 +673,7 @@ function registerIPC() {
 
   ipcMain.handle('queue:enqueue-batch', async (_e, connectionId, localFolder, relPaths) => {
     if (typeof connectionId !== 'string' || !connectionId.trim()) {
-      return { ok: false, error: 'invalid connectionId' }
+      return { ok: false, error: 'Invalid connectionId' }
     }
     const { getConfig } = await import('./config.js')
     const cfg  = getConfig()
@@ -914,7 +914,7 @@ function registerIPC() {
 
   // -- Remote browser: download file or folder to local path ---------------
   ipcMain.handle('remote:download', async (_e, connectionId, remotePath, localPath, isDir) => {
-    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'invalid connectionId' }
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
     if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
@@ -1206,7 +1206,7 @@ function registerIPC() {
   ipcMain.handle('remote:size-scan', async (_e, connectionId) => {
     try {
       if (typeof connectionId !== 'string' || !connectionId.trim()) {
-        return { ok: false, error: 'invalid connectionId' }
+        return { ok: false, error: 'Invalid connectionId' }
       }
       // Cancel any existing scan for this connection before starting a new one
       const existing = _sizeScans.get(connectionId)
