@@ -45,7 +45,9 @@ export default function SizeView({ connectionId, connection }) {
     clearTimeout(progressDeadlineRef.current)
   }, [])
 
-  // Measure chartArea and keep sunburst sized to fill it
+  // Measure chartArea and keep sunburst sized to fill it.
+  // Must re-run when phase changes to RESULTS because chartArea only
+  // mounts in that phase — on initial render it doesn't exist yet.
   useEffect(() => {
     const el = chartAreaRef.current
     if (!el) return
@@ -55,7 +57,7 @@ export default function SizeView({ connectionId, connection }) {
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [phase])
 
   // Subscribe to IPC push events
   useEffect(() => {

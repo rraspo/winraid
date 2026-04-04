@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useCallback } from 'react'
 import { hierarchy, Partition } from '@visx/hierarchy'
 import { Arc } from '@visx/shape'
 import { formatSize } from '../../utils/format'
@@ -66,6 +66,21 @@ const SizeSunburst = React.memo(function SizeSunburst({
   onArcClick,
   onCenterClick,
 }) {
+  const [tooltip, setTooltip] = useState(null) // { name, size, pct, x, y }
+
+  const handleMouseMove = useCallback((node, pct, e) => {
+    const rect = e.currentTarget.closest('svg').getBoundingClientRect()
+    setTooltip({
+      name: node.data.name,
+      size: formatSize(node.data.sizeKb * 1024),
+      pct,
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    })
+  }, [])
+
+  const handleMouseLeave = useCallback(() => setTooltip(null), [])
+
   const radius = Math.min(width, height) / 2 - 4
   const holeR  = radius * 0.28
 
@@ -77,6 +92,7 @@ const SizeSunburst = React.memo(function SizeSunburst({
     .sort((a, b) => b.value - a.value)
 
   return (
+    <div style={{ position: 'relative', width, height }}>
     <svg width={width} height={height} className={styles.svg}>
       <g transform={`translate(${width / 2},${height / 2})`}>
         <Partition root={root} size={[2 * Math.PI, radius ** 2]}>
@@ -87,7 +103,6 @@ const SizeSunburst = React.memo(function SizeSunburst({
               if (outerR - innerR < 1) return null
               const parentValue = node.parent?.value ?? root.value
               const pct = parentValue > 0 ? Math.round((node.value / parentValue) * 100) : 0
-              const titleText = `${node.data.name} — ${formatSize(node.data.sizeKb * 1024)} (${pct}% of parent)`
               return (
                 <Arc
                   key={node.data.path}
@@ -99,9 +114,10 @@ const SizeSunburst = React.memo(function SizeSunburst({
                   padAngle={0.008}
                   fill={arcColour(node)}
                   data-path={node.data.path}
-                  title={titleText}
                   className={styles.arc}
                   onClick={() => onArcClick?.(node.data)}
+                  onMouseMove={(e) => handleMouseMove(node, pct, e)}
+                  onMouseLeave={handleMouseLeave}
                 />
               )
             })
@@ -137,6 +153,18 @@ const SizeSunburst = React.memo(function SizeSunburst({
         </text>
       </g>
     </svg>
+    {tooltip && (
+      <div
+        className={styles.tooltip}
+        style={{ left: tooltip.x + 14, top: tooltip.y + 14 }}
+      >
+        <div className={styles.tooltipName}>{tooltip.name}</div>
+        <div className={styles.tooltipDetail}>
+          {tooltip.size} · {tooltip.pct}% of parent
+        </div>
+      </div>
+    )}
+    </div>
   )
 })
 export default SizeSunburst
