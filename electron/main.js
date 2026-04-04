@@ -59,6 +59,43 @@ let _watchingBeforePause = new Set()
 let _watcher = null
 let _queue   = null
 
+/** Active size scans: connectionId → { cancelled: boolean } */
+const _sizeScans = new Map()
+
+/**
+ * Run `du -sk <path>/*` via SSH exec on an already-pooled client.
+ * Returns array of { path: string, sizeKb: number } for direct children.
+ * Ignores permission errors (2>/dev/null). Returns [] on exec failure.
+ */
+function _runDuLevel(client, dirPath) {
+  return new Promise((resolve) => {
+    const quoted = `'${dirPath.replace(/'/g, "'\\''")}'`
+    client.exec(`du -sk ${quoted}/* 2>/dev/null`, (err, stream) => {
+      if (err) {
+        log('warn', `Size scan du exec failed [${dirPath}]: ${err.message}`)
+        return resolve([])
+      }
+      let output = ''
+      stream.on('data', (d) => { output += d.toString() })
+      stream.stderr.on('data', () => {})
+      stream.on('close', () => {
+        const entries = []
+        for (const line of output.trim().split('\n')) {
+          if (!line.trim()) continue
+          const tab = line.indexOf('\t')
+          if (tab < 0) continue
+          const sizeKb = parseInt(line.slice(0, tab), 10)
+          const entryPath = line.slice(tab + 1).trim()
+          if (!isNaN(sizeKb) && entryPath && entryPath !== `${dirPath}/*`) {
+            entries.push({ path: entryPath, sizeKb })
+          }
+        }
+        resolve(entries)
+      })
+    })
+  })
+}
+
 async function getWatcher() {
   if (!_watcher) _watcher = await import('./watcher.js')
   return _watcher
@@ -445,7 +482,7 @@ function registerIPC() {
 
   const CONFIG_SET_ALLOWLIST = [
     'localFolder', 'operation', 'folderMode', 'extensions',
-    'backup', 'connections', 'activeConnectionId',
+    'backup', 'connections', 'backupByConnection',
   ]
 
   ipcMain.handle('config:set', async (_e, key, value) => {
@@ -506,6 +543,19 @@ function registerIPC() {
   ipcMain.handle('watcher:list', async () => {
     const w = await getWatcher()
     return w.listWatcherStates()
+  })
+
+  // Soft pause -- leaves the interval running but stops dequeuing.
+  // Called alongside watcher:pause-all (which does a hard stop via stopWorker)
+  // so that the queue resumes correctly when watcher:resume-all restarts the interval.
+  ipcMain.handle('queue:pause', async () => {
+    const { pauseWorker } = await import('./worker.js')
+    pauseWorker()
+  })
+
+  ipcMain.handle('queue:resume', async () => {
+    const { resumeWorker } = await import('./worker.js')
+    resumeWorker()
   })
 
   ipcMain.handle('watcher:pause-all', async () => {
@@ -1022,6 +1072,153 @@ function registerIPC() {
     }
   })
 
+  // -- Remote: disk usage via `df -P -k` over SSH exec -----------------------
+  ipcMain.handle('remote:disk-usage', async (_e, connectionId) => {
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Disk usage only available for SFTP connections' }
+
+      await _poolGet(connectionId)   // ensure connection is established
+      _poolTouch(connectionId)
+
+      const poolEntry = _sftpPool.get(connectionId)
+      if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
+
+      const remotePath = conn.sftp?.remotePath || '/'
+      // Single-quote the path and escape any literal single quotes inside it
+      const quotedPath = `'${remotePath.replace(/'/g, "'\\''")}'`
+
+      return new Promise((resolve) => {
+        poolEntry.client.exec(`df -P -k -- ${quotedPath}`, (err, stream) => {
+          if (err) {
+            _connLabel(connectionId).then((label) =>
+              log('error', `Remote disk usage failed [${label}]: ${err.message}`)
+            )
+            return resolve({ ok: false, error: err.message })
+          }
+          let output = ''
+          stream.on('data', (data) => { output += data.toString() })
+          stream.stderr.on('data', () => {})
+          stream.on('close', () => {
+            // df -P output: one header line then one data line per filesystem
+            // Columns: Filesystem  1024-blocks  Used  Available  Capacity%  Mounted-on
+            const lines = output.trim().split('\n').filter(Boolean)
+            const dataLine = lines[lines.length - 1]
+            if (!dataLine) return resolve({ ok: false, error: 'Empty df output' })
+            const parts = dataLine.trim().split(/\s+/)
+            if (parts.length < 5) return resolve({ ok: false, error: 'Unexpected df output format' })
+            const total = parseInt(parts[1], 10) * 1024
+            const used  = parseInt(parts[2], 10) * 1024
+            const free  = parseInt(parts[3], 10) * 1024
+            if (isNaN(total) || isNaN(used) || isNaN(free)) {
+              return resolve({ ok: false, error: 'Could not parse df output' })
+            }
+            _connLabel(connectionId).then((label) =>
+              log('info', `Remote disk usage [${label}]: ${(free / 1024 ** 3).toFixed(1)} GB free of ${(total / 1024 ** 3).toFixed(1)} GB`)
+            )
+            resolve({ ok: true, total, used, free })
+          })
+        })
+      })
+    } catch (err) {
+      log('error', `Remote disk usage failed [${connectionId}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Remote: folder size scan via `du -sk path/*` streamed level by level
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('remote:size-scan', async (_e, connectionId) => {
+    try {
+      if (typeof connectionId !== 'string' || !connectionId.trim()) {
+        return { ok: false, error: 'invalid connectionId' }
+      }
+      // Cancel any existing scan for this connection before starting a new one
+      const existing = _sizeScans.get(connectionId)
+      if (existing) existing.cancelled = true
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Size scan only available for SFTP connections' }
+
+      await _poolGet(connectionId)
+      _poolTouch(connectionId)
+      const poolEntry = _sftpPool.get(connectionId)
+      if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
+
+      const scanState = { cancelled: false }
+      _sizeScans.set(connectionId, scanState)
+
+      const rootPath  = (conn.sftp?.remotePath || '/').replace(/\/+$/, '') || '/'
+      const startTime = Date.now()
+      const MAX_DEPTH = 3
+
+      // BFS queue: { path, depth }
+      const queue = [{ path: rootPath, depth: 0 }]
+      let totalFolders = 0
+
+      while (queue.length > 0) {
+        if (scanState.cancelled) break
+
+        const { path, depth } = queue.shift()
+        if (depth >= MAX_DEPTH) continue
+
+        const entries = await _runDuLevel(poolEntry.client, path)
+        if (scanState.cancelled) break
+
+        totalFolders += entries.length
+
+        sendToRenderer('size:level', {
+          connectionId,
+          parentPath: path,
+          entries: entries.map((e) => ({
+            name: e.path.split('/').pop() || e.path,
+            path: e.path,
+            sizeKb: e.sizeKb,
+          })),
+        })
+
+        sendToRenderer('size:progress', {
+          connectionId,
+          path,
+          count: totalFolders,
+          elapsedMs: Date.now() - startTime,
+        })
+
+        for (const entry of entries) {
+          queue.push({ path: entry.path, depth: depth + 1 })
+        }
+      }
+
+      if (!scanState.cancelled) {
+        sendToRenderer('size:done', {
+          connectionId,
+          totalFolders,
+          elapsedMs: Date.now() - startTime,
+        })
+      }
+
+      _sizeScans.delete(connectionId)
+      return { ok: true }
+    } catch (err) {
+      _sizeScans.delete(connectionId)
+      sendToRenderer('size:error', { connectionId, error: err.message })
+      log('error', `Size scan failed [${connectionId}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('remote:size-cancel', (_e, connectionId) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false }
+    }
+    const scanState = _sizeScans.get(connectionId)
+    if (scanState) scanState.cancelled = true
+    return { ok: true }
+  })
+
   // -- Backup: NAS → local SFTP download -------------------------------------
   ipcMain.handle('backup:run', async (_e, cfg) => {
     // Per-run token: if a second run starts while one is in flight, the first
@@ -1046,10 +1243,14 @@ function registerIPC() {
       return { ok: false, error: 'invalid destination' }
     }
 
-    // Reuse the active connection's SFTP settings
+    // Resolve the connection from the renderer-supplied connectionId
+    const { connectionId } = cfg
+    if (!connectionId || typeof connectionId !== 'string') {
+      return { ok: false, error: 'connectionId is required.' }
+    }
     const { getConfig } = await import('./config.js')
     const appCfg = getConfig()
-    const activeConn = (appCfg.connections ?? []).find((c) => c.id === appCfg.activeConnectionId)
+    const activeConn = (appCfg.connections ?? []).find((c) => c.id === connectionId)
     if (!activeConn || activeConn.type !== 'sftp') {
       return { ok: false, error: 'No active SFTP connection configured.' }
     }
@@ -1856,11 +2057,11 @@ app.whenReady().then(async () => {
       "style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: nas-stream: https://cdn.jsdelivr.net; " +
       "media-src 'self' nas-stream:; " +
-      "connect-src 'self' https://cdn.jsdelivr.net https://raw.githubusercontent.com"
+      "connect-src 'self' nas-stream: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
     : "default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: nas-stream:; " +
       "img-src 'self' data: blob: nas-stream:; " +
       "media-src 'self' blob: nas-stream:; " +
-      "connect-src 'self' ws: wss: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
+      "connect-src 'self' nas-stream: ws: wss: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders }

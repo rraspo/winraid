@@ -169,7 +169,6 @@ export default function ConnectionView({ existing, onSave, onClose }) {
       ? [...list, toSave]
       : list.map((c) => c.id === toSave.id ? toSave : c)
     await window.winraid?.config.set('connections', updated)
-    await window.winraid?.config.set('activeConnectionId', toSave.id)
     setSaving(false)
     onSave(toSave)
   }
@@ -180,10 +179,6 @@ export default function ConnectionView({ existing, onSave, onClose }) {
     const list    = await window.winraid?.config.get('connections') ?? []
     const updated = list.filter((c) => c.id !== conn.id)
     await window.winraid?.config.set('connections', updated)
-    const activeId = await window.winraid?.config.get('activeConnectionId')
-    if (activeId === conn.id) {
-      await window.winraid?.config.set('activeConnectionId', null)
-    }
     setDeleting(false)
     onSave(null)
   }

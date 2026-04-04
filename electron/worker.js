@@ -9,6 +9,7 @@ import { unlink } from 'fs/promises'
 // ---------------------------------------------------------------------------
 let timer        = null   // setInterval handle
 let isProcessing = false  // mutex — prevents overlapping transfers
+let paused       = false  // when true, tick skips dequeuing (in-flight job still finishes)
 
 const POLL_INTERVAL_MS = 800   // how often to check for new jobs when idle
 
@@ -35,6 +36,18 @@ export function stopWorker() {
   log('info', 'Transfer worker stopped.')
 }
 
+/** Prevent the worker from dequeuing new jobs. In-flight job finishes normally. */
+export function pauseWorker() {
+  paused = true
+  log('info', 'Transfer worker paused.')
+}
+
+/** Allow the worker to resume dequeuing. */
+export function resumeWorker() {
+  paused = false
+  log('info', 'Transfer worker resumed.')
+}
+
 // ---------------------------------------------------------------------------
 // Internal poll tick
 // ---------------------------------------------------------------------------
@@ -42,6 +55,7 @@ export function stopWorker() {
 async function tick() {
   // Skip if a transfer is already in flight
   if (isProcessing) return
+  if (paused) return
 
   const job = getNextPending()
   if (!job) return

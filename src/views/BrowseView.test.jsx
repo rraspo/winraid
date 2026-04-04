@@ -228,6 +228,27 @@ describe('BrowseView', () => {
 
   // ── Last-visited highlight ──────────────────────────────────────────────
 
+  it('shows disk usage pill in the count bar', async () => {
+    window.winraid.remote.diskUsage = vi.fn().mockResolvedValue({
+      ok: true,
+      total: 10 * 1024 ** 3,
+      used:  4 * 1024 ** 3,
+      free:  6 * 1024 ** 3,
+    })
+    window.winraid.remote.list = vi.fn().mockResolvedValue({
+      ok: true,
+      entries: [{ name: 'file.txt', size: 100, mtime: Date.now(), isDir: false }],
+    })
+    render(
+      <BrowseView
+        connectionId={TEST_CONNECTIONS[0].id}
+        connections={TEST_CONNECTIONS}
+        onHistoryPush={() => {}}
+      />
+    )
+    await waitFor(() => expect(screen.getByText(/6\.00 GB free of 10\.00 GB/)).toBeInTheDocument())
+  })
+
   it('highlights last-visited folder when navigating up', async () => {
     // Start in a subfolder /mnt/user/data/Documents
     const subEntries = [

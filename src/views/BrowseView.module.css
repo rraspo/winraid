@@ -11,41 +11,11 @@
 .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
-}
-
-.titleRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: 1;
-  min-width: 0;
-}
-
-.title {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.connSelect {
-  font-size: var(--font-size-xs);
-  background: var(--bg-input);
-  color: var(--text);
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-sm);
-  padding: 2px var(--space-2);
-  cursor: pointer;
-  max-width: 180px;
-}
-
-.connSelect:focus {
-  outline: none;
-  border-color: var(--accent);
 }
 
 .headerRight {
@@ -85,8 +55,10 @@
 .refreshBtn:hover:not(:disabled) { color: var(--text); }
 .refreshBtn:disabled              { opacity: 0.35; cursor: default; }
 
-.goRootBtn,
-.setRootBtn {
+.newFolderBtn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: 0 var(--space-3);
   height: 28px;
   border-radius: var(--radius-sm);
@@ -97,31 +69,42 @@
   transition: color var(--transition), border-color var(--transition), opacity var(--transition);
 }
 
-.goRootBtn:hover:not(:disabled)  { color: var(--accent); border-color: var(--accent-subtle); }
-.setRootBtn:hover:not(:disabled) { color: var(--text); border-color: var(--text-faint); }
+.newFolderBtn:hover:not(:disabled) { color: var(--text); border-color: var(--text-faint); }
+.newFolderBtn:disabled              { opacity: 0.35; cursor: default; }
 
-.goRootBtn:disabled,
-.setRootBtn:disabled { opacity: 0.35; cursor: default; }
-
-/* ── View mode toggle ─────────────────────────────────────────────────────── */
-.viewToggle {
-  display: flex;
-  gap: 2px;
+.goRootBtn {
+  padding: 0 var(--space-3);
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  transition: color var(--transition), border-color var(--transition), opacity var(--transition);
 }
 
-.viewBtn {
+.goRootBtn:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-subtle); }
+.goRootBtn:disabled              { opacity: 0.35; cursor: default; }
+
+/* ── Header left group ────────────────────────────────────────────────────── */
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.viewToggleBtn {
   display: flex;
   align-items: center;
   justify-content: center;
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  color: var(--text-faint);
-  transition: color var(--transition), background-color var(--transition);
+  color: var(--text-muted);
+  transition: color var(--transition);
 }
 
-.viewBtn:hover    { color: var(--text-muted); }
-.viewBtnActive    { color: var(--text); background: var(--bg-active, var(--bg-hover)); }
+.viewToggleBtn:hover { color: var(--text); }
 
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
 .breadcrumb {
@@ -301,4 +284,11 @@
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ── Disk usage pill (count bar) ──────────────────────────────────────────── */
+.diskPill {
+  margin-left: auto;
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
 }
