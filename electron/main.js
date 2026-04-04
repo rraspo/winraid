@@ -1219,6 +1219,33 @@ function registerIPC() {
     return { ok: true }
   })
 
+  // -- Size scan cache (persist results across restarts) ---------------------
+  const _sizeCacheFile = join(app.getPath('userData'), 'size-cache.json')
+
+  function _readSizeCache() {
+    try { return JSON.parse(readFileSync(_sizeCacheFile, 'utf8')) } catch { return {} }
+  }
+
+  ipcMain.handle('size:load-cache', (_e, connectionId) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return null
+    return _readSizeCache()[connectionId] ?? null
+  })
+
+  ipcMain.handle('size:save-cache', (_e, connectionId, data) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false }
+    try {
+      const all = _readSizeCache()
+      all[connectionId] = data
+      writeFileAsync(_sizeCacheFile, JSON.stringify(all)).catch((e) =>
+        log('warn', `size cache write failed: ${e.message}`)
+      )
+      return { ok: true }
+    } catch (e) {
+      log('warn', `size cache save failed: ${e.message}`)
+      return { ok: false }
+    }
+  })
+
   // -- Backup: NAS → local SFTP download -------------------------------------
   ipcMain.handle('backup:run', async (_e, cfg) => {
     // Per-run token: if a second run starts while one is in flight, the first
