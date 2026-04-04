@@ -1,33 +1,16 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   File, Video, Image, FileText, Archive,
-  HardDrive, AlertCircle, CheckCircle, Clock,
+  AlertCircle, CheckCircle,
 } from 'lucide-react'
 import ConnectionIcon from '../components/ConnectionIcon'
+import { formatSize } from '../utils/format'
 import styles from './DashboardView.module.css'
-
-// Stable monotonic counter for log entry React keys.
-// Each new entry gets a unique key that never changes after assignment.
-let _logKeyCounter = 0
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function relativeTime(ts) {
-  const s = Math.floor((Date.now() - ts) / 1000)
-  if (s < 5)     return 'just now'
-  if (s < 60)    return `${s}s ago`
-  if (s < 3600)  return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  return `${Math.floor(s / 86400)}d ago`
-}
 
-function formatSize(bytes) {
-  if (!bytes) return null
-  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(0)} KB`
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
-  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
-}
 
 function getFileIcon(filename) {
   const ext = filename?.split('.').pop()?.toLowerCase() ?? ''
@@ -41,9 +24,8 @@ function getFileIcon(filename) {
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function DashboardView({ watcherStatus, onNavigate, onEditConnection, connections, activeConnId }) {
-  const [jobs,       setJobs]       = useState([])
-  const [logEntries, setLogEntries] = useState([])
+export default function DashboardView({ watcherStatus, onNavigate, connections, onOpenTab }) {
+  const [jobs, setJobs] = useState([])
 
   // watcherStatus is now a Map<connectionId, { watching, state, file }>
   const watcherEntries = Object.values(watcherStatus ?? {})
@@ -57,13 +39,6 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
 
   useEffect(() => {
     refreshJobs()
-    window.winraid?.log.tail(12).then((lines) => {
-      if (lines?.length) {
-        setLogEntries(
-          [...lines].reverse().map((e) => ({ ...e, key: `log-${++_logKeyCounter}` }))
-        )
-      }
-    })
 
     const unsubUpdated  = window.winraid?.queue.onUpdated(() => refreshJobs())
     const unsubProgress = window.winraid?.queue.onProgress(({ jobId, percent }) => {
@@ -71,14 +46,10 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
         prev.map((j) => j.id === jobId ? { ...j, progress: percent / 100, status: 'TRANSFERRING' } : j)
       )
     })
-    const unsubLog = window.winraid?.log.onEntry((entry) => {
-      setLogEntries((prev) => [{ ...entry, key: `log-${++_logKeyCounter}` }, ...prev].slice(0, 12))
-    })
 
     return () => {
       unsubUpdated?.()
       unsubProgress?.()
-      unsubLog?.()
     }
   }, [refreshJobs])
 
@@ -93,6 +64,29 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
   const hasErrors = errorJobs.length > 0
 
   const displayConns = connections ?? []
+
+  const [diskUsage, setDiskUsage]     = useState({})
+  const [diskLoading, setDiskLoading] = useState(false)
+
+  const refreshDiskUsage = useCallback(async () => {
+    const conns = connections ?? []
+    if (!conns.length) return
+    setDiskLoading(true)
+    try {
+      const results = await Promise.all(
+        conns.map((c) =>
+          window.winraid?.remote.diskUsage?.(c.id).catch(() => ({ ok: false, error: 'Request failed' }))
+        )
+      )
+      const map = {}
+      conns.forEach((c, i) => { map[c.id] = results[i] })
+      setDiskUsage(map)
+    } finally {
+      setDiskLoading(false)
+    }
+  }, [connections])
+
+  useEffect(() => { refreshDiskUsage() }, [refreshDiskUsage])
 
   return (
     <div className={styles.container}>
@@ -192,12 +186,11 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
                   {displayConns.map((conn) => {
                     const host       = conn.type === 'sftp' ? conn.sftp?.host : conn.smb?.host
                     const remotePath = conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath
-                    const isActive   = conn.id === activeConnId
                     return (
                       <button
                         key={conn.id}
-                        className={[styles.connCard, isActive ? styles.connCardActive : ''].filter(Boolean).join(' ')}
-                        onClick={() => onEditConnection?.(conn)}
+                        className={styles.connCard}
+                        onClick={() => onOpenTab?.(conn.id, 'browse')}
                       >
                         <div className={styles.connCardTop}>
                           <div className={styles.connIconWrap}>
@@ -205,8 +198,8 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
                           </div>
                           <div className={styles.connCardMeta}>
                             <span className={styles.connCardName}>{conn.name}</span>
-                            {isActive
-                              ? <span className={styles.connBadgeActive}>Active</span>
+                            {(watcherStatus ?? {})[conn.id]?.watching
+                              ? <span className={styles.connBadgeActive}>Watching</span>
                               : <span className={styles.connBadgeIdle}>Idle</span>
                             }
                           </div>
@@ -223,31 +216,64 @@ export default function DashboardView({ watcherStatus, onNavigate, onEditConnect
               )}
             </div>
 
-          </div>
-
-          {/* Right column — Recent Activity */}
-          <div className={styles.colSide}>
-            <div className={styles.activityPanel}>
+            {/* Storage */}
+            <div className={styles.contentBlock}>
               <div className={styles.blockHeader}>
-                <h3 className={styles.blockTitle}>Recent Activity</h3>
-                <button className={styles.viewAllBtn} onClick={() => onNavigate('logs')}>
-                  View logs
+                <h3 className={styles.blockTitle}>Storage</h3>
+                <button
+                  className={styles.viewAllBtn}
+                  onClick={refreshDiskUsage}
+                  disabled={diskLoading}
+                >
+                  {diskLoading ? 'Refreshing\u2026' : 'Refresh'}
                 </button>
               </div>
 
-              {logEntries.length === 0 ? (
+              {displayConns.length === 0 ? (
                 <div className={styles.emptyRow}>
-                  <Clock size={16} className={styles.emptyRowIcon} />
-                  <span>No activity yet</span>
+                  <AlertCircle size={16} className={styles.emptyRowIconWarn} />
+                  <span>No connections configured.</span>
                 </div>
               ) : (
-                <div className={styles.activityList}>
-                  {logEntries.map((entry, i) => (
-                    <LogEntry key={entry.key ?? i} entry={entry} />
-                  ))}
+                <div className={styles.storageList}>
+                  {displayConns.map((conn) => {
+                    const usage = diskUsage[conn.id]
+                    const pct = usage?.ok ? Math.round((usage.used / usage.total) * 100) : 0
+                    const isFull = pct >= 90
+
+                    return (
+                      <div key={conn.id} className={styles.storageRow}>
+                        <div className={styles.storageRowTop}>
+                          <div className={styles.storageConnInfo}>
+                            <ConnectionIcon icon={conn.icon ?? null} size={13} />
+                            <span className={styles.storageConnName}>{conn.name}</span>
+                            <span className={styles.connTypeBadge}>{conn.type.toUpperCase()}</span>
+                          </div>
+                          {usage?.ok ? (
+                            <span className={styles.storageStats}>
+                              {formatSize(usage.used)} used &middot; {formatSize(usage.free)} free &middot; {formatSize(usage.total)} total
+                            </span>
+                          ) : usage ? (
+                            <span className={styles.storageUnavailable}>Disk usage unavailable</span>
+                          ) : (
+                            <span className={styles.storageUnavailable}>Loading\u2026</span>
+                          )}
+                        </div>
+                        {usage?.ok && (
+                          <div className={styles.progressTrack}>
+                            <div
+                              className={[styles.progressFill, isFull ? styles.progressFillDanger : ''].filter(Boolean).join(' ')}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
+
           </div>
 
         </div>
@@ -264,7 +290,7 @@ function TransferCard({ job }) {
   const dir      = srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : ''
   const isActive = status === 'TRANSFERRING'
   const percent  = Math.round((progress ?? 0) * 100)
-  const size     = formatSize(job.size)
+  const size     = job.size ? formatSize(job.size) : null
 
   return (
     <div className={[styles.transferCard, isActive ? styles.transferCardActive : ''].join(' ')}>
@@ -295,22 +321,3 @@ function TransferCard({ job }) {
   )
 }
 
-// ---------------------------------------------------------------------------
-// LogEntry
-// ---------------------------------------------------------------------------
-function LogEntry({ entry }) {
-  return (
-    <div className={[styles.logEntry, styles[`log_${entry.level}`]].join(' ')}>
-      <div className={styles.logIconWrap}>
-        {entry.level === 'error'
-          ? <AlertCircle size={14} />
-          : <CheckCircle size={14} />
-        }
-      </div>
-      <div className={styles.logContent}>
-        <p className={styles.logMsg}>{entry.message}</p>
-        <span className={styles.logTs}>{relativeTime(entry.ts)}</span>
-      </div>
-    </div>
-  )
-}

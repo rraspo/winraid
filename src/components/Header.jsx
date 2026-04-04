@@ -1,23 +1,29 @@
-import { useMemo } from 'react'
-import { Play, Square } from 'lucide-react'
+import { useState, useEffect, useMemo } from 'react'
+import { Play, Square, History, AlertCircle, CheckCircle, X } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
 import styles from './Header.module.css'
 
-export default function Header({ watcherStatus, activeTransfers, activeConnId, onWatcherToggle, connections = [] }) {
-  // watcherStatus is a Record<connectionId, { watching, state, file }>
-  const entries = Object.values(watcherStatus ?? {})
-  const anyWatching = entries.some((s) => s.watching)
-  const enqueueing = entries.find((s) => s.state === 'enqueueing')
+let _logKeyCounter = 0
+
+function relativeTime(ts) {
+  const s = Math.floor((Date.now() - ts) / 1000)
+  if (s < 5)     return 'just now'
+  if (s < 60)    return `${s}s ago`
+  if (s < 3600)  return `${Math.floor(s / 60)}m ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
+}
+
+export default function Header({ watcherStatus, activeTransfers, queuePaused, onGlobalToggle, connections = [], onNavigate }) {
+  const entries      = Object.values(watcherStatus ?? {})
+  const anyWatching  = entries.some((s) => s.watching)
+  const enqueueing   = entries.find((s) => s.state === 'enqueueing')
   const watchingCount = entries.filter((s) => s.watching).length
 
-  // The toggle button acts on the active connection
-  const activeStatus   = activeConnId ? (watcherStatus ?? {})[activeConnId] : null
-  const activeWatching = activeStatus?.watching ?? false
+  const allStopped = !anyWatching && queuePaused
 
-  // activeTransfers is Map<jobId, connectionId>
   const transferCount = activeTransfers.size
 
-  // Derive unique connection names for active transfers
   const transferLabel = useMemo(() => {
     if (transferCount === 0) return null
     const connMap = {}
@@ -40,37 +46,104 @@ export default function Header({ watcherStatus, activeTransfers, activeConnId, o
 
   const dotState = !anyWatching ? 'stopped' : enqueueing ? 'enqueueing' : 'watching'
 
+  const [showActivity, setShowActivity] = useState(false)
+  const [logEntries, setLogEntries]     = useState([])
+
+  useEffect(() => {
+    window.winraid?.log.tail(12).then((lines) => {
+      if (lines?.length) {
+        setLogEntries(
+          [...lines].reverse().map((e) => ({ ...e, key: `log-${++_logKeyCounter}` }))
+        )
+      }
+    })
+
+    const unsubLog = window.winraid?.log.onEntry((entry) => {
+      setLogEntries((prev) => [{ ...entry, key: `log-${++_logKeyCounter}` }, ...prev].slice(0, 12))
+    })
+
+    return () => { unsubLog?.() }
+  }, [])
+
   return (
-    <header className={styles.header}>
-      <div className={styles.left}>
-        <div className={[styles.statusPill, styles[dotState]].join(' ')}>
-          <span className={[styles.dot, styles[dotState]].join(' ')} />
-          <span className={styles.statusLabel}>{statusLabel}</span>
-        </div>
-
-        {transferCount > 0 && (
-          <div className={styles.transferPill}>
-            <span className={styles.spinner} />
-            <span>{transferLabel}</span>
+    <>
+      <header className={styles.header}>
+        <div className={styles.left}>
+          <div className={[styles.statusPill, styles[dotState]].join(' ')}>
+            <span className={[styles.dot, styles[dotState]].join(' ')} />
+            <span className={styles.statusLabel}>{statusLabel}</span>
           </div>
-        )}
-      </div>
-
-      <div className={styles.right}>
-        {activeConnId && (
-          <Tooltip tip={activeWatching ? 'Stop scanner for active connection' : 'Start scanner for active connection'} side="bottom">
+          {transferCount > 0 && (
+            <div className={styles.transferPill}>
+              <span className={styles.spinner} />
+              <span>{transferLabel}</span>
+            </div>
+          )}
+        </div>
+        <div className={styles.right}>
+          <button
+            className={[styles.activityBtn, showActivity ? styles.activityBtnActive : ''].filter(Boolean).join(' ')}
+            onClick={() => setShowActivity((v) => !v)}
+          >
+            <History size={13} />
+            Activity
+          </button>
+          <Tooltip tip={allStopped ? 'Start all scanners and resume queue' : 'Stop all scanners and pause queue'} side="bottom">
             <button
-              className={[styles.watcherBtn, activeWatching ? styles.watcherBtnStop : styles.watcherBtnStart].join(' ')}
-              onClick={() => onWatcherToggle(activeConnId)}
+              className={[styles.watcherBtn, allStopped ? styles.watcherBtnStart : styles.watcherBtnStop].join(' ')}
+              onClick={onGlobalToggle}
             >
-              {activeWatching
-                ? <><Square size={11} fill="currentColor" /> Stop</>
-                : <><Play  size={11} fill="currentColor" /> Start</>
+              {allStopped
+                ? <><Play  size={11} fill="currentColor" /> Start All</>
+                : <><Square size={11} fill="currentColor" /> Stop All</>
               }
             </button>
           </Tooltip>
+        </div>
+      </header>
+
+      {showActivity && (
+        <div className={styles.activityBackdrop} onClick={() => setShowActivity(false)} />
+      )}
+      <div className={[styles.activityPanel, showActivity ? styles.activityPanelOpen : ''].filter(Boolean).join(' ')}>
+        <div className={styles.activityPanelHeader}>
+          <span className={styles.activityPanelTitle}>Recent Activity</span>
+          <div className={styles.activityPanelActions}>
+            <button
+              className={styles.activityViewAll}
+              onClick={() => { setShowActivity(false); onNavigate?.('logs') }}
+            >
+              View logs
+            </button>
+            <button className={styles.activityCloseBtn} onClick={() => setShowActivity(false)}>
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+        {logEntries.length === 0 ? (
+          <div className={styles.activityEmpty}>No activity yet</div>
+        ) : (
+          <div className={styles.activityList}>
+            {logEntries.map((entry, i) => (
+              <ActivityEntry key={entry.key ?? i} entry={entry} />
+            ))}
+          </div>
         )}
       </div>
-    </header>
+    </>
+  )
+}
+
+function ActivityEntry({ entry }) {
+  return (
+    <div className={[styles.activityEntry, styles[`level_${entry.level}`]].filter(Boolean).join(' ')}>
+      <div className={styles.activityEntryIcon}>
+        {entry.level === 'error' ? <AlertCircle size={13} /> : <CheckCircle size={13} />}
+      </div>
+      <div className={styles.activityEntryContent}>
+        <p className={styles.activityEntryMsg}>{entry.message}</p>
+        <span className={styles.activityEntryTs}>{relativeTime(entry.ts)}</span>
+      </div>
+    </div>
   )
 }

@@ -1,9 +1,11 @@
+import { useState, useEffect } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon,
 } from 'lucide-react'
 import styles from './BrowseView.module.css'
+import { formatSize } from '../utils/format'
 import EditorModal from '../components/EditorModal'
 import QuickLookOverlay from '../components/QuickLookOverlay'
 import DeleteModal from '../components/modals/DeleteModal'
@@ -16,8 +18,8 @@ import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
 import { useBrowse } from '../hooks/useBrowse'
 
-export default function BrowseView({ onHistoryPush, browseRestore, connections: connectionsProp, style }) {
-  const browse = useBrowse({ onHistoryPush, browseRestore, connectionsProp })
+export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style }) {
+  const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
     connections, selectedId, path, entries, loading, error, status,
     confirmTarget, editingFile, deleteTarget, moveTarget,
@@ -29,14 +31,26 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
     setSelectedFile, setShowQuickLook,
     cfgRemotePath, localFolder, crumbs,
     fileEntries, selectedEntries, dirCount, fileCount, busy, noConfig,
-    handleSelectConnection, fetchDir, navigate,
-    handleCheckout, handleConfirm, handleSetRoot,
+    fetchDir, navigate,
+    handleCheckout, handleConfirm,
     handleDelete, handleMove,
     handleBulkDelete, handleBulkMove, handleBulkCheckout, clearSelection,
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
     handleItemPointer, toggleSelectAll,
     handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
   } = browse
+
+  const [diskUsage, setDiskUsage] = useState(null)
+
+  useEffect(() => {
+    if (!selectedId) return
+    let cancelled = false
+    setDiskUsage(null)
+    window.winraid?.remote.diskUsage?.(selectedId)
+      ?.then((res) => { if (!cancelled) setDiskUsage(res) })
+      ?.catch(() => {})
+    return () => { cancelled = true }
+  }, [selectedId])
 
   return (
     <div className={styles.container} style={style}>
@@ -52,17 +66,17 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
           files={fileEntries}
           onNavigate={(f) => {
             setSelectedFile(f)
-            onHistoryPush?.({ kind: 'browse', path, quickLookFile: f })
+            onHistoryPush?.({ kind: 'browse', path, quickLookFile: f, connectionId: selectedId })
           }}
           onClose={() => {
             setShowQuickLook(false)
             setSelectedFile(null)
-            onHistoryPush?.({ kind: 'browse', path, quickLookFile: null })
+            onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
           }}
           onDelete={(target) => {
             setShowQuickLook(false)
             setSelectedFile(null)
-            onHistoryPush?.({ kind: 'browse', path, quickLookFile: null })
+            onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
             setDeleteTarget(target)
           }}
         />
@@ -119,20 +133,34 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
 
       {/* Header */}
       <div className={styles.header}>
-        <div className={styles.titleRow}>
-          <span className={styles.title}>Browse Remote</span>
-          {connections.length > 1 && (
-            <select
-              className={styles.connSelect}
-              value={selectedId ?? ''}
-              onChange={(e) => handleSelectConnection(e.target.value)}
+        <div className={styles.headerLeft}>
+          <button
+            className={styles.newFolderBtn}
+            onClick={() => setNewFolderName('')}
+            disabled={busy || loading || noConfig}
+          >
+            <FolderPlus size={13} />
+            New Folder
+          </button>
+          <Tooltip tip={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'} side="bottom">
+            <button
+              className={styles.viewToggleBtn}
+              onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
             >
-              {connections.map((c) => (
-                <option key={c.id} value={c.id}>{c.name || c.sftp?.host || c.id}</option>
-              ))}
-            </select>
-          )}
+              {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
+            </button>
+          </Tooltip>
+          <Tooltip tip="Refresh" side="bottom">
+            <button
+              className={styles.refreshBtn}
+              onClick={() => fetchDir(path)}
+              disabled={loading || noConfig}
+            >
+              <RefreshCw size={13} className={loading ? styles.spinning : ''} />
+            </button>
+          </Tooltip>
         </div>
+
         <div className={styles.headerRight}>
           {!noConfig && (
             <>
@@ -147,15 +175,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
                   </button>
                 </Tooltip>
               )}
-              <Tooltip tip="Set current folder as sync root" side="bottom">
-                <button
-                  className={styles.setRootBtn}
-                  onClick={() => handleSetRoot(path)}
-                  disabled={busy || loading || cfgRemotePath === path}
-                >
-                  Set root here
-                </button>
-              </Tooltip>
               {localFolder && (
                 <Tooltip tip={`Check out current folder structure to ${localFolder}`} side="bottom">
                   <button
@@ -170,44 +189,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               )}
             </>
           )}
-
-          <div className={styles.viewToggle}>
-            <Tooltip tip="List view" side="bottom">
-              <button
-                className={[styles.viewBtn, viewMode === 'list' ? styles.viewBtnActive : ''].join(' ')}
-                onClick={() => setViewMode('list')}
-              >
-                <List size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip tip="Grid view" side="bottom">
-              <button
-                className={[styles.viewBtn, viewMode === 'grid' ? styles.viewBtnActive : ''].join(' ')}
-                onClick={() => setViewMode('grid')}
-              >
-                <LayoutGrid size={14} />
-              </button>
-            </Tooltip>
-          </div>
-
-          <Tooltip tip="New folder" side="bottom">
-            <button
-              className={styles.refreshBtn}
-              onClick={() => setNewFolderName('')}
-              disabled={busy || loading || noConfig}
-            >
-              <FolderPlus size={13} />
-            </button>
-          </Tooltip>
-          <Tooltip tip="Refresh" side="left">
-            <button
-              className={styles.refreshBtn}
-              onClick={() => fetchDir(path)}
-              disabled={loading || noConfig}
-            >
-              <RefreshCw size={13} className={loading ? styles.spinning : ''} />
-            </button>
-          </Tooltip>
         </div>
       </div>
 
@@ -330,6 +311,11 @@ export default function BrowseView({ onHistoryPush, browseRestore, connections: 
               {dirCount  > 0 && <span>{dirCount}  {dirCount  === 1 ? 'folder' : 'folders'}</span>}
               {fileCount > 0 && <span>{fileCount} {fileCount === 1 ? 'file'   : 'files'}</span>}
               {dirCount  > 0 && fileCount > 0 && <span className={styles.countTotal}>{entries.length} total</span>}
+              {diskUsage?.ok && (
+                <span className={styles.diskPill}>
+                  {formatSize(diskUsage.free)} free of {formatSize(diskUsage.total)}
+                </span>
+              )}
             </div>
           )}
 

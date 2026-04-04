@@ -18,7 +18,7 @@ function isOutsideRoot(remotePath, cfgRemotePath) {
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
-export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null }) {
+export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp = null, connectionId = null }) {
   const [connections,     setConnections]     = useState([])
   const [selectedId,      setSelectedId]      = useState(null)
   const [path,            setPath]            = useState('/')
@@ -108,6 +108,10 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     if (browseRestore.highlightFile) {
       setHighlightFile(browseRestore.highlightFile)
     }
+    // Signal the parent that this restore has been applied so it can clear
+    // browseRestore to null. This prevents the signal from re-firing if the
+    // user leaves and returns to this tab.
+    onBrowseRestoreConsumed?.()
   }, [browseRestore]) // token on browseRestore ensures this fires even if path is same
 
   // ── Clear highlight on navigation ─────────────────────────────────────────
@@ -126,8 +130,7 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
-      const conns    = await window.winraid?.config.get('connections') ?? []
-      const activeId = await window.winraid?.config.get('activeConnectionId')
+      const conns = await window.winraid?.config.get('connections') ?? []
       setConnections(conns)
       const restore = browseRestoreRef.current
       if (restore?.connectionId && conns.find((c) => c.id === restore.connectionId)) {
@@ -135,19 +138,36 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
         if (restore.path) setPath(restore.path)
         return
       }
-      const initial = conns.find((c) => c.id === activeId) ?? conns[0] ?? null
+      // Prefer the connectionId prop (scopes this tab to a specific connection),
+      // then fall back to first connection in the list.
+      const initial = conns.find((c) => c.id === connectionId) ?? conns[0] ?? null
       setSelectedId(initial?.id ?? null)
       if (initial?.sftp?.remotePath) setPath(initial.sftp.remotePath)
     }
     load().then(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps — connectionId is stable for the tab lifetime
 
   // Push initial browse history entry
   useEffect(() => {
     if (initialPushed.current || !selectedId) return
     initialPushed.current = true
-    onHistoryPush?.({ kind: 'browse', path, quickLookFile: null })
+    onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId })
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Close QuickLook on Escape ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!showQuickLook) return
+    function onKeyDown(e) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowQuickLook(false)
+        setSelectedFile(null)
+        onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: null, connectionId })
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showQuickLook, onHistoryPush, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps — pathRef is a ref
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const selectedConn  = connections.find((c) => c.id === selectedId) ?? null
@@ -178,18 +198,6 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
   )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleSelectConnection = useCallback((id) => {
-    const conn = connections.find((c) => c.id === id)
-    if (!conn) return
-    setSelectedId(id)
-    setEntries([])
-    setError('')
-    setStatus(null)
-    const newPath = conn.sftp?.remotePath || '/'
-    setPath(newPath)
-    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null })
-  }, [connections, onHistoryPush])
-
   const fetchDir = useCallback(async (targetPath) => {
     if (!selectedId) return
     setLoading(true)
@@ -222,13 +230,13 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     setEntries([])
     setShowQuickLook(false)
     setSelectedFile(null)
-    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null })
+    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null, connectionId })
   }, [onHistoryPush])
 
   const openQuickLook = useCallback((entry, entryPath) => {
     setSelectedFile({ ...entry, path: entryPath })
     setShowQuickLook(true)
-    onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: { ...entry, path: entryPath } })
+    onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: { ...entry, path: entryPath }, connectionId })
   }, [onHistoryPush])
 
   const doCheckout = useCallback(async (remotePath, clearFirst = false, targetFolder = localFolder, newSyncRoot = null) => {
@@ -454,7 +462,7 @@ export function useBrowse({ onHistoryPush, browseRestore, connectionsProp = null
     selectedConn, cfgRemotePath, localFolder, crumbs,
     fileEntries, entriesWithPaths, dirCount, fileCount, busy, noConfig, selectedEntries,
     highlightRef,
-    handleSelectConnection, fetchDir, navigate, openQuickLook,
+    fetchDir, navigate, openQuickLook,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,

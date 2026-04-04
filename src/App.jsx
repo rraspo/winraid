@@ -2,23 +2,24 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
 import StatusBar from './components/StatusBar'
+import TabBar from './components/TabBar'
 import ConnectionView from './views/ConnectionView'
 import DashboardView from './views/DashboardView'
 import QueueView from './views/QueueView'
 import BrowseView from './views/BrowseView'
 import BackupView from './views/BackupView'
+import SizeView from './views/SizeView'
 import SettingsView from './views/SettingsView'
 import LogView from './views/LogView'
 import { useNavHistory } from './hooks/useNavHistory'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
-// View registry (BrowseView is excluded — it is always mounted and CSS-hidden)
+// View registry (BrowseView and BackupView are excluded — mounted per-tab)
 // ---------------------------------------------------------------------------
 const VIEW_COMPONENTS = {
   dashboard: DashboardView,
   queue:     QueueView,
-  backup:    BackupView,
   settings:  SettingsView,
   logs:      LogView,
 }
@@ -127,15 +128,20 @@ export default function App() {
   }, [])
 
   // --- Connection state (shared between sidebar + dashboard) ----------------
-  const [connEdit,      setConnEdit]      = useState(null)  // null | { conn }
-  const [connections,   setConnections]   = useState([])
-  const [activeConnId,  setActiveConnId]  = useState(null)
+  const [connEdit,    setConnEdit]    = useState(null)  // null | { conn }
+  const [connections, setConnections] = useState([])
+
+  // --- Tab state ------------------------------------------------------------
+  const [openTabs,    setOpenTabs]    = useState([])   // [{ id, connId, type }]
+  const [activeTabId, setActiveTabId] = useState(null)
+  const activeTabIdRef = useRef(null)
+  useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
+  const [queuePaused, setQueuePaused] = useState(false)
 
   useEffect(() => {
     window.winraid?.config.get().then((cfg) => {
       if (!cfg) return
       setConnections(cfg.connections ?? [])
-      setActiveConnId(cfg.activeConnectionId ?? null)
     })
   }, [])
 
@@ -155,6 +161,7 @@ export default function App() {
   function navigateView(view) {
     setConnEdit(null)
     setActiveView(view)
+    setActiveTabId(null)
     setBrowseRestore(null)
     if (view !== 'logs') setLogNav(null)
     push({ kind: 'view', view })
@@ -169,13 +176,31 @@ export default function App() {
     if (entry.kind === 'view') {
       setConnEdit(null)
       setActiveView(entry.view)
+      setActiveTabId(null)
       setBrowseRestore(null)
     } else if (entry.kind === 'conn-edit') {
       setConnEdit({ conn: entry.conn })
-    } else if (entry.kind === 'browse') {
+    } else if (entry.kind === 'tab') {
       setConnEdit(null)
-      setActiveView('browse')
-      setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, token: Date.now() })
+      setActiveView(null)
+      setOpenTabs((prev) => {
+        if (prev.find((t) => t.id === entry.id)) return prev
+        return [...prev, { id: entry.id, connId: entry.connId, type: entry.type }]
+      })
+      setActiveTabId(entry.id)
+      setBrowseRestore(null)
+    } else if (entry.kind === 'browse') {
+      // Browse entries carry a connectionId — restore the tab and navigate within it
+      const tabId = entry.connectionId ? `${entry.connectionId}:browse` : null
+      if (!tabId) return
+      setConnEdit(null)
+      setActiveView(null)
+      setOpenTabs((prev) => {
+        if (prev.find((t) => t.id === tabId)) return prev
+        return [...prev, { id: tabId, connId: entry.connectionId, type: 'browse' }]
+      })
+      setActiveTabId(tabId)
+      setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, token: Date.now() })
     }
   }
 
@@ -191,12 +216,6 @@ export default function App() {
   }, [back, forward]) // restoreEntry uses only setters so it is stable
 
   async function openConnEdit(conn) {
-    // Immediately mark the clicked connection as active in config and state,
-    // so the sidebar highlights it without waiting for the save action.
-    if (conn && conn.id !== activeConnId) {
-      await window.winraid?.config.set('activeConnectionId', conn.id)
-      setActiveConnId(conn.id)
-    }
     setConnEdit({ conn: conn ?? null })
     push({ kind: 'conn-edit', conn: conn ?? null })
   }
@@ -205,36 +224,73 @@ export default function App() {
     setConnEdit(null)
     const cfg = await window.winraid?.config.get()
     setConnections(cfg?.connections ?? [])
-    setActiveConnId(cfg?.activeConnectionId ?? null)
   }
 
-  // --- Watcher toggle -------------------------------------------------------
-  async function handleWatcherToggle(connectionId) {
-    const connId = connectionId ?? activeConnId
-    if (!connId) return
-    if (watcherStatus[connId]?.watching) {
-      await window.winraid?.watcher.stop(connId)
+  // --- Tab helpers ----------------------------------------------------------
+  function openTab(connId, type) {
+    const id = `${connId}:${type}`
+    setOpenTabs((prev) => {
+      if (prev.find((t) => t.id === id)) return prev
+      return [...prev, { id, connId, type }]
+    })
+    setActiveTabId(id)
+    setActiveView(null)
+    if (id !== activeTabId) push({ kind: 'tab', id, connId, type })
+  }
+
+  function activateTab(id) {
+    if (id === activeTabId) return
+    const tab = openTabs.find((t) => t.id === id)
+    if (!tab) return
+    setActiveTabId(id)
+    setActiveView(null)
+    push({ kind: 'tab', id: tab.id, connId: tab.connId, type: tab.type })
+  }
+
+  function closeTab(id) {
+    setOpenTabs((prev) => {
+      const idx  = prev.findIndex((t) => t.id === id)
+      const next = prev.filter((t) => t.id !== id)
+      if (activeTabIdRef.current === id) {
+        const newActive = next[idx - 1] ?? null
+        setActiveTabId(newActive?.id ?? null)
+        if (!newActive) setActiveView('dashboard')
+      }
+      return next
+    })
+  }
+
+  // --- Global watcher + queue toggle ----------------------------------------
+  async function handleGlobalToggle() {
+    if (queuePaused) {
+      await window.winraid?.watcher.resumeAll()
+      await window.winraid?.queue.resume()
+      setQueuePaused(false)
     } else {
-      await window.winraid?.watcher.start(connId)
+      await window.winraid?.watcher.pauseAll()
+      await window.winraid?.queue.pause()
+      setQueuePaused(true)
     }
   }
 
   // --- Render ----------------------------------------------------------------
-  // BrowseView is always mounted (CSS-hidden when not active) to preserve
-  // scroll position, path, and virtualizer state across view switches.
-  const browseViewProps = { browseRestore, onHistoryPush, connections, activeConnId }
-
   const ActiveView = VIEW_COMPONENTS[activeView] ?? DashboardView
   const activeViewProps =
-    activeView === 'backup'    ? { backupRun, setBackupRun } :
-    activeView === 'dashboard' ? { watcherStatus, onNavigate: navigateView, onEditConnection: openConnEdit, connections, activeConnId } :
-    activeView === 'queue'     ? { connections, onNavigate: navigateView, onNavigateLogs: handleNavigateLogs, onBrowsePath: (connId, remotePath, highlightFile) => { setActiveConnId(connId); navigateView('browse'); setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() }) } } :
-    activeView === 'logs'      ? { logNav } :
+    activeView === 'dashboard' ? {
+      watcherStatus, onNavigate: navigateView,
+      onEditConnection: openConnEdit,
+      connections, onOpenTab: openTab,
+    } :
+    activeView === 'queue' ? {
+      connections, onNavigate: navigateView,
+      onNavigateLogs: handleNavigateLogs,
+      onBrowsePath: (connId, remotePath, highlightFile) => {
+        openTab(connId, 'browse')
+        setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() })
+      },
+    } :
+    activeView === 'logs' ? { logNav } :
     {}
-
-  // ID of the connection whose form is currently open — used by Sidebar to
-  // highlight the editing row independently of activeConnId.
-  const editingConnId = connEdit !== null ? (connEdit.conn?.id ?? null) : null
 
   return (
     <div className={styles.shell}>
@@ -246,37 +302,86 @@ export default function App() {
           onThemeToggle={toggleTheme}
           onEditConnection={openConnEdit}
           connections={connections}
-          activeConnId={activeConnId}
-          editingConnId={editingConnId}
+          openTabs={openTabs}
+          activeTabId={activeTabId}
+          onOpenTab={openTab}
+          editingConnId={connEdit !== null ? (connEdit.conn?.id ?? null) : null}
           watcherStatuses={watcherStatus}
         />
         <div className={styles.main}>
           <Header
             watcherStatus={watcherStatus}
             activeTransfers={activeTransfers}
-            activeConnId={activeConnId}
-            onWatcherToggle={handleWatcherToggle}
+            queuePaused={queuePaused}
+            onGlobalToggle={handleGlobalToggle}
             connections={connections}
+            onNavigate={navigateView}
+          />
+          <TabBar
+            openTabs={openTabs}
+            activeTabId={activeTabId}
+            connections={connections}
+            onActivate={activateTab}
+            onClose={closeTab}
           />
           <main className={styles.content}>
-            <BrowseView
-              {...browseViewProps}
-              style={{ display: activeView === 'browse' && connEdit === null ? '' : 'none' }}
-            />
-            {connEdit !== null
-              ? <ConnectionView
-                  key={connEdit.conn?.id ?? 'new'}
-                  existing={connEdit.conn}
-                  onSave={handleConnSave}
-                  onClose={() => setConnEdit(null)}
+            {/* Global views */}
+            {connEdit !== null ? (
+              <ConnectionView
+                key={connEdit.conn?.id ?? 'new'}
+                existing={connEdit.conn}
+                onSave={handleConnSave}
+                onClose={() => setConnEdit(null)}
+              />
+            ) : activeTabId === null && activeView !== null && (
+              <ActiveView {...activeViewProps} />
+            )}
+
+            {/* Per-connection Browse tabs (lazy-mount, keep-alive) */}
+            {openTabs.filter((t) => t.type === 'browse').map((tab) => (
+              <BrowseView
+                key={tab.id}
+                style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none' }}
+                browseRestore={activeTabId === tab.id ? browseRestore : null}
+                onBrowseRestoreConsumed={() => setBrowseRestore(null)}
+                onHistoryPush={onHistoryPush}
+                connections={connections}
+                connectionId={tab.connId}
+              />
+            ))}
+
+            {/* Per-connection Backup tabs (lazy-mount, keep-alive) */}
+            {openTabs.filter((t) => t.type === 'backup').map((tab) => (
+              <div key={tab.id} style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none', height: '100%' }}>
+                <BackupView
+                  connectionId={tab.connId}
+                  backupRun={backupRun}
+                  setBackupRun={setBackupRun}
                 />
-              : activeView !== 'browse' && <ActiveView {...activeViewProps} />
-            }
+              </div>
+            ))}
+
+            {/* Per-connection Size tabs (lazy-mount, keep-alive) */}
+            {openTabs.filter((t) => t.type === 'size').map((tab) => {
+              const conn = connections.find((c) => c.id === tab.connId) ?? null
+              return (
+                <div
+                  key={tab.id}
+                  style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none', height: '100%' }}
+                >
+                  <SizeView connectionId={tab.connId} connection={conn} />
+                </div>
+              )
+            })}
           </main>
-          <StatusBar watcherStatus={watcherStatus} activeTransfers={activeTransfers} connections={connections} onNavigate={navigateView} />
+          <StatusBar
+            watcherStatus={watcherStatus}
+            activeTransfers={activeTransfers}
+            connections={connections}
+            onNavigate={navigateView}
+          />
         </div>
       </div>
-
     </div>
   )
 }

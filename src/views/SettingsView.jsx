@@ -14,6 +14,9 @@ const HINTS = {
 export default function SettingsView() {
   const [watching, setWatching] = useState(false)
   const [version, setVersion] = useState('')
+  const [accordionsOpen, setAccordionsOpen] = useState(
+    () => localStorage.getItem('sidebar-accordions-default-open') !== 'false'
+  )
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
   const [cacheBytes, setCacheBytes] = useState(0)
   const [clearing, setClearing] = useState(false)
@@ -99,6 +102,25 @@ export default function SettingsView() {
   return (
     <div className={styles.container}>
       <div className={styles.scrollBody}>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>Interface</div>
+          <div className={styles.sectionBody}>
+            <div className={styles.field}>
+              <span className={styles.label}>Expand connections by default</span>
+              <div
+                role="switch"
+                aria-checked={accordionsOpen}
+                className={[styles.switch, accordionsOpen ? styles.switchOn : ''].filter(Boolean).join(' ')}
+                onClick={() => {
+                  const next = !accordionsOpen
+                  setAccordionsOpen(next)
+                  localStorage.setItem('sidebar-accordions-default-open', String(next))
+                }}
+              />
+            </div>
+          </div>
+        </section>
 
         <section className={styles.section}>
           <div className={styles.sectionHeader}>Scanner</div>
