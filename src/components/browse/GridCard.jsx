@@ -10,7 +10,7 @@ import styles from './GridCard.module.css'
 const GridCard = memo(function GridCard({
   entry, entryPath, connectionId, isDir, busy, index,
   isSelected, isDragSource, isLastVisited, isHighlighted,
-  highlightRef, onItemPointer, onNavigate, onQuickLook, onCheckout, onEdit,
+  highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
 }) {
   const icon = isDir
@@ -34,6 +34,7 @@ const GridCard = memo(function GridCard({
 
   function handleCheckboxClick(e) {
     e.stopPropagation()
+    e.preventDefault()
     onItemPointer(index, { ctrl: true })
   }
 
@@ -76,7 +77,7 @@ const GridCard = memo(function GridCard({
             isDir={isDir}
             isEditable={!isDir && isEditableFile(entry.name)}
             busy={busy}
-            onCheckout={() => onCheckout(entryPath)}
+            onDownload={() => onDownload(entryPath, entry.name, isDir)}
             onEdit={() => onEdit(entryPath)}
             onMove={() => onMove({ name: entry.name, path: entryPath })}
             onDelete={() => onDelete({ name: entry.name, path: entryPath, isDir })}

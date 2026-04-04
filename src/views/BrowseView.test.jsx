@@ -61,9 +61,9 @@ afterEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 describe('BrowseView', () => {
-  it('renders the header with title', async () => {
+  it('renders the header toolbar', async () => {
     render(<BrowseView onHistoryPush={() => {}} />)
-    expect(await screen.findByText('Browse Remote')).toBeInTheDocument()
+    expect(await screen.findByText('New Folder')).toBeInTheDocument()
   })
 
   it('renders breadcrumb path segments', async () => {
@@ -224,6 +224,131 @@ describe('BrowseView', () => {
       expect(screen.getByText('Cross-device rename not supported')).toBeInTheDocument()
       expect(window.winraid.remote.list).toHaveBeenCalled()
     })
+  })
+
+  // ── Selection / checkboxes ─────────────────────────────────────────────
+
+  it('clicking a list checkbox selects the row', async () => {
+    const user = userEvent.setup()
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const row = screen.getByText('Documents').closest('.row')
+    await user.click(row.querySelector('.checkbox'))
+
+    expect(row.className).toContain('rowSelected')
+  })
+
+  it('clicking a list checkbox twice deselects the row', async () => {
+    const user = userEvent.setup()
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const row = screen.getByText('Documents').closest('.row')
+    const cb = row.querySelector('.checkbox')
+
+    await user.click(cb)
+    expect(row.className).toContain('rowSelected')
+
+    await user.click(cb)
+    expect(row.className).not.toContain('rowSelected')
+  })
+
+  it('checking a directory row does not navigate into it', async () => {
+    const user = userEvent.setup()
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    window.winraid.remote.list.mockClear()
+
+    const row = screen.getByText('Documents').closest('.row')
+    await user.click(row.querySelector('.checkbox'))
+
+    // Selection applied, no re-fetch (navigation would trigger one)
+    expect(row.className).toContain('rowSelected')
+    expect(window.winraid.remote.list).not.toHaveBeenCalled()
+  })
+
+  it('checking a file row does not open QuickLook', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('readme.txt')
+
+    const row = screen.getByText('readme.txt').closest('.row')
+    await user.click(row.querySelector('.checkbox'))
+
+    expect(row.className).toContain('rowSelected')
+    // QuickLook overlay should not be mounted
+    expect(container.querySelector('.overlay')).toBeNull()
+  })
+
+  it('Escape clears selection', async () => {
+    const user = userEvent.setup()
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const row = screen.getByText('Documents').closest('.row')
+    await user.click(row.querySelector('.checkbox'))
+    expect(row.className).toContain('rowSelected')
+
+    await user.keyboard('{Escape}')
+    expect(row.className).not.toContain('rowSelected')
+  })
+
+  it('bulk action bar appears when a row is selected', async () => {
+    const user = userEvent.setup()
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    await user.click(screen.getByText('Documents').closest('.row').querySelector('.checkbox'))
+
+    expect(screen.getByText(/1 selected/)).toBeInTheDocument()
+  })
+
+  it('multiple checkboxes accumulate selection', async () => {
+    const user = userEvent.setup()
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const rows = document.querySelectorAll('.row')
+    await user.click(rows[0].querySelector('.checkbox'))
+    await user.click(rows[1].querySelector('.checkbox'))
+
+    expect(screen.getByText(/2 selected/)).toBeInTheDocument()
+  })
+
+  it('grid checkbox selects card without navigating', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    // Switch to grid mode via the toggle button
+    await user.click(container.querySelector('.viewToggleBtn'))
+    await screen.findByText('Documents') // wait for grid to render
+
+    window.winraid.remote.list.mockClear()
+
+    const card = container.querySelector('[data-entry-path$="/Documents"]')
+    await user.click(card.querySelector('.gridCheckbox'))
+
+    expect(card.className).toContain('gridCardSelected')
+    expect(window.winraid.remote.list).not.toHaveBeenCalled()
+  })
+
+  it('grid checkbox on file does not open QuickLook', async () => {
+    const user = userEvent.setup()
+    const { container } = render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('readme.txt')
+
+    // Switch to grid mode via the toggle button
+    await user.click(container.querySelector('.viewToggleBtn'))
+    await screen.findByText('readme.txt') // wait for grid to render
+
+    const card = container.querySelector('[data-entry-path$="/readme.txt"]')
+    await user.click(card.querySelector('.gridCheckbox'))
+
+    expect(card.className).toContain('gridCardSelected')
+    expect(container.querySelector('.overlay')).toBeNull()
   })
 
   // ── Last-visited highlight ──────────────────────────────────────────────

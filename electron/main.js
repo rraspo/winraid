@@ -475,6 +475,21 @@ function registerIPC() {
     return result.canceled ? null : result.filePaths[0]
   })
 
+  ipcMain.handle('dialog:select-download-path', async (_e, defaultName, isDir) => {
+    if (isDir) {
+      const result = await dialog.showOpenDialog(mainWindow, {
+        title: 'Choose download destination',
+        properties: ['openDirectory', 'createDirectory'],
+      })
+      return result.canceled ? null : result.filePaths[0]
+    } else {
+      const result = await dialog.showSaveDialog(mainWindow, {
+        defaultPath: defaultName,
+      })
+      return result.canceled ? null : result.filePath
+    }
+  })
+
   ipcMain.handle('config:get', async (_e, key) => {
     const { getConfig } = await import('./config.js')
     return key != null ? getConfig(key) : getConfig()
@@ -890,6 +905,45 @@ function registerIPC() {
       return { ok: true, created }
     } catch (err) {
       log('error', `Remote checkout failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote browser: download file or folder to local path ---------------
+  ipcMain.handle('remote:download', async (_e, connectionId, remotePath, localPath, isDir) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'invalid connectionId' }
+    try {
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      if (isDir) {
+        const files = await backupWalkRemote(sftp, remotePath, basename(remotePath))
+        const total = files.length
+        sendToRenderer('download:progress', { connectionId, name: basename(remotePath), filesProcessed: 0, totalFiles: total, bytesTransferred: 0, totalBytes: 0 })
+        for (let i = 0; i < files.length; i++) {
+          const { remotePath: rp, relPath } = files[i]
+          sendToRenderer('download:progress', { connectionId, name: basename(remotePath), filesProcessed: i, totalFiles: total, bytesTransferred: 0, totalBytes: 0 })
+          await backupDownloadFile(sftp, rp, join(localPath, relPath))
+        }
+        log('info', `Download [${await _connLabel(connectionId)}]: ${remotePath} -> ${localPath} (${files.length} files)`)
+        return { ok: true, count: files.length }
+      } else {
+        const name = basename(remotePath)
+        await mkdirAsync(dirname(localPath), { recursive: true })
+        await new Promise((resolve, reject) => {
+          sftp.fastGet(remotePath, localPath, {
+            concurrency: 4,
+            chunkSize: 256 * 1024,
+            step: (bytesTransferred, _chunk, totalBytes) => {
+              sendToRenderer('download:progress', { connectionId, name, filesProcessed: 0, totalFiles: 1, bytesTransferred, totalBytes })
+            },
+          }, (err) => err ? reject(err) : resolve())
+        })
+        log('info', `Download [${await _connLabel(connectionId)}]: ${remotePath} -> ${localPath}`)
+        return { ok: true, count: 1 }
+      }
+    } catch (err) {
+      log('error', `Download failed [${await _connLabel(connectionId)}]: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })

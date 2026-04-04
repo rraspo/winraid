@@ -39,6 +39,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [highlightFile,   setHighlightFile]   = useState(null)
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
+  const [downloadProgress, setDownloadProgress] = useState(null)
+  // shape: null | { name, filesProcessed, totalFiles, bytesTransferred, totalBytes }
   const cancelledRef      = useRef(false)
   const browseRestoreRef  = useRef(browseRestore)
   const prevPath          = useRef(path)
@@ -130,9 +132,9 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
     async function load() {
+      const restore = browseRestoreRef.current  // snapshot before any await — ref may be nulled by restore effect
       const conns = await window.winraid?.config.get('connections') ?? []
       setConnections(conns)
-      const restore = browseRestoreRef.current
       if (restore?.connectionId && conns.find((c) => c.id === restore.connectionId)) {
         setSelectedId(restore.connectionId)
         if (restore.path) setPath(restore.path)
@@ -217,6 +219,20 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     if (selectedId) fetchDir(path)
   }, [selectedId, path, fetchDir])
 
+  useEffect(() => {
+    if (!window.winraid) return
+    return window.winraid.remote.onDownloadProgress((payload) => {
+      if (payload.connectionId !== selectedId) return
+      setDownloadProgress({
+        name: payload.name,
+        filesProcessed: payload.filesProcessed,
+        totalFiles: payload.totalFiles,
+        bytesTransferred: payload.bytesTransferred,
+        totalBytes: payload.totalBytes,
+      })
+    })
+  }, [selectedId])
+
   const navigate = useCallback((newPath) => {
     const curPath = pathRef.current
     if (curPath.startsWith(newPath) && curPath !== newPath) {
@@ -276,6 +292,23 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       doCheckout(remotePath)
     }
   }, [selectedId, localFolder, opInFlight, cfgRemotePath, doCheckout])
+
+  const handleDownload = useCallback(async (remotePath, entryName, isDir) => {
+    if (!selectedId || opInFlight) return
+    const localPath = await window.winraid?.selectDownloadPath(entryName, isDir)
+    if (!localPath) return
+    setOpInFlight(true)
+    setStatus(null)
+    setDownloadProgress(null)
+    const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
+    setDownloadProgress(null)
+    setOpInFlight(false)
+    if (res?.ok) {
+      setStatus({ ok: true, msg: isDir ? `Downloaded ${res.count} file(s) to ${localPath}` : `Downloaded to ${localPath}` })
+    } else {
+      setStatus({ ok: false, msg: res?.error || 'Download failed' })
+    }
+  }, [selectedId, opInFlight])
 
   const handleConfirm = useCallback((checkoutPath, targetFolder, newSyncRoot) => {
     setConfirmTarget(null)
@@ -452,7 +485,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   return {
     // useBrowse own state/handlers
     connections, selectedId, path, entries, loading, error, status,
-    opInFlight, confirmTarget, editingFile, deleteTarget, moveTarget,
+    opInFlight, downloadProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
     lastVisitedDir, highlightFile,
     bulkAction, bulkMoveDest,
@@ -464,6 +497,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     highlightRef,
     fetchDir, navigate, openQuickLook,
     handleCheckout, handleConfirm, handleSetRoot,
+    handleDownload,
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
     // Sub-hook APIs — spread flat for backward compatibility

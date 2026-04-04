@@ -11,7 +11,7 @@ const BrowseListRow = memo(function BrowseListRow({
   busy, isSelected, isDragSource, isLastVisited, isHighlighted, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
-  handleCheckout, setEditingFile, setMoveTarget, setDeleteTarget,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const isDir = entry.type === 'dir'
   const icon = isDir
@@ -37,6 +37,7 @@ const BrowseListRow = memo(function BrowseListRow({
 
   function handleCheckboxClick(e) {
     e.stopPropagation()
+    e.preventDefault()
     onItemPointer(index, { ctrl: true })
   }
 
@@ -88,7 +89,7 @@ const BrowseListRow = memo(function BrowseListRow({
           isDir={isDir}
           isEditable={!isDir && isEditableFile(entry.name)}
           busy={busy}
-          onCheckout={() => handleCheckout(entryPath)}
+          onDownload={() => handleDownload(entryPath, entry.name, isDir)}
           onEdit={() => setEditingFile(entryPath)}
           onMove={() => setMoveTarget({ name: entry.name, path: entryPath })}
           onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
