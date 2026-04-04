@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
-import { HardDrive } from 'lucide-react'
+import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
 import { formatSize } from '../utils/format'
 import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
 
-export default function SizeView({ connectionId, connection }) {
+export default function SizeView({ connectionId, connection, onBrowsePath }) {
   const [phase,      setPhase]      = useState(PHASE.IDLE)
   const [tree,       setTree]       = useState(null)
   const [focused,    setFocused]    = useState(null)
@@ -272,16 +272,48 @@ export default function SizeView({ connectionId, connection }) {
         )}
         {tree && (
           <div className={styles.legend}>
-            {(legendNode?.children ?? []).slice(0, 8).map((child, i) => (
-              <div key={child.path} className={styles.legendRow}>
-                <span
-                  className={styles.legendSwatch}
-                  style={{ background: PALETTE[i % PALETTE.length] }}
-                />
-                <span className={styles.legendName}>{child.name}</span>
-                <span className={styles.legendSize}>{formatSize(child.sizeKb * 1024)}</span>
-              </div>
-            ))}
+            {focused && (() => {
+              const parentPath = focused.split('/').slice(0, -1).join('/') || tree.path
+              const parentName = parentPath.split('/').pop() || parentPath
+              return (
+                <div className={styles.legendParentRow} onClick={handleCenterClick}>
+                  <span className={styles.legendParentLabel}>../</span>
+                  <span className={styles.legendParentName}>{parentName}</span>
+                  {onBrowsePath && (
+                    <button
+                      className={styles.browseBtn}
+                      title="Browse folder"
+                      onClick={(e) => { e.stopPropagation(); onBrowsePath(parentPath) }}
+                    >
+                      <FolderOpen size={11} />
+                    </button>
+                  )}
+                </div>
+              )
+            })()}
+            {(legendNode?.children ?? []).slice(0, 8).map((child, i) => {
+              const drillable = (child.children?.length ?? 0) > 0
+              return (
+                <div
+                  key={child.path}
+                  className={[styles.legendRow, drillable ? styles.legendRowDrillable : ''].filter(Boolean).join(' ')}
+                  onClick={() => drillable && setFocused(child.path)}
+                >
+                  <span className={styles.legendSwatch} style={{ background: PALETTE[i % PALETTE.length] }} />
+                  <span className={styles.legendName}>{child.name}</span>
+                  {onBrowsePath && (
+                    <button
+                      className={styles.browseBtn}
+                      title="Browse folder"
+                      onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
+                    >
+                      <FolderOpen size={11} />
+                    </button>
+                  )}
+                  <span className={styles.legendSize}>{formatSize(child.sizeKb * 1024)}</span>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>

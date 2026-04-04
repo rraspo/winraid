@@ -10,7 +10,7 @@ const BrowseList = memo(function BrowseList({
   highlightFile, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, handleItemPointer, toggleSelectAll,
-  handleCheckout, setEditingFile, setMoveTarget, setDeleteTarget,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
@@ -84,7 +84,7 @@ const BrowseList = memo(function BrowseList({
                 navigate={navigate}
                 openQuickLook={openQuickLook}
                 onItemPointer={handleItemPointer}
-                handleCheckout={handleCheckout}
+                handleDownload={handleDownload}
                 setEditingFile={setEditingFile}
                 setMoveTarget={setMoveTarget}
                 setDeleteTarget={setDeleteTarget}

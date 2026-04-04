@@ -39,6 +39,8 @@ contextBridge.exposeInMainWorld('winraid', {
   // -- Native dialogs ------------------------------------------------------
   /** Opens an OS folder-picker. Resolves to the chosen path or null. */
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
+  /** Opens a save dialog (for files) or folder picker (for dirs). Resolves to chosen path or null. */
+  selectDownloadPath: (defaultName, isDir) => ipcRenderer.invoke('dialog:select-download-path', defaultName, isDir),
 
   // -- Watcher -------------------------------------------------------------
   watcher: {
@@ -161,6 +163,9 @@ contextBridge.exposeInMainWorld('winraid', {
     /** Recursively create local directories mirroring a remote folder structure. */
     checkout: (connectionId, remotePath, localRoot) =>
       ipcRenderer.invoke('remote:checkout', connectionId, remotePath, localRoot),
+    /** Download a remote file or folder to a local path chosen via save dialog. */
+    download: (connectionId, remotePath, localPath, isDir) =>
+      ipcRenderer.invoke('remote:download', connectionId, remotePath, localPath, isDir),
     /** Read a remote file as UTF-8 text. */
     readFile: (connectionId, path) => ipcRenderer.invoke('remote:read-file', connectionId, path),
     /** Write UTF-8 text content to a remote file. */
@@ -175,6 +180,8 @@ contextBridge.exposeInMainWorld('winraid', {
     verifyClean: (connectionId, localFolder) => ipcRenderer.invoke('remote:verify-clean', connectionId, localFolder),
     /** Delete a list of local files (by relative path) inside localFolder. */
     verifyDelete: (localFolder, relPaths) => ipcRenderer.invoke('remote:verify-delete', localFolder, relPaths),
+    /** Subscribe to download progress events. Payload: { connectionId, name, filesProcessed, totalFiles, bytesTransferred, totalBytes } */
+    onDownloadProgress: (cb) => on('download:progress', cb),
     /** Get filesystem disk usage stats for a remote connection. Returns { ok, total, used, free } in bytes. */
     diskUsage: (connectionId) => ipcRenderer.invoke('remote:disk-usage', connectionId),
     /** Start a recursive folder-size scan. Results stream via size:* push events. */
