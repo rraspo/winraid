@@ -48,4 +48,7 @@ describe('validateRemotePath', () => {
   it('rejects undefined', () => {
     expect(validateRemotePath(undefined)).toBe(false)
   })
+  it('accepts a path with trailing newline (callers must trim)', () => {
+    expect(validateRemotePath('/mnt/user/data\n')).toBe(true)
+  })
 })

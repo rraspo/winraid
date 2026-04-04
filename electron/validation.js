@@ -8,6 +8,8 @@
  * Does NOT restrict which connection root the path belongs to —
  * all absolute paths are accepted so free navigation works.
  *
+ * Callers are responsible for trimming whitespace before passing paths here.
+ *
  * @param {unknown} p
  * @returns {boolean}
  */
