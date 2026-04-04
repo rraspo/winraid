@@ -85,6 +85,13 @@ export function createWinraidMock(overrides = {}) {
       move: vi.fn().mockResolvedValue({ ok: true }),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, total: 0, confirmed: [], notFound: [] }),
       verifyDelete: vi.fn().mockResolvedValue({ ok: true, deleted: 0, errors: [] }),
+      diskUsage: vi.fn().mockResolvedValue({ ok: true, total: 10 * 1024 ** 3, used: 4 * 1024 ** 3, free: 6 * 1024 ** 3 }),
+      sizeScan:       vi.fn().mockResolvedValue({ ok: true }),
+      sizeCancel:     vi.fn().mockResolvedValue(undefined),
+      onSizeProgress: vi.fn().mockReturnValue(() => {}),
+      onSizeLevel:    vi.fn().mockReturnValue(() => {}),
+      onSizeDone:     vi.fn().mockReturnValue(() => {}),
+      onSizeError:    vi.fn().mockReturnValue(() => {}),
       ...overrides.remote,
     },
   }

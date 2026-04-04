@@ -111,7 +111,7 @@
 /* ---- Bento grid ---- */
 .grid {
   display: grid;
-  grid-template-columns: 1fr 300px;
+  grid-template-columns: 1fr;
   gap: var(--space-8);
   align-items: start;
 }
@@ -120,11 +120,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-8);
-}
-
-.colSide {
-  display: flex;
-  flex-direction: column;
 }
 
 /* ---- Content block: flat heading + cards below ---- */
@@ -386,80 +381,62 @@
   font-style: normal;
 }
 
-/* ---- Activity panel (right column) ---- */
-.activityPanel {
-  background: var(--bg-panel);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5) var(--space-5) var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-}
-
-.activityList {
-  display: flex;
-  flex-direction: column;
-}
-
-.logEntry {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.logEntry:last-child { border-bottom: none; }
-
-.logIconWrap {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--bg-surface);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--text-muted);
-}
-
-.log_error .logIconWrap { background: var(--error-subtle);   color: var(--error);   }
-.log_warn  .logIconWrap { background: var(--warning-subtle); color: var(--warning); }
-.log_info  .logIconWrap { background: var(--accent-subtle);  color: var(--accent);  }
-
-.logContent {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.logMsg {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text);
-  line-height: var(--line-height-normal);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.log_error .logMsg { color: var(--error);   }
-.log_warn  .logMsg { color: var(--warning); }
-
-.logTs {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: var(--font-weight-bold);
-}
-
 /* ---- Responsive ---- */
 @media (max-width: 800px) {
   .grid     { grid-template-columns: 1fr; }
   .cardGrid { grid-template-columns: 1fr; }
   .scroll   { padding: var(--space-4); }
+}
+
+/* ---- Storage block ---- */
+.storageList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.storageRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.storageRowTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.storageConnInfo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.storageConnName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.storageStats {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.storageUnavailable {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.progressFillDanger {
+  background: var(--error);
 }

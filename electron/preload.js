@@ -76,6 +76,10 @@ contextBridge.exposeInMainWorld('winraid', {
     enqueueBatch: (connectionId, localFolder, relPaths) => ipcRenderer.invoke('queue:enqueue-batch', connectionId, localFolder, relPaths),
     /** Cancel a PENDING job (removes it) or a TRANSFERRING job (marks it ERROR). */
     cancel: (jobId) => ipcRenderer.invoke('queue:cancel', jobId),
+    /** Pause the transfer worker — no new jobs dequeued until resume. */
+    pause:  () => ipcRenderer.invoke('queue:pause'),
+    /** Resume the transfer worker. */
+    resume: () => ipcRenderer.invoke('queue:resume'),
 
     /**
      * Subscribe to queue mutation events pushed from the main process.
@@ -169,5 +173,19 @@ contextBridge.exposeInMainWorld('winraid', {
     verifyClean: (connectionId, localFolder) => ipcRenderer.invoke('remote:verify-clean', connectionId, localFolder),
     /** Delete a list of local files (by relative path) inside localFolder. */
     verifyDelete: (localFolder, relPaths) => ipcRenderer.invoke('remote:verify-delete', localFolder, relPaths),
+    /** Get filesystem disk usage stats for a remote connection. Returns { ok, total, used, free } in bytes. */
+    diskUsage: (connectionId) => ipcRenderer.invoke('remote:disk-usage', connectionId),
+    /** Start a recursive folder-size scan. Results stream via size:* push events. */
+    sizeScan:   (connectionId) => ipcRenderer.invoke('remote:size-scan', connectionId),
+    /** Cancel an in-progress size scan. */
+    sizeCancel: (connectionId) => ipcRenderer.invoke('remote:size-cancel', connectionId),
+    /** Subscribe to scan progress ticks. Payload: { connectionId, path, count, elapsedMs } */
+    onSizeProgress: (cb) => on('size:progress', cb),
+    /** Subscribe to per-level scan results. Payload: { connectionId, parentPath, entries: [{name,path,sizeKb}] } */
+    onSizeLevel: (cb) => on('size:level', cb),
+    /** Subscribe to scan-complete event. Payload: { connectionId, totalFolders, elapsedMs } */
+    onSizeDone:  (cb) => on('size:done', cb),
+    /** Subscribe to scan error event. Payload: { connectionId, error } */
+    onSizeError: (cb) => on('size:error', cb),
   },
 })

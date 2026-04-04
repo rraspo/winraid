@@ -40,7 +40,7 @@
 /* ---- Field ---- */
 .field {
   display: grid;
-  grid-template-columns: 160px 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: var(--space-3);
 }
@@ -73,6 +73,7 @@
   border-radius: 10px;
   background: var(--border-strong);
   flex-shrink: 0;
+  cursor: pointer;
   transition: background-color var(--transition);
 }
 

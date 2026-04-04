@@ -13,7 +13,7 @@ export default defineConfig({
     environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test-setup.js'],
-    include: ['src/**/*.test.{js,jsx}'],
+    include: ['src/**/*.test.{js,jsx}', 'electron/**/*.test.js'],
     exclude: ['src/**/*.layout.test.*', 'node_modules'],
     css: {
       modules: {

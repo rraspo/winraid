@@ -128,3 +128,163 @@
   background: var(--error);
   color: #fff;
 }
+
+/* ---- Activity button ---- */
+.activityBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+  transition: color var(--transition), border-color var(--transition), background-color var(--transition);
+}
+
+.activityBtn:hover  { color: var(--text); border-color: var(--text-faint); }
+.activityBtnActive  { color: var(--text); border-color: var(--text-faint); background: var(--bg-hover); }
+
+/* ---- Activity slide panel ---- */
+.activityBackdrop {
+  position: fixed;
+  inset: 0;
+  top: var(--header-height);
+  z-index: 199;
+}
+
+.activityPanel {
+  position: fixed;
+  top: var(--header-height);
+  right: 0;
+  width: 380px;
+  max-width: calc(100vw - var(--space-8));
+  height: calc(100vh - var(--header-height));
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.12);
+  transform: translateX(100%);
+  transition: transform 220ms cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.activityPanelOpen { transform: translateX(0); }
+
+.activityPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.activityPanelTitle {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.activityPanelActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.activityCloseBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+
+.activityCloseBtn:hover { color: var(--text); }
+
+.activityViewAll {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  transition: opacity var(--transition);
+}
+
+.activityViewAll:hover { opacity: 0.7; }
+
+.activityEmpty {
+  padding: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.activityList {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.activityEntry {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.activityEntry:last-child { border-bottom: none; }
+
+.activityEntryIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--text-muted);
+}
+
+.level_error .activityEntryIcon { background: var(--error-subtle);   color: var(--error);   }
+.level_warn  .activityEntryIcon { background: var(--warning-subtle); color: var(--warning); }
+.level_info  .activityEntryIcon { background: var(--accent-subtle);  color: var(--accent);  }
+
+.activityEntryContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activityEntryMsg {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.level_error .activityEntryMsg { color: var(--error);   }
+.level_warn  .activityEntryMsg { color: var(--warning); }
+
+.activityEntryTs {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: var(--font-weight-bold);
+}

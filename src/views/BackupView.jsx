@@ -25,7 +25,7 @@ const HINTS = {
 // View
 // ---------------------------------------------------------------------------
 
-export default function BackupView({ backupRun, setBackupRun }) {
+export default function BackupView({ connectionId, backupRun, setBackupRun }) {
   const [form, setForm]           = useState(DEFAULT_FORM)
   const [loaded, setLoaded]       = useState(false)
   const [saving, setSaving]       = useState(false)
@@ -41,21 +41,23 @@ export default function BackupView({ backupRun, setBackupRun }) {
   const lastRun    = backupRun?.lastRun     ?? null
 
   useEffect(() => {
+    setLoaded(false)
     async function load() {
       const cfg = await window.winraid?.config.get()
       if (!cfg) return
+      const byConn = cfg.backupByConnection?.[connectionId] ?? {}
       setForm({
-        sources:   cfg.backup?.sources   ?? [],
-        localDest: cfg.backup?.localDest ?? '',
+        sources:   byConn.sources   ?? [],
+        localDest: byConn.localDest ?? '',
       })
-      const activeConn = (cfg.connections ?? []).find((c) => c.id === cfg.activeConnectionId) ?? null
-      const isSftp = activeConn?.type === 'sftp'
-      setSftpHost(isSftp ? activeConn?.sftp?.host ?? null : null)
-      setSftpCfg(isSftp ? activeConn?.sftp ?? null : null)
+      const conn   = (cfg.connections ?? []).find((c) => c.id === connectionId) ?? null
+      const isSftp = conn?.type === 'sftp'
+      setSftpHost(isSftp ? conn?.sftp?.host ?? null : null)
+      setSftpCfg(isSftp ? conn?.sftp ?? null : null)
       setLoaded(true)
     }
     load()
-  }, [])
+  }, [connectionId])
 
   // -- form helpers ----------------------------------------------------------
 
@@ -83,13 +85,17 @@ export default function BackupView({ backupRun, setBackupRun }) {
   }
 
   async function handleSave() {
+    if (!connectionId) {
+      setSaveMsg({ type: 'error', text: 'No connection selected.' })
+      return
+    }
     setSaving(true)
     setSaveMsg(null)
     try {
-      await window.winraid.config.set('backup', {
-        sources:   form.sources.filter(Boolean),
-        localDest: form.localDest,
-      })
+      const cfg        = await window.winraid?.config.get()
+      const byConn     = { ...(cfg?.backupByConnection ?? {}) }
+      byConn[connectionId] = { sources: form.sources.filter(Boolean), localDest: form.localDest }
+      await window.winraid.config.set('backupByConnection', byConn)
       setSaveMsg({ type: 'ok', text: 'Backup settings saved.' })
       setTimeout(() => setSaveMsg(null), 3000)
     } catch (err) {
@@ -106,8 +112,9 @@ export default function BackupView({ backupRun, setBackupRun }) {
     setSaveMsg(null)
     try {
       const result = await window.winraid?.backup.run({
-        sources:   form.sources.filter(Boolean),
-        localDest: form.localDest,
+        sources:      form.sources.filter(Boolean),
+        localDest:    form.localDest,
+        connectionId,
       })
       setBackupRun((s) => ({
         ...s,
