@@ -859,6 +859,7 @@ function registerIPC() {
 
   // -- Remote browser: list directory ----------------------------------------
   ipcMain.handle('remote:list', async (_e, connectionId, remotePath) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -888,6 +889,7 @@ function registerIPC() {
 
   // -- Remote browser: check out folder structure locally --------------------
   ipcMain.handle('remote:checkout', async (_e, connectionId, remotePath, localRoot) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -913,6 +915,7 @@ function registerIPC() {
   // -- Remote browser: download file or folder to local path ---------------
   ipcMain.handle('remote:download', async (_e, connectionId, remotePath, localPath, isDir) => {
     if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'invalid connectionId' }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -951,6 +954,7 @@ function registerIPC() {
 
   // -- Remote browser: read file content ------------------------------------
   ipcMain.handle('remote:read-file', async (_e, connectionId, remotePath) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -968,6 +972,7 @@ function registerIPC() {
 
   // -- Remote browser: delete file or directory tree ------------------------
   ipcMain.handle('remote:delete', async (_e, connectionId, remotePath, isDir) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -989,6 +994,7 @@ function registerIPC() {
 
   // -- Remote browser: move / rename ----------------------------------------
   ipcMain.handle('remote:move', async (_e, connectionId, srcPath, dstPath) => {
+    if (!validateRemotePath(srcPath) || !validateRemotePath(dstPath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -1017,6 +1023,7 @@ function registerIPC() {
   })
 
   ipcMain.handle('remote:mkdir', async (_e, connectionId, remotePath) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -1114,6 +1121,7 @@ function registerIPC() {
 
   // -- Remote browser: write file content -----------------------------------
   ipcMain.handle('remote:write-file', async (_e, connectionId, remotePath, content) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -1983,7 +1991,7 @@ function registerNasStreamProtocol() {
       const connId     = url.hostname
       const remotePath = decodeURIComponent(url.pathname)
 
-      if (!connId || !remotePath) {
+      if (!connId || !validateRemotePath(remotePath)) {
         return new Response('Bad Request', { status: 400 })
       }
 
