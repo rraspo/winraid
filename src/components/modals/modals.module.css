@@ -184,3 +184,32 @@
 
 .modalConfirmAccent:hover:not(:disabled) { opacity: 0.85; }
 .modalConfirmAccent:disabled             { opacity: 0.4; cursor: default; }
+
+/* Input + Browse button row */
+.fieldInputRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.fieldInputRow .fieldInput {
+  flex: 1;
+  width: auto;
+}
+
+.fieldBrowseBtn {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: var(--font-weight-semibold);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.fieldBrowseBtn:hover { background: var(--bg-hover); color: var(--text); }
+.fieldBrowseBtn:disabled { opacity: 0.35; cursor: default; }
