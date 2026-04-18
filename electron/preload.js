@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld('winraid', {
     clearStale:  ()      => ipcRenderer.invoke('queue:clear-stale'),
     /** Enqueue a batch of files (relative paths) from a local folder for a specific connection. */
     enqueueBatch: (connectionId, localFolder, relPaths) => ipcRenderer.invoke('queue:enqueue-batch', connectionId, localFolder, relPaths),
+    dropUpload: (connectionId, remoteDest, localPaths) => ipcRenderer.invoke('queue:drop-upload', connectionId, remoteDest, localPaths),
     /** Cancel a PENDING job (removes it) or a TRANSFERRING job (marks it ERROR). */
     cancel: (jobId) => ipcRenderer.invoke('queue:cancel', jobId),
     /** Pause the transfer worker — no new jobs dequeued until resume. */

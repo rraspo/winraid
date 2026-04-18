@@ -410,3 +410,77 @@ describe('BrowseView', () => {
     expect(docRow.className).toContain('lastVisited')
   })
 })
+
+describe('External file drop (from Explorer)', () => {
+  function makeDragEvent(type, hasFiles = true) {
+    const evt = new Event(type, { bubbles: true, cancelable: true })
+    Object.defineProperty(evt, 'dataTransfer', {
+      value: {
+        types:   hasFiles ? ['Files'] : ['text/plain'],
+        files:   hasFiles
+          ? [Object.assign(new File([''], 'photo.jpg'), { path: 'C:\\Users\\porras\\Pictures\\photo.jpg' })]
+          : [],
+        preventDefault: () => {},
+      },
+    })
+    return evt
+  }
+
+  it('shows the drop overlay when an external file is dragged over the container', async () => {
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const container = document.querySelector('[data-testid="browse-container"]')
+    act(() => container.dispatchEvent(makeDragEvent('dragover')))
+
+    expect(await screen.findByText(/Drop to upload to/i)).toBeInTheDocument()
+  })
+
+  it('hides the overlay when the drag leaves the container', async () => {
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const container = document.querySelector('[data-testid="browse-container"]')
+    act(() => container.dispatchEvent(makeDragEvent('dragover')))
+    await screen.findByText(/Drop to upload to/i)
+
+    const leaveEvt = new Event('dragleave', { bubbles: true })
+    Object.defineProperty(leaveEvt, 'currentTarget', { value: container })
+    Object.defineProperty(leaveEvt, 'relatedTarget', { value: null })
+    act(() => container.dispatchEvent(leaveEvt))
+
+    await waitFor(() =>
+      expect(screen.queryByText(/Drop to upload to/i)).not.toBeInTheDocument()
+    )
+  })
+
+  it('calls queue.dropUpload with the connection id, current path, and dropped file paths', async () => {
+    const dropUpload = vi.fn().mockResolvedValue({ ok: true, count: 1 })
+    window.winraid = createWinraidMock({
+      config: {
+        get: vi.fn().mockImplementation((key) => {
+          if (key === 'connections') return Promise.resolve(TEST_CONNECTIONS)
+          return Promise.resolve({ connections: TEST_CONNECTIONS })
+        }),
+      },
+      remote: {
+        list: vi.fn().mockResolvedValue({ ok: true, entries: SAMPLE_ENTRIES }),
+      },
+      queue: { dropUpload },
+    })
+
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const container = document.querySelector('[data-testid="browse-container"]')
+    act(() => container.dispatchEvent(makeDragEvent('drop')))
+
+    await waitFor(() =>
+      expect(dropUpload).toHaveBeenCalledWith(
+        'conn-1',
+        '/mnt/user/data',
+        ['C:\\Users\\porras\\Pictures\\photo.jpg'],
+      )
+    )
+  })
+})

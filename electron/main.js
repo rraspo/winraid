@@ -508,6 +508,31 @@ function registerIPC() {
     }
     const { setConfig } = await import('./config.js')
     setConfig(key, value)
+
+    // When the connections array is saved, restart any active watcher whose
+    // localFolder changed — the watcher instance holds the old path and will
+    // never fire events for the new folder until restarted.
+    if (key === 'connections' && Array.isArray(value)) {
+      const w = await getWatcher()
+      const states = w.listWatcherStates()
+      for (const conn of value) {
+        const state = states[conn.id]
+        if (!state?.watching) continue
+        if (state.folder === conn.localFolder) continue
+        const folder = conn.localFolder
+        if (!folder || typeof folder !== 'string') continue
+        try {
+          if (!existsSync(folder) || !statSync(folder).isDirectory()) continue
+        } catch { continue }
+        w.startWatcher(
+          conn.id,
+          folder,
+          makeFileDetectedCallback(conn.id),
+          () => sendToRenderer('watcher:status', w.listWatcherStates()),
+        )
+      }
+      sendToRenderer('watcher:status', w.listWatcherStates())
+    }
   })
 
   ipcMain.handle('watcher:start', async (_e, connectionId) => {
@@ -697,6 +722,82 @@ function registerIPC() {
       ensureWorkerRunning()
     } catch { /* worker may already be running */ }
     return { ok: true, count: relPaths.length }
+  })
+
+  ipcMain.handle('queue:drop-upload', async (_e, connectionId, remoteDest, localPaths) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false, error: 'Invalid connectionId' }
+    }
+    if (!validateRemotePath(remoteDest)) {
+      return { ok: false, error: 'Invalid remoteDest' }
+    }
+    if (!Array.isArray(localPaths) || localPaths.length === 0) {
+      return { ok: false, error: 'Invalid localPaths' }
+    }
+
+    const { getConfig } = await import('./config.js')
+    const cfg  = getConfig()
+    const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
+    if (!conn) return { ok: false, error: 'Connection not found' }
+
+    async function collectFiles(dirPath, relPrefix) {
+      const results = []
+      const dirEntries = await readdirAsync(dirPath, { withFileTypes: true })
+      for (const entry of dirEntries) {
+        const fullPath = join(dirPath, entry.name)
+        const relPath  = relPrefix ? `${relPrefix}/${entry.name}` : entry.name
+        if (entry.isDirectory()) {
+          results.push(...await collectFiles(fullPath, relPath))
+        } else if (entry.isFile()) {
+          results.push({ fullPath, relPath })
+        }
+      }
+      return results
+    }
+
+    const q = await getQueue()
+    let count = 0
+
+    for (const localPath of localPaths) {
+      if (typeof localPath !== 'string') continue
+      let s
+      try { s = await statAsync(localPath) } catch { continue }
+
+      if (s.isFile()) {
+        const jobId = q.enqueue(localPath, {
+          relPath:      basename(localPath),
+          remoteDest,
+          operation:    conn.operation,
+          connectionId,
+          size:         s.size,
+        })
+        sendToRenderer('queue:updated', { type: 'added', jobId })
+        count++
+      } else if (s.isDirectory()) {
+        const dirName = basename(localPath)
+        const files   = await collectFiles(localPath, dirName)
+        for (const { fullPath, relPath } of files) {
+          let fileSize = null
+          try { fileSize = (await statAsync(fullPath)).size } catch { /* file removed */ }
+          const jobId = q.enqueue(fullPath, {
+            relPath,
+            remoteDest,
+            operation:    conn.operation,
+            connectionId,
+            size:         fileSize,
+          })
+          sendToRenderer('queue:updated', { type: 'added', jobId })
+          count++
+        }
+      }
+    }
+
+    try {
+      const { ensureWorkerRunning } = await import('./worker.js')
+      ensureWorkerRunning()
+    } catch { /* worker may already be running */ }
+
+    return { ok: true, count }
   })
 
   // -- Logs ------------------------------------------------------------------

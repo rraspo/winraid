@@ -24,7 +24,7 @@ async function transfer(cfg, job, onProgress) {
   const { conn, sftp } = await connect(cfg)
 
   try {
-    const remotePath = buildRemotePath(cfg.remotePath, job.relPath)
+    const remotePath = buildRemotePath(job.remoteDest ?? cfg.remotePath, job.relPath)
     const remoteDir  = posix.dirname(remotePath)
 
     await mkdirpRemote(sftp, remoteDir)

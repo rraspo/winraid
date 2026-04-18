@@ -30,7 +30,7 @@ async function transfer(cfg, job, onProgress) {
   }
 
   // Build full destination path: \\host\share\remotePath\relPath
-  const subPath  = win32.join(cfg.remotePath, job.relPath.replace(/\//g, '\\'))
+  const subPath  = win32.join(job.remoteDest ?? cfg.remotePath, job.relPath.replace(/\//g, '\\'))
   const destPath = win32.join(uncShare, subPath)
   const destDir  = dirname(destPath)
 
