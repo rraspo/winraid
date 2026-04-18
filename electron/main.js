@@ -508,31 +508,6 @@ function registerIPC() {
     }
     const { setConfig } = await import('./config.js')
     setConfig(key, value)
-
-    // When the connections array is saved, restart any active watcher whose
-    // localFolder changed — the watcher instance holds the old path and will
-    // never fire events for the new folder until restarted.
-    if (key === 'connections' && Array.isArray(value)) {
-      const w = await getWatcher()
-      const states = w.listWatcherStates()
-      for (const conn of value) {
-        const state = states[conn.id]
-        if (!state?.watching) continue
-        if (state.folder === conn.localFolder) continue
-        const folder = conn.localFolder
-        if (!folder || typeof folder !== 'string') continue
-        try {
-          if (!existsSync(folder) || !statSync(folder).isDirectory()) continue
-        } catch { continue }
-        w.startWatcher(
-          conn.id,
-          folder,
-          makeFileDetectedCallback(conn.id),
-          () => sendToRenderer('watcher:status', w.listWatcherStates()),
-        )
-      }
-      sendToRenderer('watcher:status', w.listWatcherStates())
-    }
   })
 
   ipcMain.handle('watcher:start', async (_e, connectionId) => {
