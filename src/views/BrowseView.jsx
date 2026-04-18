@@ -41,6 +41,8 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
   } = browse
 
+  const sftpCfg = (connections ?? []).find((c) => c.id === selectedId)?.sftp ?? null
+
   const [diskUsage, setDiskUsage] = useState(null)
 
   useEffect(() => {
@@ -101,6 +103,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       {moveTarget && (
         <MoveModal
           target={moveTarget}
+          sftpCfg={sftpCfg}
           onConfirm={handleMove}
           onCancel={() => setMoveTarget(null)}
         />
@@ -122,6 +125,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           onConfirm={handleBulkMove}
           onCancel={() => { setBulkAction(null); setBulkMoveDest('') }}
           currentPath={path}
+          sftpCfg={sftpCfg}
         />
       )}
 
