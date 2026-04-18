@@ -93,7 +93,7 @@ app.on('before-quit', () => {
  * Add a new job to the queue.
  *
  * @param {string} srcPath   - Absolute local file path
- * @param {{ relPath?: string, operation?: string, connectionId?: string }} opts
+ * @param {{ relPath?: string, operation?: string, connectionId?: string, size?: number, remoteDest?: string }} opts
  * @returns {string} The new job id
  */
 export function enqueue(srcPath, opts = {}) {
@@ -108,15 +108,16 @@ export function enqueue(srcPath, opts = {}) {
     srcPath,
     filename,
     relPath,
-    size:      opts.size ?? null,
-    status:    STATUS.PENDING,
-    progress:  0,
-    errorMsg:  '',
-    errorAt:   null,
+    size:       opts.size      ?? null,
+    status:     STATUS.PENDING,
+    progress:   0,
+    errorMsg:   '',
+    errorAt:    null,
     operation,
     connectionId,
-    retries:   0,
-    createdAt: Date.now(),
+    remoteDest: opts.remoteDest ?? null,
+    retries:    0,
+    createdAt:  Date.now(),
   })
   persist()
 

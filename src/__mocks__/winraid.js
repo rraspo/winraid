@@ -37,6 +37,7 @@ export function createWinraidMock(overrides = {}) {
       clearDone:  vi.fn().mockResolvedValue(undefined),
       clearStale: vi.fn().mockResolvedValue({ removed: 0 }),
       enqueueBatch: vi.fn().mockResolvedValue(undefined),
+      dropUpload: vi.fn().mockResolvedValue({ ok: true, count: 1 }),
       cancel: vi.fn().mockResolvedValue(undefined),
       onUpdated: vi.fn().mockReturnValue(() => {}),
       onProgress: vi.fn().mockReturnValue(() => {}),

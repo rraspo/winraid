@@ -41,6 +41,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
   const [downloadProgress, setDownloadProgress] = useState(null)
   // shape: null | { name, filesProcessed, totalFiles, bytesTransferred, totalBytes }
+  const [externalDropActive, setExternalDropActive] = useState(false)
   const cancelledRef      = useRef(false)
   const browseRestoreRef  = useRef(browseRestore)
   const prevPath          = useRef(path)
@@ -395,6 +396,30 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setStatus,
   })
 
+  const handleExternalDragOver = useCallback((e) => {
+    if (dragDrop.dragSource) return
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    setExternalDropActive(true)
+  }, [dragDrop.dragSource])
+
+  const handleExternalDragLeave = useCallback((e) => {
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setExternalDropActive(false)
+    }
+  }, [])
+
+  const handleExternalDrop = useCallback(async (e) => {
+    e.preventDefault()
+    setExternalDropActive(false)
+    if (!selectedId) return
+    const localPaths = Array.from(e.dataTransfer?.files ?? [])
+      .map((f) => f.path)
+      .filter(Boolean)
+    if (!localPaths.length) return
+    await window.winraid?.queue.dropUpload(selectedId, pathRef.current, localPaths)
+  }, [selectedId])
+
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
   const dirCount  = useMemo(() => entries.filter((e) => e.type === 'dir').length, [entries])
   const fileCount = entries.length - dirCount
@@ -500,6 +525,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
+    externalDropActive,
+    handleExternalDragOver,
+    handleExternalDragLeave,
+    handleExternalDrop,
     // Sub-hook APIs — spread flat for backward compatibility
     ...selection,
     ...dragDrop,

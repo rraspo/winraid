@@ -39,6 +39,10 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
     handleItemPointer, toggleSelectAll,
     handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
+    externalDropActive,
+    handleExternalDragOver,
+    handleExternalDragLeave,
+    handleExternalDrop,
   } = browse
 
   const sftpCfg = (connections ?? []).find((c) => c.id === selectedId)?.sftp ?? null
@@ -56,7 +60,19 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
   }, [selectedId])
 
   return (
-    <div className={styles.container} style={style}>
+    <div
+      className={styles.container}
+      style={style}
+      data-testid="browse-container"
+      onDragOver={handleExternalDragOver}
+      onDragLeave={handleExternalDragLeave}
+      onDrop={handleExternalDrop}
+    >
+      {externalDropActive && (
+        <div className={styles.dropOverlay}>
+          <span className={styles.dropOverlayLabel}>Drop to upload to {path}</span>
+        </div>
+      )}
 
       {editingFile && (
         <EditorModal connectionId={selectedId} filePath={editingFile} onClose={() => setEditingFile(null)} />

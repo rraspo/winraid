@@ -21,7 +21,7 @@ Windows desktop app for homelab file sync. Watches local folders and pushes file
 ```
 winraid/
 ├── electron/
-│   ├── main.js          # IPC handlers, SFTP pool, nas-stream:// protocol, backup, tray, auto-updater (~1700 lines)
+│   ├── main.js          # IPC handlers, SFTP pool, nas-stream:// protocol, backup, tray, auto-updater (~2250 lines)
 │   ├── preload.js       # contextBridge — exposes window.winraid to renderer
 │   ├── config.js        # JSON config at %APPDATA%\WinRaid\config.json
 │   ├── queue.js         # Job queue persisted to queue.json; atomic writes
@@ -34,13 +34,16 @@ winraid/
 ├── src/
 │   ├── App.jsx          # Root: view routing, shared state, IPC subscriptions
 │   ├── hooks/
-│   │   ├── useBrowse.js         # Browse state + handlers (data/ops only)
+│   │   ├── useBrowse.js         # Browse state + handlers; composes useSelection + useDragDrop
+│   │   ├── useSelection.js      # Pointer/rubber-band selection, Shift/Ctrl/plain click
+│   │   ├── useDragDrop.js       # Multi-file drag, stacked ghost, dwell-timer, move ops
 │   │   ├── useVirtualizers.js   # useGridVirtualizer + useListVirtualizer
 │   │   └── useNavHistory.js     # useRef-based back/forward history stack
 │   ├── views/
-│   │   ├── BrowseView.jsx       # Shell: modals, header, breadcrumb (~313 lines)
+│   │   ├── BrowseView.jsx       # Shell: modals, header, breadcrumb
 │   │   ├── BrowseList.jsx       # List virtualizer view
-│   │   ├── BrowseGrid.jsx       # Grid virtualizer view
+│   │   ├── BrowseGrid.jsx       # Grid virtualizer view with rubber-band lasso
+│   │   ├── SizeView.jsx         # Recursive folder-size scan + sunburst visualization
 │   │   ├── QueueView.jsx        # TanStack Table with column resizing
 │   │   ├── DashboardView.jsx
 │   │   ├── BackupView.jsx
@@ -55,11 +58,15 @@ winraid/
 │   │   │   ├── Thumbnail.jsx        # Image/video preview with error fallback
 │   │   │   ├── VideoThumb.jsx       # IntersectionObserver lazy video
 │   │   │   └── NewFolderPrompt.jsx  # Inline new-folder input, list/grid variants
+│   │   ├── size/
+│   │   │   └── SizeSunburst.jsx     # D3 treemap sunburst with drill-down
 │   │   ├── modals/
 │   │   │   ├── DeleteModal.jsx / MoveModal.jsx / ConfirmModal.jsx
 │   │   │   └── BulkDeleteModal.jsx / BulkMoveModal.jsx
 │   │   ├── QuickLookOverlay.jsx     # Full-screen preview: image/video/audio/text
 │   │   ├── EditorModal.jsx          # CodeMirror remote file editor
+│   │   ├── TabBar.jsx               # Multi-connection tab switcher
+│   │   ├── ConnectionIcon.jsx       # Icon picker for connections
 │   │   ├── Sidebar.jsx / Header.jsx / StatusBar.jsx
 │   │   ├── RemotePathBrowser.jsx / ConnectionModal.jsx / IconPicker.jsx
 │   │   └── ui/
@@ -111,21 +118,27 @@ The boundary between agents is the `window.winraid` IPC surface in `preload.js`.
 ## `window.winraid` API surface
 
 ```
+getVersion()
+cache.thumbSize() / .clearThumbs()
 config.get(key?) / config.set(key, value)
+selectFolder()
+selectDownloadPath(defaultName, isDir)
 watcher.start(connId) / .stop(connId) / .list() / .onStatus(cb) / .pauseAll() / .resumeAll()
-queue.list() / .retry(id) / .remove(id) / .cancel(id) / .clearDone()
+queue.list() / .retry(id) / .remove(id) / .cancel(id) / .clearDone() / .clearStale()
       .pause() / .resume()
       .onUpdated(cb) / .onProgress(cb) / .enqueueBatch(connId, folder, relPaths)
-remote.list(connId, path) / .checkout(connId, path, local)
+remote.list(connId, path) / .checkout(connId, path, local) / .download(connId, path, localPath, isDir)
        .delete(connId, path, isDir) / .move(connId, src, dst) / .mkdir(connId, path)
        .readFile(connId, path) / .writeFile(connId, path, content)
        .verifyClean(connId, folder) / .verifyDelete(folder, relPaths)
+       .diskUsage(connId)
+       .sizeScan(connId) / .sizeCancel(connId) / .sizeLoadCache(connId) / .sizeSaveCache(connId, data)
+       .onDownloadProgress(cb) / .onSizeProgress(cb) / .onSizeLevel(cb) / .onSizeDone(cb) / .onSizeError(cb)
 backup.run(cfg) / .cancel() / .onProgress(cb)
 ssh.test(cfg) / .scanConfigs() / .listDir(cfg)
 local.clearFolder(path)
-log.tail(n) / .getPath() / .reveal() / .clear()
-dialog.selectFolder()
-app.version()
+log.tail(n) / .getPath() / .reveal() / .clear() / .onEntry(cb)
+update.check() / .install() / .onStatus(cb)
 ```
 
 ## Custom protocol
@@ -138,11 +151,14 @@ app.version()
 {
   id: string,           // UUID
   name: string,
+  icon: string,         // icon identifier for TabBar/Sidebar display
   type: 'sftp' | 'smb',
   localFolder: string,  // absolute local path to watch
   operation: 'copy',
-  folderMode: 'flat' | 'mirror',
+  folderMode: 'flat' | 'mirror' | 'mirror_clean',
+  extensions: string[], // file extension filter, e.g. ['.jpg', '.mp4']; empty = all
   sftp: { host, port, username, password, keyPath, remotePath },
+  smb: { host, share, username, password, remotePath },
 }
 ```
 
@@ -155,7 +171,7 @@ Passwords stored as `enc:<base64>` (Electron `safeStorage` / DPAPI). Never log o
   id, srcPath, filename, relPath, size,
   status: 'PENDING' | 'TRANSFERRING' | 'DONE' | 'ERROR',
   progress,    // 0–1
-  errorMsg, operation, connectionId, retries, createdAt,
+  errorMsg, errorAt, operation, connectionId, remoteDest, retries, createdAt,
 }
 ```
 
@@ -175,14 +191,14 @@ All values in `src/styles/tokens.css`. Dark is default; light overrides via `[da
 
 | Issue | File |
 |---|---|
-| `main.js` is ~1700 lines — SFTP pool, protocol, backup, ops, tray, IPC in one file | `electron/main.js` |
-| No retry logic — ERROR jobs are permanent | `electron/queue.js`, `electron/worker.js` |
+| `main.js` is ~2250 lines — SFTP pool, protocol, backup, ops, tray, IPC in one file | `electron/main.js` |
+| No automatic retry — ERROR jobs require manual retry; no exponential backoff | `electron/worker.js` |
 | `calcDirSize` blocks the main process (sync fs calls in backup handler) | `electron/main.js` |
 | `activeTransfers` counter can be stale — should derive from TRANSFERRING jobs | `src/App.jsx` |
 
 ## Planned work
 
-- Retry logic with exponential backoff (3 retries, 2s/8s/32s) in `worker.js`
+- Automatic retry with exponential backoff (3 retries, 2s/8s/32s) in `worker.js`
 - Split `main.js` — extract SFTP pool, nas-stream protocol, backup, and tray into separate modules
 - Async `calcDirSize` to unblock the main process during backups
 
