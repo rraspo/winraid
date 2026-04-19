@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
-  AlertCircle, Loader, FolderPlus, List, LayoutGrid,
+  AlertCircle, AlertTriangle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon,
 } from 'lucide-react'
 import styles from './BrowseView.module.css'
@@ -40,6 +40,8 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     handleItemPointer, toggleSelectAll,
     handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
     externalDropActive,
+    mergerfsWarning,
+    handleExternalDragEnter,
     handleExternalDragOver,
     handleExternalDragLeave,
     handleExternalDrop,
@@ -64,15 +66,12 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       className={styles.container}
       style={style}
       data-testid="browse-container"
+      onDragEnter={handleExternalDragEnter}
       onDragOver={handleExternalDragOver}
       onDragLeave={handleExternalDragLeave}
       onDrop={handleExternalDrop}
     >
-      {externalDropActive && (
-        <div className={styles.dropOverlay}>
-          <span className={styles.dropOverlayLabel}>Drop to upload to {path}</span>
-        </div>
-      )}
+
 
       {editingFile && (
         <EditorModal connectionId={selectedId} filePath={editingFile} onClose={() => setEditingFile(null)} />
@@ -170,7 +169,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           <button
             className={styles.newFolderBtn}
             onClick={() => setNewFolderName('')}
-            disabled={busy || loading || noConfig}
+            disabled={busy || loading || noConfig || mergerfsWarning}
           >
             <FolderPlus size={13} />
             New Folder
@@ -259,6 +258,13 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
             ))}
           </div>
 
+          {mergerfsWarning && (
+            <div className={styles.mergerfsWarning}>
+              <AlertTriangle size={13} />
+              This directory is a mergerfs union mount — files cannot be uploaded or created here. Navigate into a share folder.
+            </div>
+          )}
+
           {status && (
             <div className={[styles.statusFlash, status.ok ? styles.statusOk : styles.statusErr].join(' ')}>
               {status.msg}
@@ -272,6 +278,17 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
             </div>
           )}
 
+          <div className={styles.listArea}>
+            {externalDropActive && (
+              <div className={styles.dropOverlay}>
+                <div className={styles.dropStack}>
+                  <div className={styles.dropCard} />
+                  <div className={styles.dropCard} />
+                  <div className={styles.dropCard} />
+                </div>
+                <span className={styles.dropOverlayLabel}>Drop to upload to {path}</span>
+              </div>
+            )}
           {viewMode === 'list' && (
             <BrowseList
               entriesWithPaths={browse.entriesWithPaths}
@@ -337,6 +354,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               setDeleteTarget={browse.setDeleteTarget}
             />
           )}
+          </div>
 
           {/* Entry count bar */}
           {!loading && !error && entries.length > 0 && (
