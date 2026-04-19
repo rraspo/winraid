@@ -944,22 +944,67 @@ function registerIPC() {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
+      const poolEntry = _sftpPool.get(connectionId)
+      const client = poolEntry?.client
+
+      const sortEntries = (entries) => entries
+        .filter((e) => !e.name.startsWith('.'))
+        .sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+
+      // Try SSH exec find — single round-trip regardless of directory size
+      if (client) {
+        const execResult = await new Promise((resolve) => {
+          const safePath = remotePath.replace(/'/g, "'\\''")
+          const cmd = `find '${safePath}' -mindepth 1 -maxdepth 1 -not -name '.*' -printf '%y\\t%s\\t%T@\\t%f\\n'`
+          client.exec(cmd, (err, stream) => {
+            if (err) return resolve(null)
+            const chunks = []
+            stream.stderr.on('data', () => {})
+            stream.on('data', (chunk) => chunks.push(chunk))
+            stream.on('close', (code) => {
+              if (code !== 0) return resolve(null)
+              const output = Buffer.concat(chunks).toString('utf8')
+              const entries = []
+              for (const line of output.split('\n')) {
+                if (!line) continue
+                const t1 = line.indexOf('\t')
+                const t2 = line.indexOf('\t', t1 + 1)
+                const t3 = line.indexOf('\t', t2 + 1)
+                if (t3 === -1) continue
+                const type    = line.slice(0, t1)
+                const sizeStr = line.slice(t1 + 1, t2)
+                const mtStr   = line.slice(t2 + 1, t3)
+                const name    = line.slice(t3 + 1)
+                if (!name) continue
+                entries.push({
+                  name,
+                  type:     type === 'd' ? 'dir' : 'file',
+                  size:     parseInt(sizeStr, 10) || 0,
+                  modified: Math.floor(parseFloat(mtStr)) * 1000,
+                })
+              }
+              resolve({ ok: true, entries: sortEntries(entries) })
+            })
+          })
+        })
+        if (execResult) return execResult
+        // fall through to sftp.readdir on any exec failure
+      }
+
+      // Fallback: sftp.readdir (compatible with restricted shells / busybox)
       return new Promise((resolve) => {
         sftp.readdir(remotePath, (err, list) => {
           if (err) return resolve({ ok: false, error: err.message })
-          const entries = list
-            .map((e) => ({
-              name:     e.filename,
-              type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
-              size:     e.attrs.size ?? 0,
-              modified: (e.attrs.mtime ?? 0) * 1000,
-            }))
-            .filter((e) => !e.name.startsWith('.'))
-            .sort((a, b) => {
-              if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-              return a.name.localeCompare(b.name)
-            })
-          resolve({ ok: true, entries })
+          const entries = list.map((e) => ({
+            name:     e.filename,
+            type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
+            size:     e.attrs.size ?? 0,
+            modified: (e.attrs.mtime ?? 0) * 1000,
+          }))
+          resolve({ ok: true, entries: sortEntries(entries) })
         })
       })
     } catch (err) {
@@ -968,6 +1013,7 @@ function registerIPC() {
   })
 
   ipcMain.handle('remote:tree', async (_e, connectionId, rootPath) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
     if (!validateRemotePath(rootPath)) return { ok: false, error: 'Invalid remote path' }
     try {
       await _poolGet(connectionId)
@@ -978,7 +1024,7 @@ function registerIPC() {
       return new Promise((resolve) => {
         // Prune hidden entries; %P is path relative to root (empty for root itself)
         const safePath = rootPath.replace(/'/g, "'\\''")
-        const cmd = `find '${safePath}' -name '.*' -prune -o -printf '%y\\t%s\\t%T@\\t%P\\n'`
+        const cmd = `find '${safePath}' -name '.*' -prune -o -not -name '.*' -printf '%y\\t%s\\t%T@\\t%P\\n'`
         client.exec(cmd, (err, stream) => {
           if (err) return resolve({ ok: false, error: err.message })
           const chunks = []
