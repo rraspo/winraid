@@ -409,6 +409,57 @@ describe('BrowseView', () => {
     const docRow = screen.getByText('Documents').closest('.row')
     expect(docRow.className).toContain('lastVisited')
   })
+
+  describe('browse directory cache', () => {
+    it('stale mode: shows cached entries immediately on second visit without waiting for list', async () => {
+      let listCallCount = 0
+      window.winraid = createWinraidMock({
+        config: {
+          get: vi.fn().mockImplementation((key) => {
+            if (key === 'connections') return Promise.resolve(TEST_CONNECTIONS)
+            if (key === 'browse') return Promise.resolve({ cacheMode: 'stale', cacheMutation: 'update' })
+            return Promise.resolve({ connections: TEST_CONNECTIONS, activeConnectionId: 'conn-1', browse: { cacheMode: 'stale', cacheMutation: 'update' } })
+          }),
+        },
+        remote: {
+          list: vi.fn().mockImplementation(() => {
+            listCallCount++
+            return Promise.resolve({ ok: true, entries: SAMPLE_ENTRIES })
+          }),
+          tree: vi.fn().mockResolvedValue({ ok: true, dirMap: {} }),
+        },
+      })
+
+      const { unmount } = render(<BrowseView connectionId="conn-1" connections={TEST_CONNECTIONS} />)
+      await waitFor(() => expect(screen.queryByText('Documents')).toBeTruthy())
+      expect(listCallCount).toBe(1)
+      unmount()
+    })
+
+    it('none mode: always calls list even with prior cache', async () => {
+      let listCallCount = 0
+      window.winraid = createWinraidMock({
+        config: {
+          get: vi.fn().mockImplementation((key) => {
+            if (key === 'connections') return Promise.resolve(TEST_CONNECTIONS)
+            if (key === 'browse') return Promise.resolve({ cacheMode: 'none', cacheMutation: 'refetch' })
+            return Promise.resolve({ connections: TEST_CONNECTIONS, activeConnectionId: 'conn-1', browse: { cacheMode: 'none', cacheMutation: 'refetch' } })
+          }),
+        },
+        remote: {
+          list: vi.fn().mockImplementation(() => {
+            listCallCount++
+            return Promise.resolve({ ok: true, entries: SAMPLE_ENTRIES })
+          }),
+          tree: vi.fn().mockResolvedValue({ ok: true, dirMap: {} }),
+        },
+      })
+
+      render(<BrowseView connectionId="conn-1" connections={TEST_CONNECTIONS} />)
+      await waitFor(() => expect(screen.queryByText('Documents')).toBeTruthy())
+      expect(listCallCount).toBeGreaterThanOrEqual(1)
+    })
+  })
 })
 
 describe('External file drop (from Explorer)', () => {

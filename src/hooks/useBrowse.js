@@ -42,14 +42,32 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [downloadProgress, setDownloadProgress] = useState(null)
   // shape: null | { name, filesProcessed, totalFiles, bytesTransferred, totalBytes }
   const [externalDropActive, setExternalDropActive] = useState(false)
+  const [mergerfsWarning,   setMergerfsWarning]   = useState(false)
+  const mergerfsRootsRef  = useRef({}) // connId → Set<string>
   const cancelledRef      = useRef(false)
   const browseRestoreRef  = useRef(browseRestore)
   const prevPath          = useRef(path)
   const initialPushed     = useRef(false)
   const pathRef           = useRef(path)
+  const dirCache          = useRef(new Map())
+  const entriesRef        = useRef([])
+  const cacheModeRef      = useRef('stale')
+  const cacheMutRef       = useRef('update')
 
   browseRestoreRef.current = browseRestore
   pathRef.current          = path
+
+  // Keep entriesRef in sync so mutation callbacks can read latest entries without
+  // adding entries to their dependency arrays.
+  useEffect(() => { entriesRef.current = entries }, [entries])
+
+  // Load browse settings once on mount
+  useEffect(() => {
+    window.winraid?.config.get('browse').then((browse) => {
+      if (browse?.cacheMode)     cacheModeRef.current = browse.cacheMode
+      if (browse?.cacheMutation) cacheMutRef.current  = browse.cacheMutation
+    }).catch(() => {})
+  }, [])
 
   // ── Persistence ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -168,8 +186,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: null, connectionId })
       }
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [showQuickLook, onHistoryPush, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps — pathRef is a ref
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -203,6 +221,38 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // ── Handlers ───────────────────────────────────────────────────────────────
   const fetchDir = useCallback(async (targetPath) => {
     if (!selectedId) return
+    const mode = cacheModeRef.current
+    const key  = `${selectedId}:${targetPath}`
+
+    if (mode === 'stale') {
+      const cached = dirCache.current.get(key)
+      if (cached) {
+        setEntries(cached)
+        setError('')
+        setLoading(false)
+        setStatus(null)
+        // background refresh
+        window.winraid?.remote.list(selectedId, targetPath).then((res) => {
+          if (res?.ok) {
+            setEntries(res.entries)
+            dirCache.current.set(key, res.entries)
+          }
+        })
+        return
+      }
+    } else if (mode === 'tree') {
+      const cached = dirCache.current.get(key)
+      if (cached) {
+        setEntries(cached)
+        setError('')
+        setLoading(false)
+        setStatus(null)
+        return
+      }
+      // tree not populated yet — fall through to single-dir fetch
+    }
+
+    // 'none' mode, or cache miss
     setLoading(true)
     setError('')
     setStatus(null)
@@ -210,6 +260,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setLoading(false)
     if (res?.ok) {
       setEntries(res.entries)
+      dirCache.current.set(key, res.entries)
     } else {
       setError(res?.error || 'Failed to list directory')
       setEntries([])
@@ -219,6 +270,21 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   useEffect(() => {
     if (selectedId) fetchDir(path)
   }, [selectedId, path, fetchDir])
+
+  // When cacheMode is 'tree', walk the full remote tree via SSH exec on connection.
+  // SFTP-only — SMB connections are silently skipped.
+  useEffect(() => {
+    if (!selectedId || cacheModeRef.current !== 'tree') return
+    const conn = connections.find((c) => c.id === selectedId)
+    if (conn?.type !== 'sftp' || !conn?.sftp?.remotePath) return
+    const rootPath = conn.sftp.remotePath.replace(/\/+$/, '') || '/'
+    window.winraid?.remote.tree(selectedId, rootPath).then((res) => {
+      if (!res?.ok) return
+      for (const [dirPath, dirEntries] of Object.entries(res.dirMap)) {
+        dirCache.current.set(`${selectedId}:${dirPath}`, dirEntries)
+      }
+    }).catch(() => {})
+  }, [selectedId, connections])
 
   useEffect(() => {
     if (!window.winraid) return
@@ -375,6 +441,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     const res = await window.winraid?.remote.mkdir(selectedId, folderPath)
     setOpInFlight(false)
     if (res?.ok) {
+      setHighlightFile(name)
       await fetchDir(path)
       setStatus({ ok: true, msg: `Created folder ${name}` })
     } else {
@@ -396,29 +463,114 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setStatus,
   })
 
+  // Counter tracks how many nested dragenter/dragleave pairs are in flight.
+  // relatedTarget can be null when crossing pointer-events:none elements (the
+  // overlay cards), which would falsely trigger deactivation — the counter
+  // approach is immune to that because it counts crossing events, not targets.
+  const dragCounterRef = useRef(0)
+
+  const handleExternalDragEnter = useCallback((e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    dragCounterRef.current += 1
+    if (!mergerfsWarning) setExternalDropActive(true)
+  }, [mergerfsWarning])
+
   const handleExternalDragOver = useCallback((e) => {
-    if (dragDrop.dragSource) return
     if (!e.dataTransfer?.types?.includes('Files')) return
     e.preventDefault()
-    setExternalDropActive(true)
-  }, [dragDrop.dragSource])
+  }, [])
 
-  const handleExternalDragLeave = useCallback((e) => {
-    if (!e.currentTarget.contains(e.relatedTarget)) {
+  const handleExternalDragLeave = useCallback(() => {
+    dragCounterRef.current -= 1
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0
       setExternalDropActive(false)
     }
   }, [])
 
   const handleExternalDrop = useCallback(async (e) => {
     e.preventDefault()
+    dragCounterRef.current = 0
     setExternalDropActive(false)
-    if (!selectedId) return
+    if (!selectedId || mergerfsWarning) return
     const localPaths = Array.from(e.dataTransfer?.files ?? [])
-      .map((f) => f.path)
+      .map((f) => window.winraid?.getPathForFile?.(f) ?? '')
       .filter(Boolean)
     if (!localPaths.length) return
     await window.winraid?.queue.dropUpload(selectedId, pathRef.current, localPaths)
+  }, [selectedId, mergerfsWarning])
+
+  // Stable ref so the queue:updated subscription never needs to re-create just
+  // because fetchDir changed — avoids missing the DONE event during re-renders.
+  const fetchDirRef = useRef(fetchDir)
+  fetchDirRef.current = fetchDir
+
+  // Refresh the directory listing when a drop-upload job completes.
+  // For drop-uploads: also highlight the file if the user is still in the same dir.
+  useEffect(() => {
+    if (!selectedId) return
+    return window.winraid?.queue.onUpdated((payload) => {
+      const { type, job } = payload
+      if (type !== 'updated' || job?.status !== 'DONE' || job?.connectionId !== selectedId) return
+      if (job.remoteDest) {
+        const relPath  = job.relPath ?? ''
+        const lastSlash = relPath.lastIndexOf('/')
+        const fileDir  = lastSlash === -1
+          ? job.remoteDest.replace(/\/+$/, '')
+          : `${job.remoteDest.replace(/\/+$/, '')}/${relPath.slice(0, lastSlash)}`
+        if (fileDir === pathRef.current.replace(/\/+$/, '')) {
+          setHighlightFile(job.filename)
+        }
+      }
+      fetchDirRef.current(pathRef.current)
+    })
   }, [selectedId])
+
+  // ── mergerfs root detection ─────────────────────────────────────────────────
+  // Read /proc/mounts once per SFTP connection, cache per connId. Non-SFTP or
+  // unreadable mounts are treated as non-mergerfs (no warning, no block).
+  useEffect(() => {
+    if (!selectedId || selectedConn?.type !== 'sftp') {
+      setMergerfsWarning(false)
+      return
+    }
+
+    function checkPath(roots) {
+      const p = pathRef.current.replace(/\/+$/, '') || '/'
+      setMergerfsWarning(roots.has(p))
+    }
+
+    const cached = mergerfsRootsRef.current[selectedId]
+    if (cached !== undefined) { checkPath(cached); return }
+
+    let cancelled = false
+    window.winraid?.remote.readFile(selectedId, '/proc/mounts')
+      ?.then((res) => {
+        if (cancelled) return
+        const roots = new Set()
+        if (res?.ok && res.content) {
+          for (const line of res.content.split('\n')) {
+            const parts = line.trim().split(/\s+/)
+            // fuse.mergerfs = standard mergerfs; fuse.shfs = Unraid's shfs (same concept)
+            if (parts[2] === 'fuse.mergerfs' || parts[2] === 'fuse.shfs') roots.add(parts[1])
+          }
+        }
+        mergerfsRootsRef.current[selectedId] = roots
+        checkPath(roots)
+      })
+      ?.catch(() => {
+        if (!cancelled) mergerfsRootsRef.current[selectedId] = new Set()
+      })
+    return () => { cancelled = true }
+  }, [selectedId, selectedConn?.type])
+
+  // Re-evaluate warning when the user navigates.
+  useEffect(() => {
+    const roots = mergerfsRootsRef.current[selectedId]
+    if (!roots) return
+    const p = path.replace(/\/+$/, '') || '/'
+    setMergerfsWarning(roots.has(p))
+  }, [path, selectedId])
 
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
   const dirCount  = useMemo(() => entries.filter((e) => e.type === 'dir').length, [entries])
@@ -526,6 +678,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
     externalDropActive,
+    mergerfsWarning,
+    handleExternalDragEnter,
     handleExternalDragOver,
     handleExternalDragLeave,
     handleExternalDrop,
