@@ -25,8 +25,17 @@ async function transfer(cfg, job, onProgress) {
 
   try {
     const remotePath = buildRemotePath(job.remoteDest ?? cfg.remotePath, job.relPath)
-    const remoteDir  = posix.dirname(remotePath)
 
+    log('info', `SFTP checking remote: ${remotePath}`)
+    try {
+      await sftpStat(sftp, remotePath)
+      log('info', `SFTP skip (exists on remote): ${job.filename} → ${remotePath}`)
+      return { skipped: true }
+    } catch {
+      // Does not exist — proceed with upload
+    }
+
+    const remoteDir = posix.dirname(remotePath)
     await mkdirpRemote(sftp, remoteDir)
     await upload(sftp, job.srcPath, remotePath, onProgress)
 
