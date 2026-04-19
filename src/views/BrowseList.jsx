@@ -1,4 +1,4 @@
-import { memo, useState, useEffect } from 'react'
+import { memo, useState, useEffect, useRef } from 'react'
 import NewFolderPrompt from '../components/browse/NewFolderPrompt'
 import BrowseListRow from '../components/browse/BrowseListRow'
 import { useListVirtualizer } from '../hooks/useVirtualizers'
@@ -16,10 +16,14 @@ const BrowseList = memo(function BrowseList({
   const [listScrollEl, setListScrollEl] = useState(null)
   const { rowVirtualizer } = useListVirtualizer(entries, listScrollEl)
 
+  const lastScrolled = useRef(null)
   useEffect(() => {
     if (!highlightFile || entries.length === 0) return
+    if (highlightFile === lastScrolled.current) return
     const idx = entries.findIndex((e) => e.name === highlightFile)
-    if (idx >= 0) rowVirtualizer.scrollToIndex(idx, { align: 'center', behavior: 'smooth' })
+    if (idx < 0) return
+    lastScrolled.current = highlightFile
+    rowVirtualizer.scrollToIndex(idx, { align: 'center' })
   }, [highlightFile, entries]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
@@ -29,7 +33,7 @@ const BrowseList = memo(function BrowseList({
       onDragOver={(e) => { if (dragSourcePaths.size > 0) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'move' } }}
       onDrop={(e) => handleDrop(e, path)}
     >
-      {entries.length === 0 && !loading && !error && (
+      {entries.length === 0 && !loading && !error && newFolderName === null && (
         <div className={styles.emptyDir}>Empty folder</div>
       )}
       {entries.length > 0 && (
@@ -48,15 +52,6 @@ const BrowseList = memo(function BrowseList({
           <span className={styles.colDate}>Modified</span>
           <span className={styles.colActions} />
         </div>
-      )}
-      {newFolderName !== null && (
-        <NewFolderPrompt
-          variant="list"
-          name={newFolderName}
-          onChange={setNewFolderName}
-          onCreate={handleCreateFolder}
-          onCancel={() => setNewFolderName(null)}
-        />
       )}
       {entries.length > 0 && (
         <div style={{ height: rowVirtualizer.getTotalSize(), position: 'relative' }}>
@@ -92,6 +87,15 @@ const BrowseList = memo(function BrowseList({
             )
           })}
         </div>
+      )}
+      {newFolderName !== null && (
+        <NewFolderPrompt
+          variant="list"
+          name={newFolderName}
+          onChange={setNewFolderName}
+          onCreate={handleCreateFolder}
+          onCancel={() => setNewFolderName(null)}
+        />
       )}
     </div>
   )

@@ -144,9 +144,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll highlighted entry into view ────────────────────────────────────
-  const highlightRef = useCallback((node) => {
-    if (node) node.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [])
+  // Scrolling to the highlighted entry is handled by each view's virtualizer
+  // (scrollToIndex in BrowseList / BrowseGrid). This ref is kept so components
+  // can attach it for future use, but no scroll logic runs here.
+  const highlightRef = useCallback(() => {}, [])
 
   // ── Initial load ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -230,8 +231,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         setEntries(cached)
         setError('')
         setLoading(false)
-        setStatus(null)
-        // background refresh
+        // background refresh — don't touch status; clearing it here causes layout
+        // shifts (statusFlash disappears) on every background revalidation
         window.winraid?.remote.list(selectedId, targetPath).then((res) => {
           if (res?.ok) {
             setEntries(res.entries)
