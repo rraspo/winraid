@@ -1,4 +1,4 @@
-import { memo, useState, useCallback, useRef } from 'react'
+import { memo, useState, useCallback, useRef, useEffect } from 'react'
 import GridCard from '../components/browse/GridCard'
 import NewFolderPrompt from '../components/browse/NewFolderPrompt'
 import { GRID_PAD, GRID_GAP, useGridVirtualizer } from '../hooks/useVirtualizers'
@@ -17,6 +17,16 @@ const BrowseGrid = memo(function BrowseGrid({
   const entries = entriesWithPaths
   const [gridScrollEl, setGridScrollEl] = useState(null)
   const { gridVirtualizer, gridCols } = useGridVirtualizer(entries, gridScrollEl)
+
+  const lastScrolled = useRef(null)
+  useEffect(() => {
+    if (!highlightFile || entries.length === 0 || gridCols === 0) return
+    if (highlightFile === lastScrolled.current) return
+    const idx = entries.findIndex((e) => e.name === highlightFile)
+    if (idx < 0) return
+    lastScrolled.current = highlightFile
+    gridVirtualizer.scrollToIndex(Math.floor(idx / gridCols), { align: 'center' })
+  }, [highlightFile, entries, gridCols]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isLassoing  = useRef(false)
   const lassoMods   = useRef({ ctrl: false, shift: false })
@@ -37,16 +47,36 @@ const BrowseGrid = memo(function BrowseGrid({
 
   const handleMouseMove = useCallback((e) => {
     if (!isLassoing.current) return
-    const rect = e.currentTarget.getBoundingClientRect()
+    const container = e.currentTarget
+    const rect = container.getBoundingClientRect()
+    const scrollTop = container.scrollTop
     const x0 = lassoAnchor.current.x
     const y0 = lassoAnchor.current.y
     const x1 = e.clientX - rect.left
-    const y1 = e.clientY - rect.top + e.currentTarget.scrollTop
-    handleRubberBandMove(
-      Math.min(x0, x1), Math.min(y0, y1),
-      Math.abs(x1 - x0), Math.abs(y1 - y0),
-    )
-  }, [handleRubberBandMove])
+    const y1 = e.clientY - rect.top + scrollTop
+    const lx = Math.min(x0, x1)
+    const ly = Math.min(y0, y1)
+    const lw = Math.abs(x1 - x0)
+    const lh = Math.abs(y1 - y0)
+
+    const intersected = []
+    if (lw >= 2 && lh >= 2) {
+      const cardEls = container.querySelectorAll('[data-entry-path]')
+      cardEls.forEach((el) => {
+        const cr = el.getBoundingClientRect()
+        const cardLeft   = cr.left - rect.left
+        const cardTop    = cr.top  - rect.top  + scrollTop
+        const cardRight  = cardLeft + cr.width
+        const cardBottom = cardTop  + cr.height
+        if (cardLeft < lx + lw && cardRight > lx && cardTop < ly + lh && cardBottom > ly) {
+          const idx = entries.findIndex((entry) => entry.entryPath === el.getAttribute('data-entry-path'))
+          if (idx >= 0) intersected.push(idx)
+        }
+      })
+    }
+
+    handleRubberBandMove(lx, ly, lw, lh, intersected, lassoMods.current)
+  }, [entries, handleRubberBandMove])
 
   const handleMouseUp = useCallback((e) => {
     if (!isLassoing.current) return
@@ -107,16 +137,6 @@ const BrowseGrid = memo(function BrowseGrid({
         />
       )}
 
-      {newFolderName !== null && (
-        <NewFolderPrompt
-          variant="grid"
-          name={newFolderName}
-          gridPad={GRID_PAD}
-          onChange={setNewFolderName}
-          onCreate={handleCreateFolder}
-          onCancel={() => setNewFolderName(null)}
-        />
-      )}
       {entries.length === 0 && !loading && !error && newFolderName === null && (
         <div className={styles.emptyDir}>Empty folder</div>
       )}
@@ -174,6 +194,23 @@ const BrowseGrid = memo(function BrowseGrid({
               </div>
             )
           })}
+        </div>
+      )}
+      {newFolderName !== null && (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+          gap: `${GRID_GAP}px`,
+          padding: `${GRID_PAD}px ${GRID_PAD}px`,
+          boxSizing: 'border-box',
+        }}>
+          <NewFolderPrompt
+            variant="grid"
+            name={newFolderName}
+            onChange={setNewFolderName}
+            onCreate={handleCreateFolder}
+            onCancel={() => setNewFolderName(null)}
+          />
         </div>
       )}
     </div>
