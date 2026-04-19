@@ -352,7 +352,7 @@ export default function App() {
 
             {/* Per-connection Backup tabs (lazy-mount, keep-alive) */}
             {openTabs.filter((t) => t.type === 'backup').map((tab) => (
-              <div key={tab.id} style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none', height: '100%' }}>
+              <div key={tab.id} style={{ display: activeTabId === tab.id && connEdit === null ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', overflow: 'hidden' }}>
                 <BackupView
                   connectionId={tab.connId}
                   backupRun={backupRun}
@@ -367,7 +367,7 @@ export default function App() {
               return (
                 <div
                   key={tab.id}
-                  style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none', height: '100%' }}
+                  style={{ display: activeTabId === tab.id && connEdit === null ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', overflow: 'hidden' }}
                 >
                   <SizeView
                     connectionId={tab.connId}

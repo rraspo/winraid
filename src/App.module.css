@@ -24,10 +24,12 @@
   overflow: hidden;
 }
 
-/* Scrollable view area */
+/* Scrollable view area — flex column so children can use flex:1 instead of height:100% */
 .content {
   flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   position: relative;
-  min-height: 0;
 }
