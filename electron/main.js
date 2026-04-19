@@ -768,9 +768,13 @@ function registerIPC() {
     }
 
     try {
-      const { ensureWorkerRunning } = await import('./worker.js')
+      const { ensureWorkerRunning, isWorkerRunning } = await import('./worker.js')
+      const wasRunning = isWorkerRunning()
       ensureWorkerRunning()
-    } catch { /* worker may already be running */ }
+      log('info', `drop-upload: ${count} job(s) queued — worker was ${wasRunning ? 'already running' : 'started now'}`)
+    } catch (err) {
+      log('warn', `drop-upload: worker start failed: ${err.message}`)
+    }
 
     return { ok: true, count }
   })
@@ -956,6 +960,68 @@ function registerIPC() {
               return a.name.localeCompare(b.name)
             })
           resolve({ ok: true, entries })
+        })
+      })
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('remote:tree', async (_e, connectionId, rootPath) => {
+    if (!validateRemotePath(rootPath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      await _poolGet(connectionId)
+      const poolEntry = _sftpPool.get(connectionId)
+      if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const { client } = poolEntry
+      return new Promise((resolve) => {
+        // Prune hidden entries; %P is path relative to root (empty for root itself)
+        const safePath = rootPath.replace(/'/g, "'\\''")
+        const cmd = `find '${safePath}' -name '.*' -prune -o -printf '%y\\t%s\\t%T@\\t%P\\n'`
+        client.exec(cmd, (err, stream) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          const chunks = []
+          stream.stderr.on('data', () => {})
+          stream.on('data', (chunk) => chunks.push(chunk))
+          stream.on('close', (code) => {
+            if (code !== 0) return resolve({ ok: false, error: `find exited with code ${code}` })
+            const output = Buffer.concat(chunks).toString('utf8')
+            const rootNorm = rootPath.replace(/\/+$/, '') || '/'
+            const dirMap = {}
+            for (const line of output.split('\n')) {
+              if (!line) continue
+              const t1 = line.indexOf('\t')
+              const t2 = line.indexOf('\t', t1 + 1)
+              const t3 = line.indexOf('\t', t2 + 1)
+              if (t3 === -1) continue
+              const type    = line.slice(0, t1)
+              const sizeStr = line.slice(t1 + 1, t2)
+              const mtStr   = line.slice(t2 + 1, t3)
+              const relPath = line.slice(t3 + 1)
+              if (!relPath) continue
+              const parts      = relPath.split('/')
+              const name       = parts.at(-1)
+              const parentRel  = parts.slice(0, -1).join('/')
+              const parentPath = parentRel
+                ? (rootNorm === '/' ? '/' + parentRel : rootNorm + '/' + parentRel)
+                : rootNorm
+              if (!dirMap[parentPath]) dirMap[parentPath] = []
+              dirMap[parentPath].push({
+                name,
+                type:     type === 'd' ? 'dir' : 'file',
+                size:     parseInt(sizeStr, 10) || 0,
+                modified: Math.floor(parseFloat(mtStr)) * 1000,
+              })
+            }
+            for (const arr of Object.values(dirMap)) {
+              arr.sort((a, b) => {
+                if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+                return a.name.localeCompare(b.name)
+              })
+            }
+            resolve({ ok: true, dirMap })
+          })
         })
       })
     } catch (err) {
@@ -2057,6 +2123,36 @@ function fullCachePath(connId, remotePath) {
   return join(app.getPath('userData'), 'thumbs', connId, 'full', hash + ext)
 }
 
+// Thumbnail concurrency semaphore — cap simultaneous SFTP thumbnail downloads
+// so the SSH connection isn't saturated by 20+ parallel reads when a large
+// image folder is opened.
+class _Semaphore {
+  constructor(n) { this._n = n; this._q = [] }
+  acquire() {
+    if (this._n > 0) { this._n--; return Promise.resolve() }
+    return new Promise((r) => this._q.push(r))
+  }
+  release() { if (this._q.length > 0) this._q.shift()(); else this._n++ }
+}
+const _thumbSem = new _Semaphore(4)
+
+// Run the synchronous nativeImage decode → resize → JPEG encode in the next
+// iteration of the event loop so that IPC and other async work can interleave
+// between thumbnail processing steps.
+function _nativeImageToJpeg(buf) {
+  return new Promise((resolve, reject) => {
+    setImmediate(() => {
+      try {
+        const img = nativeImage.createFromBuffer(buf)
+        if (img.isEmpty()) return resolve(null)
+        resolve(img.resize({ width: 240 }).toJPEG(80))
+      } catch (err) {
+        reject(err)
+      }
+    })
+  })
+}
+
 function registerNasStreamProtocol() {
   // Privilege must be declared before app.whenReady() — done in the
   // protocol.registerSchemesAsPrivileged call below at module level.
@@ -2132,15 +2228,22 @@ function registerNasStreamProtocol() {
           })
         }
 
-        // Cache miss — fetch full file from SFTP, resize, persist, serve
-        const stream = sftp.createReadStream(remotePath)
-        const chunks = []
-        await new Promise((resolve, reject) => {
-          stream.on('data',  (chunk) => chunks.push(chunk))
-          stream.on('end',   resolve)
-          stream.on('error', reject)
-        })
-        const buf = Buffer.concat(chunks)
+        // Cache miss — limit to 4 concurrent SFTP thumbnail downloads so the
+        // SSH connection isn't overwhelmed by large folders.
+        await _thumbSem.acquire()
+        let buf
+        try {
+          const stream = sftp.createReadStream(remotePath)
+          const chunks = []
+          await new Promise((resolve, reject) => {
+            stream.on('data',  (chunk) => chunks.push(chunk))
+            stream.on('end',   resolve)
+            stream.on('error', reject)
+          })
+          buf = Buffer.concat(chunks)
+        } finally {
+          _thumbSem.release()
+        }
 
         // Save full-res copy so QuickLook can serve it without re-fetching
         const fcp     = fullCachePath(connId, remotePath)
@@ -2148,8 +2251,10 @@ function registerNasStreamProtocol() {
         await mkdirAsync(fullDir, { recursive: true })
         await writeFileAsync(fcp, buf).catch(() => {})
 
-        const img = nativeImage.createFromBuffer(buf)
-        if (img.isEmpty()) {
+        // nativeImage decode + resize runs in the next event-loop tick so IPC
+        // and other work can interleave between thumbnail processing steps.
+        const jpegBuf = await _nativeImageToJpeg(buf)
+        if (!jpegBuf) {
           // nativeImage could not decode the format — serve original bytes as-is
           return new Response(buf, {
             status: 200,
@@ -2160,8 +2265,6 @@ function registerNasStreamProtocol() {
           })
         }
 
-        const resized  = img.resize({ width: 240 })
-        const jpegBuf  = resized.toJPEG(80)
         const cacheDir = join(app.getPath('userData'), 'thumbs', connId)
         await mkdirAsync(cacheDir, { recursive: true })
         await writeFileAsync(cachePath, jpegBuf).catch(() => {})

@@ -12,6 +12,7 @@ import { vi } from 'vitest'
 export function createWinraidMock(overrides = {}) {
   return {
     getVersion: vi.fn().mockResolvedValue('1.1.0'),
+    getPathForFile: vi.fn((f) => f?.path ?? ''),
     selectFolder: vi.fn().mockResolvedValue(null),
 
     config: {
@@ -80,6 +81,7 @@ export function createWinraidMock(overrides = {}) {
 
     remote: {
       list: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
+      tree: vi.fn().mockResolvedValue({ ok: true, dirMap: {} }),
       checkout: vi.fn().mockResolvedValue({ ok: true, created: [] }),
       readFile: vi.fn().mockResolvedValue({ ok: true, content: '' }),
       writeFile: vi.fn().mockResolvedValue({ ok: true }),
