@@ -60,6 +60,7 @@ export default function MoveModal({ target, sftpCfg, onConfirm, onCancel }) {
                   className={styles.fieldInput}
                   value={folder}
                   onChange={(e) => setFolder(e.target.value)}
+                  placeholder="/"
                   spellCheck={false}
                 />
                 {sftpCfg && (
