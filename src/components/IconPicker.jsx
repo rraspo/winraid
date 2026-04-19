@@ -134,18 +134,18 @@ export default function IconPicker({ value, onChange }) {
           {tab === 'icons' && (
             <div className={styles.grid}>
               {filteredIcons.map(({ name, Icon }) => (
-                <button
-                  key={name}
-                  type="button"
-                  title={name}
-                  className={[
-                    styles.gridItem,
-                    value?.type === 'lucide' && value?.value === name ? styles.gridItemActive : '',
-                  ].filter(Boolean).join(' ')}
-                  onClick={() => select('lucide', name)}
-                >
-                  <Icon size={18} strokeWidth={1.75} />
-                </button>
+                <Tooltip key={name} tip={name} side="top">
+                  <button
+                    type="button"
+                    className={[
+                      styles.gridItem,
+                      value?.type === 'lucide' && value?.value === name ? styles.gridItemActive : '',
+                    ].filter(Boolean).join(' ')}
+                    onClick={() => select('lucide', name)}
+                  >
+                    <Icon size={18} strokeWidth={1.75} />
+                  </button>
+                </Tooltip>
               ))}
             </div>
           )}
@@ -198,10 +198,9 @@ export default function IconPicker({ value, onChange }) {
               ) : (
                 <div className={styles.serviceGrid}>
                   {filteredServices.slice(0, 96).map((name) => (
+                    <Tooltip key={name} tip={name} side="top">
                     <button
-                      key={name}
                       type="button"
-                      title={name}
                       className={[
                         styles.serviceItem,
                         value?.type === 'service' && value?.value === name ? styles.gridItemActive : '',
@@ -217,6 +216,7 @@ export default function IconPicker({ value, onChange }) {
                         onError={(e) => { e.currentTarget.style.opacity = '0.15' }}
                       />
                     </button>
+                    </Tooltip>
                   ))}
                 </div>
               )}

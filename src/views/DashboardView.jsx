@@ -4,6 +4,7 @@ import {
   AlertCircle, CheckCircle,
 } from 'lucide-react'
 import ConnectionIcon from '../components/ConnectionIcon'
+import Tooltip from '../components/ui/Tooltip'
 import { formatSize } from '../utils/format'
 import styles from './DashboardView.module.css'
 
@@ -263,7 +264,7 @@ export default function DashboardView({ watcherStatus, onNavigate, connections, 
                           <div className={styles.progressTrack}>
                             <div
                               className={[styles.progressFill, isFull ? styles.progressFillDanger : ''].filter(Boolean).join(' ')}
-                              style={{ width: `${pct}%` }}
+                              style={{ transform: `scaleX(${pct / 100})` }}
                             />
                           </div>
                         )}
@@ -299,7 +300,9 @@ function TransferCard({ job }) {
           {getFileIcon(filename)}
         </div>
         <div className={styles.transferInfo}>
-          <span className={styles.transferName} title={filename}>{filename}</span>
+          <Tooltip tip={filename} side="top" onlyWhenTruncated>
+            <span className={styles.transferName}>{filename}</span>
+          </Tooltip>
           <span className={styles.transferSub}>
             {isActive ? 'Uploading to remote' : status === 'PENDING' ? 'Queued' : (dir || status)}
           </span>
@@ -313,7 +316,7 @@ function TransferCard({ job }) {
         <div className={styles.progressTrack}>
           <div
             className={[styles.progressFill, !isActive ? styles.progressFillIdle : ''].filter(Boolean).join(' ')}
-            style={{ width: isActive ? `${percent}%` : '0%' }}
+            style={{ transform: `scaleX(${isActive ? percent / 100 : 0})` }}
           />
         </div>
       </div>
