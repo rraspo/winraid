@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 
 // ---------------------------------------------------------------------------
 // Helper — registers a one-way listener and returns a cleanup function.
@@ -19,6 +19,10 @@ contextBridge.exposeInMainWorld('winraid', {
 
   // -- App -----------------------------------------------------------------
   getVersion: () => ipcRenderer.invoke('app:version'),
+
+  // -- File utilities ------------------------------------------------------
+  /** Returns the filesystem path for a File object from drag-and-drop. */
+  getPathForFile: (file) => webUtils.getPathForFile(file),
 
   // -- Thumbnail cache -----------------------------------------------------
   cache: {
@@ -161,6 +165,8 @@ contextBridge.exposeInMainWorld('winraid', {
   remote: {
     /** List a remote directory via SFTP (pooled connection). */
     list: (connectionId, path) => ipcRenderer.invoke('remote:list', connectionId, path),
+    /** Fetch full directory tree via SSH exec find. Returns { ok, dirMap: Record<path, entry[]> } or { ok: false, error }. */
+    tree: (connectionId, rootPath) => ipcRenderer.invoke('remote:tree', connectionId, rootPath),
     /** Recursively create local directories mirroring a remote folder structure. */
     checkout: (connectionId, remotePath, localRoot) =>
       ipcRenderer.invoke('remote:checkout', connectionId, remotePath, localRoot),
