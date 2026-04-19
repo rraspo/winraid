@@ -36,6 +36,11 @@ export function stopWorker() {
   log('info', 'Transfer worker stopped.')
 }
 
+/** Returns true if the worker poll loop is currently active. */
+export function isWorkerRunning() {
+  return timer !== null
+}
+
 /** Prevent the worker from dequeuing new jobs. In-flight job finishes normally. */
 export function pauseWorker() {
   paused = true
@@ -97,11 +102,15 @@ async function processJob(job) {
   }
 
   try {
-    await backend.transfer(job, makeProgressHandler(job))
+    const result = await backend.transfer(job, makeProgressHandler(job))
 
     markDone(job)
-    notify('Transfer complete', job.filename)
-    log('info', `Done: ${job.filename}`)
+    if (result?.skipped) {
+      log('info', `Skipped (already on remote): ${job.filename}`)
+    } else {
+      notify('Transfer complete', job.filename)
+      log('info', `Done: ${job.filename}`)
+    }
 
     // Delete the local source file when:
     //  - operation is 'move' (explicit move-and-delete), OR
@@ -136,22 +145,25 @@ async function processJob(job) {
 // Progress handler factory
 // ---------------------------------------------------------------------------
 
+const PROGRESS_THROTTLE_MS = 100
+
 function makeProgressHandler(job) {
+  let lastSentAt = 0
+
   return (bytesTransferred, totalBytes) => {
     const progress = totalBytes > 0 ? bytesTransferred / totalBytes : 0
     updateJob(job.id, { progress })
 
-    const payload = {
+    const now = Date.now()
+    const isFinal = bytesTransferred >= totalBytes
+    if (!isFinal && now - lastSentAt < PROGRESS_THROTTLE_MS) return
+    lastSentAt = now
+
+    sendToRenderer('transfer:progress', {
       jobId: job.id,
       percent: Math.round(progress * 100),
       bytesTransferred,
       totalBytes,
-    }
-    sendToRenderer('transfer:progress', payload)
-    // Also push a lightweight queue update so the table row refreshes
-    sendToRenderer('queue:updated', {
-      type: 'updated',
-      job: { ...job, status: STATUS.TRANSFERRING, progress },
     })
   }
 }
