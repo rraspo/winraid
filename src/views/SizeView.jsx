@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
+import Tooltip from '../components/ui/Tooltip'
 import { formatSize } from '../utils/format'
 import styles from './SizeView.module.css'
 
@@ -280,13 +281,14 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
                   <span className={styles.legendParentLabel}>../</span>
                   <span className={styles.legendParentName}>{parentName}</span>
                   {onBrowsePath && (
-                    <button
-                      className={styles.browseBtn}
-                      title="Browse folder"
-                      onClick={(e) => { e.stopPropagation(); onBrowsePath(parentPath) }}
-                    >
-                      <FolderOpen size={11} />
-                    </button>
+                    <Tooltip tip="Browse folder" side="top">
+                      <button
+                        className={styles.browseBtn}
+                        onClick={(e) => { e.stopPropagation(); onBrowsePath(parentPath) }}
+                      >
+                        <FolderOpen size={11} />
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               )
@@ -302,13 +304,14 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
                   <span className={styles.legendSwatch} style={{ background: PALETTE[i % PALETTE.length] }} />
                   <span className={styles.legendName}>{child.name}</span>
                   {onBrowsePath && (
-                    <button
-                      className={styles.browseBtn}
-                      title="Browse folder"
-                      onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
-                    >
-                      <FolderOpen size={11} />
-                    </button>
+                    <Tooltip tip="Browse folder" side="top">
+                      <button
+                        className={styles.browseBtn}
+                        onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
+                      >
+                        <FolderOpen size={11} />
+                      </button>
+                    </Tooltip>
                   )}
                   <span className={styles.legendSize}>{formatSize(child.sizeKb * 1024)}</span>
                 </div>

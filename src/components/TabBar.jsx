@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
+import Tooltip from './ui/Tooltip'
 import styles from './TabBar.module.css'
 
 export default function TabBar({ openTabs, activeTabId, connections, onActivate, onClose }) {
@@ -23,13 +24,14 @@ export default function TabBar({ openTabs, activeTabId, connections, onActivate,
             <ConnectionIcon icon={conn?.icon ?? null} size={12} />
             <span>{conn?.name ?? tab.connId}</span>
             <span className={styles.tabType}>{tab.type}</span>
-            <button
-              className={styles.closeBtn}
-              title="Close tab"
-              onClick={(e) => { e.stopPropagation(); onClose(tab.id) }}
-            >
-              <X size={10} strokeWidth={2.5} />
-            </button>
+            <Tooltip tip="Close tab" side="top">
+              <button
+                className={styles.closeBtn}
+                onClick={(e) => { e.stopPropagation(); onClose(tab.id) }}
+              >
+                <X size={10} strokeWidth={2.5} />
+              </button>
+            </Tooltip>
           </div>
         )
       })}
