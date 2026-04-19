@@ -41,6 +41,10 @@ const DEFAULTS = {
     sources:   [],   // string[] — remote paths on the NAS to pull down
     localDest: '',   // local folder to receive the backup
   },
+  browse: {
+    cacheMode:     'stale',   // 'stale' | 'tree' | 'none'
+    cacheMutation: 'update',  // 'update' | 'refetch'
+  },
   connections:        [],
   activeConnectionId: null,
 }
