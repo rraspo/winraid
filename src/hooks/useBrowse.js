@@ -405,6 +405,11 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       setOpInFlight(false)
     }
     if (res?.ok) {
+      const key = `${selectedId}:${path}`
+      if (cacheMutRef.current === 'update') {
+        const cached = dirCache.current.get(key)
+        if (cached) dirCache.current.set(key, cached.filter((e) => e.name !== target.name))
+      }
       setEntries((prev) => prev.filter((e) => e.name !== target.name))
       setStatus({ ok: true, msg: `Deleted ${target.path}` })
     } else {
@@ -423,10 +428,34 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     } finally {
       setOpInFlight(false)
     }
-    await fetchDir(path)
     if (res?.ok) {
-      setStatus({ ok: true, msg: `Moved to ${dstPath}` })
+      if (cacheMutRef.current === 'update') {
+        const srcName    = srcPath.split('/').at(-1)
+        const dstName    = dstPath.split('/').at(-1)
+        const dstDir     = dstPath.split('/').slice(0, -1).join('/') || '/'
+        const srcKey     = `${selectedId}:${path}`
+        const movedEntry = entriesRef.current.find((e) => e.name === srcName)
+        setEntries((prev) => prev.filter((e) => e.name !== srcName))
+        const srcCached = dirCache.current.get(srcKey)
+        if (srcCached) dirCache.current.set(srcKey, srcCached.filter((e) => e.name !== srcName))
+        if (movedEntry) {
+          const dstKey    = `${selectedId}:${dstDir}`
+          const dstCached = dirCache.current.get(dstKey)
+          if (dstCached) {
+            const updated = [...dstCached, { ...movedEntry, name: dstName }].sort((a, b) => {
+              if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+              return a.name.localeCompare(b.name)
+            })
+            dirCache.current.set(dstKey, updated)
+          }
+        }
+        setStatus({ ok: true, msg: `Moved to ${dstPath}` })
+      } else {
+        await fetchDir(path)
+        setStatus({ ok: true, msg: `Moved to ${dstPath}` })
+      }
     } else {
+      await fetchDir(path)
       setStatus({ ok: false, msg: res?.error || 'Move failed' })
     }
   }, [selectedId, path, fetchDir])
@@ -442,7 +471,19 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setOpInFlight(false)
     if (res?.ok) {
       setHighlightFile(name)
-      await fetchDir(path)
+      if (cacheMutRef.current === 'update') {
+        const newEntry = { name, type: 'dir', size: 0, modified: Date.now() }
+        const splice = (arr) => [...arr, newEntry].sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+        setEntries((prev) => splice(prev))
+        const key = `${selectedId}:${path}`
+        const cached = dirCache.current.get(key)
+        if (cached) dirCache.current.set(key, splice(cached))
+      } else {
+        await fetchDir(path)
+      }
       setStatus({ ok: true, msg: `Created folder ${name}` })
     } else {
       setStatus({ ok: false, msg: res?.error || 'Failed to create folder' })
@@ -590,18 +631,26 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setOpInFlight(true)
     setStatus(null)
     let ok = 0, fail = 0
+    const deletedNames = new Set()
     for (const entry of selectedEntries) {
       if (cancelledRef.current) break
       const entryPath = joinRemote(path, entry.name)
       const isDir = entry.type === 'dir'
       const res = await window.winraid?.remote.delete(selectedId, entryPath, isDir)
-      if (res?.ok) ok++
+      if (res?.ok) { ok++; deletedNames.add(entry.name) }
       else fail++
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
     selection.clearSelection()
-    await fetchDir(path)
+    if (cacheMutRef.current === 'update') {
+      setEntries((prev) => prev.filter((e) => !deletedNames.has(e.name)))
+      const key = `${selectedId}:${path}`
+      const cached = dirCache.current.get(key)
+      if (cached) dirCache.current.set(key, cached.filter((e) => !deletedNames.has(e.name)))
+    } else {
+      await fetchDir(path)
+    }
     if (fail === 0) {
       setStatus({ ok: true, msg: `Deleted ${ok} item${ok !== 1 ? 's' : ''}` })
     } else {
@@ -617,19 +666,27 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setOpInFlight(true)
     setStatus(null)
     let ok = 0, fail = 0
+    const movedNames = new Set()
     for (const entry of selectedEntries) {
       if (cancelledRef.current) break
       const srcPath = joinRemote(path, entry.name)
       const dstPath = joinRemote(dest, entry.name)
       if (srcPath === dstPath) continue
       const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
-      if (res?.ok) ok++
+      if (res?.ok) { ok++; movedNames.add(entry.name) }
       else fail++
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
     selection.clearSelection()
-    await fetchDir(path)
+    if (cacheMutRef.current === 'update') {
+      setEntries((prev) => prev.filter((e) => !movedNames.has(e.name)))
+      const key = `${selectedId}:${path}`
+      const cached = dirCache.current.get(key)
+      if (cached) dirCache.current.set(key, cached.filter((e) => !movedNames.has(e.name)))
+    } else {
+      await fetchDir(path)
+    }
     if (fail === 0) {
       setStatus({ ok: true, msg: `Moved ${ok} item${ok !== 1 ? 's' : ''} to ${dest}` })
     } else {
