@@ -240,6 +240,18 @@ function TextPreview({ connectionId, remotePath }) {
   )
 }
 
+function PdfPreview({ src }) {
+  return (
+    <div className={styles.pdfWrap}>
+      <iframe
+        className={styles.previewPdf}
+        src={src}
+        title="PDF Preview"
+      />
+    </div>
+  )
+}
+
 function UnknownPreview({ file }) {
   const ext = getExt(file.name)
   return (
@@ -378,9 +390,21 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const scrollThrottleRef = useRef(false)
   const previewAreaRef    = useRef(null)
   const mediaRef          = useRef(null)
+  const overlayRef        = useRef(null)
   const panRef            = useRef({ x: 0, y: 0 })
   const latestRef         = useRef({})
   latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev }
+
+  // Focus the overlay on mount so ESC is always catchable, and re-focus after the
+  // user releases the video scrubber (which steals focus at the browser level).
+  useEffect(() => {
+    overlayRef.current?.focus()
+    function onPointerUp() {
+      requestAnimationFrame(() => overlayRef.current?.focus())
+    }
+    document.addEventListener('pointerup', onPointerUp)
+    return () => document.removeEventListener('pointerup', onPointerUp)
+  }, [])
 
   function handleLoopChange(v) {
     setLoop(v)
@@ -489,7 +513,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   const type = fileType(file.name)
-  const src  = (type === 'image' || type === 'video' || type === 'audio')
+  const src  = (type === 'image' || type === 'video' || type === 'audio' || type === 'pdf')
     ? nasStreamUrl(connectionId, file.path)
     : null
 
@@ -498,6 +522,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'video': return <VideoPreview src={src} loop={loop} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'audio': return <AudioPreview file={file} src={src} />
+      case 'pdf':   return <PdfPreview src={src} />
       case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
       default:      return <UnknownPreview file={file} />
     }
@@ -505,8 +530,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
   return (
     <div
+      ref={overlayRef}
+      tabIndex={-1}
       className={styles.overlay}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onKeyDown={(e) => {
+        if (e.key === ' ' && mediaRef.current?.tagName === 'VIDEO') {
+          e.preventDefault()
+          const v = mediaRef.current
+          v.paused ? v.play() : v.pause()
+        }
+      }}
       role="dialog"
       aria-modal="true"
       aria-label={`Quick Look: ${file.name}`}
