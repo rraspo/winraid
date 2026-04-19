@@ -20,6 +20,8 @@ export default function SettingsView() {
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
   const [cacheBytes, setCacheBytes] = useState(0)
   const [clearing, setClearing] = useState(false)
+  const [cacheMode,     setCacheModeState]     = useState('stale')
+  const [cacheMutation, setCacheMutationState] = useState('update')
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -35,6 +37,13 @@ export default function SettingsView() {
       setUpdateStatus(payload)
     })
     return () => unsub?.()
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('browse').then((browse) => {
+      if (browse?.cacheMode)     setCacheModeState(browse.cacheMode)
+      if (browse?.cacheMutation) setCacheMutationState(browse.cacheMutation)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -78,6 +87,16 @@ export default function SettingsView() {
 
   function handleInstall() {
     window.winraid?.update?.install()
+  }
+
+  async function handleCacheModeChange(value) {
+    setCacheModeState(value)
+    await window.winraid?.config.set('browse.cacheMode', value)
+  }
+
+  async function handleCacheMutationChange(value) {
+    setCacheMutationState(value)
+    await window.winraid?.config.set('browse.cacheMutation', value)
   }
 
   const status = updateStatus?.status
@@ -129,6 +148,56 @@ export default function SettingsView() {
               The scanner watches each connection's local folder and queues new or changed files for transfer.
               On restart it automatically picks up files that appeared while stopped.
             </p>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>Browse</div>
+          <div className={styles.sectionBody}>
+            <div className={styles.radioGroup}>
+              <div className={styles.radioGroupLabel}>Directory cache</div>
+              {[
+                { value: 'stale', label: 'Stale while revalidate', desc: 'Show cached entries immediately, then refresh in background.' },
+                { value: 'tree',  label: 'Full tree on connect',   desc: 'Fetch entire directory tree via SSH on connection, navigate from cache. SFTP only.' },
+                { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
+              ].map(({ value, label, desc }) => (
+                <label key={value} className={styles.radioOption}>
+                  <input
+                    type="radio"
+                    name="cacheMode"
+                    value={value}
+                    checked={cacheMode === value}
+                    onChange={() => handleCacheModeChange(value)}
+                  />
+                  <span className={styles.radioOptionText}>
+                    <span className={styles.radioOptionLabel}>{label}</span>
+                    <span className={styles.radioOptionDesc}>{desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
+
+            <div className={styles.radioGroup}>
+              <div className={styles.radioGroupLabel}>On folder mutation</div>
+              {[
+                { value: 'update',  label: 'Update in place', desc: 'Directly splice entries on create, delete, and move — no re-fetch.' },
+                { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
+              ].map(({ value, label, desc }) => (
+                <label key={value} className={styles.radioOption}>
+                  <input
+                    type="radio"
+                    name="cacheMutation"
+                    value={value}
+                    checked={cacheMutation === value}
+                    onChange={() => handleCacheMutationChange(value)}
+                  />
+                  <span className={styles.radioOptionText}>
+                    <span className={styles.radioOptionLabel}>{label}</span>
+                    <span className={styles.radioOptionDesc}>{desc}</span>
+                  </span>
+                </label>
+              ))}
+            </div>
           </div>
         </section>
 
