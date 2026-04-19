@@ -20,8 +20,8 @@ export default function SettingsView() {
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
   const [cacheBytes, setCacheBytes] = useState(0)
   const [clearing, setClearing] = useState(false)
-  const [cacheMode,     setCacheModeState]     = useState('stale')
-  const [cacheMutation, setCacheMutationState] = useState('update')
+  const [cacheMode,     setCacheMode]     = useState('stale')
+  const [cacheMutation, setCacheMutation] = useState('update')
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -41,8 +41,8 @@ export default function SettingsView() {
 
   useEffect(() => {
     window.winraid?.config.get('browse').then((browse) => {
-      if (browse?.cacheMode)     setCacheModeState(browse.cacheMode)
-      if (browse?.cacheMutation) setCacheMutationState(browse.cacheMutation)
+      if (browse?.cacheMode)     setCacheMode(browse.cacheMode)
+      if (browse?.cacheMutation) setCacheMutation(browse.cacheMutation)
     }).catch(() => {})
   }, [])
 
@@ -90,12 +90,12 @@ export default function SettingsView() {
   }
 
   async function handleCacheModeChange(value) {
-    setCacheModeState(value)
+    setCacheMode(value)
     await window.winraid?.config.set('browse.cacheMode', value)
   }
 
   async function handleCacheMutationChange(value) {
-    setCacheMutationState(value)
+    setCacheMutation(value)
     await window.winraid?.config.set('browse.cacheMutation', value)
   }
 
