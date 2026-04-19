@@ -1,7 +1,8 @@
 .container {
   display: flex;
   flex-direction: column;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: hidden;
   background: var(--bg);
 }
@@ -203,9 +204,10 @@
 
 .progressFill {
   height: 100%;
+  width: 100%;
   background: var(--accent);
-  border-radius: 2px;
-  transition: width 300ms ease;
+  transform-origin: left center;
+  transition: transform 300ms ease;
 }
 
 /* ---- Connection cell ---- */

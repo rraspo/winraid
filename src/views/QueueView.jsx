@@ -67,11 +67,20 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
     if (!onBrowsePath || !job.connectionId) return
     const conn = connections.find((c) => c.id === job.connectionId)
     if (!conn) return
-    const remotePath = conn.sftp?.remotePath || conn.smb?.remotePath || '/'
     const relDir = job.relPath?.replace(/[/\\][^/\\]+$/, '')
-    const dest = (conn.folderMode !== 'flat' && relDir && relDir !== job.relPath)
-      ? `${remotePath}/${relDir}`.replace(/\/+/g, '/')
-      : remotePath
+    const relDirPart = relDir && relDir !== job.relPath ? relDir : null
+    let dest
+    if (job.remoteDest) {
+      // Drop-upload: remoteDest is the exact target directory; relPath may have sub-folders
+      dest = relDirPart
+        ? `${job.remoteDest}/${relDirPart}`.replace(/\/+/g, '/')
+        : job.remoteDest
+    } else {
+      const remotePath = conn.sftp?.remotePath || conn.smb?.remotePath || '/'
+      dest = (conn.folderMode !== 'flat' && relDirPart)
+        ? `${remotePath}/${relDirPart}`.replace(/\/+/g, '/')
+        : remotePath
+    }
     onBrowsePath(job.connectionId, dest, job.filename)
   }
 
@@ -155,8 +164,8 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
       enableResizing: true,
       sortingFn: 'alphanumeric',
       cell: ({ row }) => {
-        const { filename, srcPath, errorMsg, status, progress } = row.original
-        const dir = srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : ''
+        const { filename, srcPath, remoteDest, errorMsg, status, progress } = row.original
+        const dir = remoteDest ?? (srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : '')
         const isActive = status === 'TRANSFERRING'
         const percent = Math.round((progress ?? 0) * 100)
         return (
@@ -172,7 +181,7 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
             {errorMsg && <span className={styles.errorMsg}>{errorMsg}</span>}
             {isActive && (
               <div className={styles.progressTrack}>
-                <div className={styles.progressFill} style={{ width: `${percent}%` }} />
+                <div className={styles.progressFill} style={{ transform: `scaleX(${percent / 100})` }} />
               </div>
             )}
           </div>
