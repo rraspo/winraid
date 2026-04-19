@@ -313,7 +313,18 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
         <RemotePathBrowser
           sftpCfg={sftpCfg}
           initialPath={form.sources[browsingIndex] || '/mnt/user'}
-          onSelect={(path) => setSource(browsingIndex, path)}
+          onSelect={(pathOrPaths) => {
+            if (Array.isArray(pathOrPaths)) {
+              const [first, ...rest] = pathOrPaths
+              setForm((f) => {
+                const sources = [...f.sources]
+                sources[browsingIndex] = first
+                return { ...f, sources: [...sources, ...rest] }
+              })
+            } else {
+              setSource(browsingIndex, pathOrPaths)
+            }
+          }}
           onClose={() => setBrowsingIndex(null)}
         />
       )}

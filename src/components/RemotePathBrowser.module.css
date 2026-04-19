@@ -106,20 +106,48 @@
   padding: var(--space-2);
 }
 
-.entry {
+.entryRow {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  font-size: var(--font-size-md);
-  color: var(--text);
-  width: 100%;
-  text-align: left;
   transition: background-color var(--transition);
 }
 
-.entry:hover { background: var(--bg-hover); }
+.entryRow:hover { background: var(--bg-hover); }
+
+.entryRowChecked { background: var(--accent-subtle); }
+.entryRowChecked:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+
+.entryCheckLabel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.entryCheckbox {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.entryNav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  font-size: var(--font-size-md);
+  color: var(--text);
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
 
 .folderIcon { color: var(--accent); flex-shrink: 0; }
 
@@ -143,4 +171,12 @@
   white-space: nowrap;
   direction: rtl;
   text-align: left;
+}
+
+.checkedCount {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--accent);
 }

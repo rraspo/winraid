@@ -10,8 +10,8 @@ import styles from './RemotePathBrowser.module.css'
  * Props:
  *   sftpCfg     — { host, port, username, password, keyPath }
  *   initialPath — starting remote path (defaults to '/')
- *   onSelect(path) — called when the user confirms a folder
- *   onClose()      — called to dismiss the modal
+ *   onSelect(path | path[]) — called when the user confirms a folder or folders
+ *   onClose()               — called to dismiss the modal
  */
 export default function RemotePathBrowser({ sftpCfg, initialPath, onSelect, onClose }) {
   const [currentPath, setCurrentPath] = useState(
@@ -20,6 +20,7 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, onSelect, onCl
   const [entries, setEntries] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState(null)
+  const [checked, setChecked] = useState(new Set())
 
   // Intentional empty deps — only load on mount; navigation calls loadDir directly
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -48,6 +49,24 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, onSelect, onCl
     loadDir('/' + parts.join('/'))
   }
 
+  function toggleCheck(path) {
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  function handleConfirm() {
+    if (checked.size > 0) {
+      onSelect([...checked])
+    } else {
+      onSelect(currentPath)
+    }
+    onClose()
+  }
+
   return (
     <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={styles.dialog}>
@@ -72,20 +91,45 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, onSelect, onCl
           ) : entries?.length === 0 ? (
             <span className={styles.muted}>No subdirectories here.</span>
           ) : (
-            entries?.map((e, i) => (
-              <button key={i} className={styles.entry}
-                onClick={() => loadDir(currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`)}>
-                <Folder size={14} className={styles.folderIcon} />
-                {e.name}
-              </button>
-            ))
+            entries?.map((e, i) => {
+              const fullPath = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`
+              const isChecked = checked.has(fullPath)
+              return (
+                <div
+                  key={i}
+                  className={[styles.entryRow, isChecked ? styles.entryRowChecked : ''].join(' ')}
+                >
+                  <label className={styles.entryCheckLabel}>
+                    <input
+                      type="checkbox"
+                      className={styles.entryCheckbox}
+                      checked={isChecked}
+                      onChange={() => toggleCheck(fullPath)}
+                    />
+                  </label>
+                  <button
+                    className={styles.entryNav}
+                    onClick={() => loadDir(fullPath)}
+                  >
+                    <Folder size={14} className={styles.folderIcon} />
+                    {e.name}
+                  </button>
+                </div>
+              )
+            })
           )}
         </div>
         <div className={styles.dialogFooter}>
-          <code className={styles.currentPath}>{currentPath}</code>
+          {checked.size > 0 ? (
+            <span className={styles.checkedCount}>{checked.size} selected</span>
+          ) : (
+            <code className={styles.currentPath}>{currentPath}</code>
+          )}
           <Button variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => { onSelect(currentPath); onClose() }}>
-            Select this folder
+          <Button variant="primary" onClick={handleConfirm}>
+            {checked.size > 0
+              ? `Add ${checked.size} folder${checked.size !== 1 ? 's' : ''}`
+              : 'Select this folder'}
           </Button>
         </div>
       </div>
