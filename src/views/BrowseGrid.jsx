@@ -176,9 +176,6 @@ const BrowseGrid = memo(function BrowseGrid({
                       isLastVisited={isDir && lastVisitedDir === entry.name}
                       isHighlighted={highlightFile === entry.name}
                       highlightRef={highlightRef}
-                      selectedCount={selected.size}
-                      totalCount={entries.length}
-                      onToggleSelectAll={toggleSelectAll}
                       onItemPointer={handleItemPointer}
                       onNavigate={navigate}
                       onQuickLook={openQuickLook}
