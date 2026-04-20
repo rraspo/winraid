@@ -185,6 +185,7 @@ function VideoPreview({ src, loop, zoom, pan, mediaRef }) {
         autoPlay
         loop={loop}
         onVolumeChange={handleVolumeChange}
+        onPointerUp={() => requestAnimationFrame(() => videoRef.current?.blur())}
         style={panStyle(zoom, pan)}
       />
     </div>
