@@ -47,23 +47,3 @@
 
 .menuItemDanger       { color: var(--error); }
 .menuItemDanger:hover { background: color-mix(in srgb, var(--error) 12%, transparent); }
-
-.menuItemSelect {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.selectCheck {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-  pointer-events: none;
-  accent-color: var(--accent);
-}
-
-.selectCount {
-  margin-left: auto;
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-}

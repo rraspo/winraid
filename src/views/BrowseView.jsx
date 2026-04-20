@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, AlertTriangle, Loader, FolderPlus, List, LayoutGrid,
@@ -373,9 +373,20 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
 
           {/* Bulk action drawer */}
           <div className={[styles.bulkBar, selected.size > 0 ? styles.bulkBarOpen : ''].join(' ')}>
-            <span className={styles.bulkCount}>
-              {selected.size} selected
-            </span>
+            <label className={styles.bulkSelectToggle}>
+              <input
+                type="checkbox"
+                className={styles.bulkSelectCheck}
+                checked={entries.length > 0 && selected.size === entries.length}
+                ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < entries.length }}
+                onChange={toggleSelectAll}
+              />
+              <span className={styles.bulkCount}>
+                {selected.size === entries.length
+                  ? `All ${selected.size} selected`
+                  : `${selected.size} of ${entries.length} selected`}
+              </span>
+            </label>
             <div className={styles.bulkActions}>
               <Tooltip tip="Download selected" side="top">
                 <button className={styles.bulkBtn} onClick={handleBulkCheckout} disabled={busy}>

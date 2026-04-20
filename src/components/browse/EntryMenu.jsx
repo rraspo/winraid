@@ -3,16 +3,11 @@ import { createPortal } from 'react-dom'
 import { MoreHorizontal } from 'lucide-react'
 import styles from './EntryMenu.module.css'
 
-export default function EntryMenu({
-  isDir, isEditable, busy,
-  selectedCount, totalCount, onToggleSelectAll,
-  onDownload, onEdit, onMove, onDelete,
-}) {
+export default function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete }) {
   const [open, setOpen] = useState(false)
   const [pos,  setPos]  = useState({ top: 0, left: 0 })
-  const wrapRef         = useRef(null)
-  const dropdownRef     = useRef(null)
-  const selectCheckRef  = useRef(null)
+  const wrapRef    = useRef(null)
+  const dropdownRef = useRef(null)
 
   function toggle(e) {
     e.stopPropagation()
@@ -24,12 +19,6 @@ export default function EntryMenu({
     setPos({ top: rect.bottom + 4, left: rect.left, right: undefined })
     setOpen(true)
   }
-
-  // Set indeterminate on the selection checkbox whenever the menu opens
-  useLayoutEffect(() => {
-    if (!open || !selectCheckRef.current) return
-    selectCheckRef.current.indeterminate = selectedCount > 0 && selectedCount < totalCount
-  }, [open, selectedCount, totalCount])
 
   // Flip left or up if the dropdown overflows the viewport
   useLayoutEffect(() => {
@@ -84,26 +73,6 @@ export default function EntryMenu({
           className={styles.menuDropdown}
           style={{ top: pos.top, left: pos.left, right: pos.right }}
         >
-          {onToggleSelectAll && totalCount > 0 && (
-            <>
-              <button className={[styles.menuItem, styles.menuItemSelect].join(' ')} onClick={act(onToggleSelectAll)}>
-                <input
-                  ref={selectCheckRef}
-                  type="checkbox"
-                  className={styles.selectCheck}
-                  checked={selectedCount > 0 && selectedCount === totalCount}
-                  onChange={() => {}}
-                  tabIndex={-1}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                {selectedCount === totalCount && totalCount > 0 ? 'Deselect All' : 'Select All'}
-                {selectedCount > 0 && selectedCount < totalCount && (
-                  <span className={styles.selectCount}>{selectedCount} of {totalCount}</span>
-                )}
-              </button>
-              <div className={styles.menuDivider} />
-            </>
-          )}
           <button className={styles.menuItem} onClick={act(onDownload)}>
             Download
           </button>
