@@ -344,6 +344,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               navigate={browse.navigate}
               openQuickLook={browse.openQuickLook}
               handleItemPointer={handleItemPointer}
+              toggleSelectAll={toggleSelectAll}
               handleRubberBandStart={handleRubberBandStart}
               handleRubberBandMove={handleRubberBandMove}
               handleRubberBandEnd={handleRubberBandEnd}
