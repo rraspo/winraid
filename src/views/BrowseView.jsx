@@ -374,13 +374,15 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           {/* Bulk action drawer */}
           <div className={[styles.bulkBar, selected.size > 0 ? styles.bulkBarOpen : ''].join(' ')}>
             <label className={styles.bulkSelectToggle}>
-              <input
-                type="checkbox"
-                className={styles.bulkSelectCheck}
-                checked={entries.length > 0 && selected.size === entries.length}
-                ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < entries.length }}
-                onChange={toggleSelectAll}
-              />
+              <span className={styles.bulkCheckbox}>
+                <input
+                  type="checkbox"
+                  checked={entries.length > 0 && selected.size === entries.length}
+                  ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < entries.length }}
+                  onChange={toggleSelectAll}
+                />
+                <span className={styles.bulkCheckmark} />
+              </span>
               <span className={styles.bulkCount}>
                 {selected.size === entries.length
                   ? `All ${selected.size} selected`

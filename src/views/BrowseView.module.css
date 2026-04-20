@@ -245,13 +245,60 @@
   user-select: none;
 }
 
-.bulkSelectCheck {
-  width: 14px;
-  height: 14px;
+.bulkCheckbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
   flex-shrink: 0;
-  accent-color: var(--accent);
-  cursor: pointer;
 }
+
+.bulkCheckbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.bulkCheckmark {
+  width: 15px;
+  height: 15px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bulkCheckmark::after {
+  content: '';
+  display: none;
+  width: 4px;
+  height: 8px;
+  border: 1.5px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) translate(-0.5px, -0.5px);
+}
+
+.bulkCheckbox input:checked + .bulkCheckmark,
+.bulkCheckbox input:indeterminate + .bulkCheckmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.bulkCheckbox input:checked + .bulkCheckmark::after { display: block; }
+
+.bulkCheckbox input:indeterminate + .bulkCheckmark::after {
+  display: block;
+  width: 8px;
+  height: 0;
+  border-bottom: 2px solid #fff;
+  border-right: none;
+  transform: none;
+}
+
+.bulkSelectToggle:hover .bulkCheckmark { border-color: var(--accent); }
 
 .bulkCount {
   font-size: var(--font-size-xs);
