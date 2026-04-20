@@ -1187,12 +1187,33 @@ function registerIPC() {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
-      const result = await new Promise((resolve) => {
-        sftp.rename(srcPath, dstPath, (err) => {
-          if (err) return resolve({ ok: false, error: err.message })
-          resolve({ ok: true })
+      const poolEntry = _sftpPool.get(connectionId)
+      const client = poolEntry?.client
+
+      // Prefer SSH exec mv — handles cross-device moves (mergerfs EXDEV) that
+      // sftp.rename() cannot; fall back to sftp.rename() for restricted shells.
+      let result
+      if (client) {
+        result = await new Promise((resolve) => {
+          const safeSrc = srcPath.replace(/'/g, "'\\''")
+          const safeDst = dstPath.replace(/'/g, "'\\''")
+          client.exec(`mv '${safeSrc}' '${safeDst}'`, (err, stream) => {
+            if (err) return resolve(null)
+            stream.stderr.on('data', () => {})
+            stream.on('close', (code) => {
+              resolve(code === 0 ? { ok: true } : null)
+            })
+          })
         })
-      })
+      }
+      if (!result) {
+        result = await new Promise((resolve) => {
+          sftp.rename(srcPath, dstPath, (err) => {
+            if (err) return resolve({ ok: false, error: err.message })
+            resolve({ ok: true })
+          })
+        })
+      }
       const label = await _connLabel(connectionId)
       if (result.ok) {
         log('info', `Remote move/rename [${label}] from: ${srcPath}`)
