@@ -12,6 +12,7 @@ const GridCard = memo(function GridCard({
   isSelected, isDragSource, isLastVisited, isHighlighted,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
+  selectedCount, totalCount, onToggleSelectAll,
 }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
@@ -77,6 +78,9 @@ const GridCard = memo(function GridCard({
             isDir={isDir}
             isEditable={!isDir && isEditableFile(entry.name)}
             busy={busy}
+            selectedCount={selectedCount}
+            totalCount={totalCount}
+            onToggleSelectAll={onToggleSelectAll}
             onDownload={() => onDownload(entryPath, entry.name, isDir)}
             onEdit={() => onEdit(entryPath)}
             onMove={() => onMove({ name: entry.name, path: entryPath })}

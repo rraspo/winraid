@@ -11,6 +11,7 @@ const BrowseListRow = memo(function BrowseListRow({
   busy, isSelected, isDragSource, isLastVisited, isHighlighted, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
+  selectedCount, totalCount, onToggleSelectAll,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const isDir = entry.type === 'dir'
@@ -89,6 +90,9 @@ const BrowseListRow = memo(function BrowseListRow({
           isDir={isDir}
           isEditable={!isDir && isEditableFile(entry.name)}
           busy={busy}
+          selectedCount={selectedCount}
+          totalCount={totalCount}
+          onToggleSelectAll={onToggleSelectAll}
           onDownload={() => handleDownload(entryPath, entry.name, isDir)}
           onEdit={() => setEditingFile(entryPath)}
           onMove={() => setMoveTarget({ name: entry.name, path: entryPath })}
