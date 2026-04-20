@@ -371,11 +371,16 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     if (hasNext) onNavigate(files[currentIdx + 1])
   }, [hasNext, currentIdx, files, onNavigate])
 
-  // Arrow key navigation (Escape is handled in useBrowse to avoid stale-closure issues)
+  // Arrow key navigation + spacebar play/pause (Escape is handled in useBrowse)
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === 'ArrowLeft')   { e.preventDefault(); handlePrev() }
-      if (e.key === 'ArrowRight')  { e.preventDefault(); handleNext() }
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev(); return }
+      if (e.key === 'ArrowRight') { e.preventDefault(); handleNext(); return }
+      if (e.key === ' ' && mediaRef.current?.tagName === 'VIDEO') {
+        e.preventDefault()
+        const v = mediaRef.current
+        v.paused ? v.play() : v.pause()
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -390,21 +395,10 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const scrollThrottleRef = useRef(false)
   const previewAreaRef    = useRef(null)
   const mediaRef          = useRef(null)
-  const overlayRef        = useRef(null)
   const panRef            = useRef({ x: 0, y: 0 })
   const latestRef         = useRef({})
   latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev }
 
-  // Focus the overlay on mount so ESC is always catchable, and re-focus after the
-  // user releases the video scrubber (which steals focus at the browser level).
-  useEffect(() => {
-    overlayRef.current?.focus()
-    function onPointerUp() {
-      requestAnimationFrame(() => overlayRef.current?.focus())
-    }
-    document.addEventListener('pointerup', onPointerUp)
-    return () => document.removeEventListener('pointerup', onPointerUp)
-  }, [])
 
   function handleLoopChange(v) {
     setLoop(v)
@@ -530,17 +524,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
   return (
     <div
-      ref={overlayRef}
-      tabIndex={-1}
       className={styles.overlay}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
-      onKeyDown={(e) => {
-        if (e.key === ' ' && mediaRef.current?.tagName === 'VIDEO') {
-          e.preventDefault()
-          const v = mediaRef.current
-          v.paused ? v.play() : v.pause()
-        }
-      }}
       role="dialog"
       aria-modal="true"
       aria-label={`Quick Look: ${file.name}`}
