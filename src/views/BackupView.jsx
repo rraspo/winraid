@@ -313,6 +313,7 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
         <RemotePathBrowser
           sftpCfg={sftpCfg}
           initialPath={form.sources[browsingIndex] || '/mnt/user'}
+          multiSelect
           onSelect={(pathOrPaths) => {
             if (Array.isArray(pathOrPaths)) {
               const [first, ...rest] = pathOrPaths

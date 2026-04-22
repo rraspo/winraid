@@ -185,7 +185,6 @@ function VideoPreview({ src, loop, zoom, pan, mediaRef }) {
         autoPlay
         loop={loop}
         onVolumeChange={handleVolumeChange}
-        onPointerUp={() => requestAnimationFrame(() => videoRef.current?.blur())}
         style={panStyle(zoom, pan)}
       />
     </div>
@@ -394,6 +393,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [pan,       setPan]       = useState({ x: 0, y: 0 })
   const [invertPan, setInvertPan] = useState(() => localStorage.getItem('ql-invert-pan') === 'true')
   const scrollThrottleRef = useRef(false)
+  const overlayRef        = useRef(null)
   const previewAreaRef    = useRef(null)
   const mediaRef          = useRef(null)
   const panRef            = useRef({ x: 0, y: 0 })
@@ -523,10 +523,15 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
   }
 
+  useEffect(() => { overlayRef.current?.focus() }, [])
+
   return (
     <div
+      ref={overlayRef}
       className={styles.overlay}
+      tabIndex={-1}
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onPointerUp={() => overlayRef.current?.focus()}
       role="dialog"
       aria-modal="true"
       aria-label={`Quick Look: ${file.name}`}

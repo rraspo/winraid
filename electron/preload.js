@@ -127,6 +127,8 @@ contextBridge.exposeInMainWorld('winraid', {
     scanConfigs: () => ipcRenderer.invoke('ssh:scan-configs'),
     /** List a remote directory. Returns { ok, entries: [{ name, type }] } or { ok: false, error }. */
     listDir: (cfg) => ipcRenderer.invoke('ssh:list-dir', cfg),
+    /** Create a remote directory. Returns { ok: true } or { ok: false, error }. */
+    mkdir: (cfg, dirPath) => ipcRenderer.invoke('ssh:mkdir', cfg, dirPath),
   },
 
   // -- Backup (NAS → local) ------------------------------------------------

@@ -89,6 +89,7 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     setDragSource(src)
 
     e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('application/x-winraid-internal', '1')
     e.dataTransfer.setData('text/plain', entryPath)
 
     const ghost = buildGhostNode(draggingEntries, viewMode)
