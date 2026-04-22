@@ -511,18 +511,23 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // approach is immune to that because it counts crossing events, not targets.
   const dragCounterRef = useRef(0)
 
+  const isInternalDrag = (e) => e.dataTransfer?.types?.includes('application/x-winraid-internal')
+
   const handleExternalDragEnter = useCallback((e) => {
+    if (isInternalDrag(e)) return
     if (!e.dataTransfer?.types?.includes('Files')) return
     dragCounterRef.current += 1
     if (!mergerfsWarning) setExternalDropActive(true)
   }, [mergerfsWarning])
 
   const handleExternalDragOver = useCallback((e) => {
+    if (isInternalDrag(e)) return
     if (!e.dataTransfer?.types?.includes('Files')) return
     e.preventDefault()
   }, [])
 
-  const handleExternalDragLeave = useCallback(() => {
+  const handleExternalDragLeave = useCallback((e) => {
+    if (isInternalDrag(e)) return
     dragCounterRef.current -= 1
     if (dragCounterRef.current <= 0) {
       dragCounterRef.current = 0
@@ -531,6 +536,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   }, [])
 
   const handleExternalDrop = useCallback(async (e) => {
+    if (isInternalDrag(e)) return
     e.preventDefault()
     dragCounterRef.current = 0
     setExternalDropActive(false)

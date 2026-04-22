@@ -1192,21 +1192,38 @@ function registerIPC() {
 
       // Prefer SSH exec mv — handles cross-device moves (mergerfs EXDEV) that
       // sftp.rename() cannot; fall back to sftp.rename() for restricted shells.
+      const label = await _connLabel(connectionId)
       let result
+      let usedFallback = false
       if (client) {
         result = await new Promise((resolve) => {
           const safeSrc = srcPath.replace(/'/g, "'\\''")
           const safeDst = dstPath.replace(/'/g, "'\\''")
           client.exec(`mv '${safeSrc}' '${safeDst}'`, (err, stream) => {
-            if (err) return resolve(null)
-            stream.stderr.on('data', () => {})
+            if (err) {
+              log('warn', `Remote move [${label}]: SSH exec error (${err.message}), falling back to SFTP rename`)
+              return resolve(null)
+            }
+            stream.resume()  // drain stdout so the SSH window doesn't stall
+            const stderrChunks = []
+            stream.stderr.on('data', (chunk) => stderrChunks.push(chunk))
+            stream.on('error', (streamErr) => {
+              log('warn', `Remote move [${label}]: SSH stream error (${streamErr.message}), falling back to SFTP rename`)
+              resolve(null)
+            })
             stream.on('close', (code) => {
-              resolve(code === 0 ? { ok: true } : null)
+              if (code === 0) return resolve({ ok: true })
+              const stderr = stderrChunks.join('').trim()
+              log('warn', `Remote move [${label}]: mv exited ${code}${stderr ? ` — ${stderr}` : ''}, falling back to SFTP rename`)
+              resolve(null)
             })
           })
         })
+      } else {
+        log('warn', `Remote move [${label}]: no SSH client in pool, using SFTP rename`)
       }
       if (!result) {
+        usedFallback = true
         result = await new Promise((resolve) => {
           sftp.rename(srcPath, dstPath, (err) => {
             if (err) return resolve({ ok: false, error: err.message })
@@ -1214,13 +1231,11 @@ function registerIPC() {
           })
         })
       }
-      const label = await _connLabel(connectionId)
       if (result.ok) {
-        log('info', `Remote move/rename [${label}] from: ${srcPath}`)
-        log('info', `Remote move/rename [${label}]   to: ${dstPath}`)
+        log('info', `Remote move [${label}] (${usedFallback ? 'sftp rename' : 'ssh mv'}): ${srcPath} -> ${dstPath}`)
       } else {
-        log('error', `Remote move/rename failed [${label}] from: ${srcPath}`)
-        log('error', `Remote move/rename failed [${label}]   to: ${dstPath} — ${result.error}`)
+        log('error', `Remote move failed [${label}] from: ${srcPath}`)
+        log('error', `Remote move failed [${label}]   to: ${dstPath} — ${result.error}`)
       }
       return result
     } catch (err) {
@@ -1687,6 +1702,57 @@ function registerIPC() {
       _backupCurrentConn = null
     }
     return { ok: true }
+  })
+
+  // -- SSH: create remote directory (for the remote-path browser) -------------
+  ipcMain.handle('ssh:mkdir', async (_e, cfg, dirPath) => {
+    if (!dirPath || typeof dirPath !== 'string') return { ok: false, error: 'Invalid path' }
+    try {
+      validateCfg(cfg)
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+    try {
+      const { Client } = await import('ssh2')
+
+      let privateKey
+      if (cfg.keyPath) {
+        const kp = cfg.keyPath.startsWith('~')
+          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
+          : cfg.keyPath
+        try {
+          privateKey = readFileSync(kp)
+        } catch (e) {
+          return { ok: false, error: `Cannot read key file: ${e.message}` }
+        }
+      }
+
+      return new Promise((resolve) => {
+        const conn = new Client()
+        conn
+          .on('ready', () => {
+            conn.sftp((err, sftp) => {
+              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
+              sftp.mkdir(dirPath, (err2) => {
+                conn.end()
+                if (err2) return resolve({ ok: false, error: err2.message })
+                resolve({ ok: true })
+              })
+            })
+          })
+          .on('error', (err) => resolve({ ok: false, error: err.message }))
+          .connect({
+            host:         cfg.host,
+            port:         cfg.port || 22,
+            username:     cfg.username,
+            password:     cfg.password?.trim() || undefined,
+            privateKey:   privateKey || undefined,
+            readyTimeout: 10_000,
+          })
+      })
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
   })
 
   // -- SSH: list remote directory (for the remote-path browser) ---------------
@@ -2394,7 +2460,8 @@ function registerNasStreamProtocol() {
         },
       })
     } catch (err) {
-      log('error', `nas-stream: handler error — ${err.message}`)
+      const url2 = new URL(request.url)
+      log('error', `nas-stream error [${url2.hostname}] ${decodeURIComponent(url2.pathname)} — ${err.message}`)
       return new Response('Internal Server Error', { status: 500 })
     }
   })

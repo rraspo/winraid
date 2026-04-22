@@ -71,6 +71,23 @@
 .upBtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
 .upBtn:disabled { opacity: 0.3; cursor: default; }
 
+.newFolderBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.newFolderBtn:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.newFolderBtn:disabled { opacity: 0.3; cursor: default; }
+
 .browserPath {
   flex: 1;
   min-width: 0;
@@ -128,11 +145,49 @@
 }
 
 .entryCheckbox {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.entryCheckbox input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.entryCheckmark {
   width: 14px;
   height: 14px;
-  cursor: pointer;
-  accent-color: var(--accent);
+  border-radius: var(--radius-xs);
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-card);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
+
+.entryCheckmark::after {
+  content: '';
+  display: none;
+  width: 4px;
+  height: 7px;
+  border: 1.5px solid #fff;
+  border-top: none;
+  border-left: none;
+  transform: rotate(45deg) translate(-0.5px, -0.5px);
+}
+
+.entryCheckbox input:checked + .entryCheckmark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.entryCheckbox input:checked + .entryCheckmark::after { display: block; }
+
+.entryCheckLabel:hover .entryCheckmark { border-color: var(--accent); }
 
 .entryNav {
   display: flex;
@@ -150,6 +205,69 @@
 }
 
 .folderIcon { color: var(--accent); flex-shrink: 0; }
+
+.newFolderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  background: var(--accent-subtle);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  flex-wrap: wrap;
+}
+
+.newFolderInput {
+  flex: 1;
+  min-width: 80px;
+  height: 24px;
+  padding: 0 var(--space-2);
+  font-size: var(--font-size-sm);
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  outline: none;
+}
+
+.newFolderInput:focus { border-color: var(--accent); }
+
+.newFolderConfirm {
+  height: 24px;
+  padding: 0 var(--space-3);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  transition: opacity var(--transition);
+  flex-shrink: 0;
+}
+
+.newFolderConfirm:hover:not(:disabled) { opacity: 0.85; }
+.newFolderConfirm:disabled { opacity: 0.4; cursor: default; }
+
+.newFolderCancel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.newFolderCancel:hover:not(:disabled) { background: var(--bg-hover); color: var(--text); }
+.newFolderCancel:disabled { opacity: 0.4; cursor: default; }
+
+.newFolderError {
+  width: 100%;
+  font-size: var(--font-size-xs);
+  color: var(--error);
+  padding-left: calc(14px + var(--space-2));
+}
 
 .dialogFooter {
   display: flex;
