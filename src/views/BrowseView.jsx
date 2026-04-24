@@ -384,9 +384,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
                 <span className={styles.bulkCheckmark} />
               </span>
               <span className={styles.bulkCount}>
-                {selected.size === entries.length
-                  ? `All ${selected.size} selected`
-                  : `${selected.size} of ${entries.length} selected`}
+                {selected.size} selected
               </span>
             </label>
             <div className={styles.bulkActions}>

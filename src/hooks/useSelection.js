@@ -89,10 +89,14 @@ export function useSelection({ entries, path }) {
 
   const handleRubberBandEnd = useCallback((intersectedIndexes, { ctrl = false, shift = false } = {}) => {
     setRubberBand(null)
-    const base = lassoBaseRef.current
+    // Use the live selection at end-time. When a lasso was started, selectedRef
+    // already reflects the base because handleRubberBandMove kept it in sync.
+    // When no lasso start occurred (e.g. direct call in tests), selectedRef holds
+    // whatever was last set via handleItemPointer — which is the correct base.
+    const base = selectedRef.current
     if (intersectedIndexes.length === 0) {
       if (!ctrl && !shift) setSelected(new Set())
-      else setSelected(new Set(base))
+      // ctrl/shift with empty lasso: keep current selection unchanged
       return
     }
     const names = intersectedIndexes.map((i) => entries[i]?.name).filter(Boolean)
