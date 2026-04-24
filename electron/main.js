@@ -20,6 +20,7 @@ import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { validateRemotePath } from './validation.js'
 import { sftpRmRf, backupWalkRemote, remoteWalkCreate } from './sftp-helpers.js'
+import { execWithTimeout } from './exec-helpers.js'
 
 // ---------------------------------------------------------------------------
 // Custom protocol scheme declaration — must happen synchronously before
@@ -70,32 +71,23 @@ const _sizeScans = new Map()
  * Ignores permission errors (2>/dev/null). Returns [] on exec failure.
  */
 function _runDuLevel(client, dirPath) {
-  return new Promise((resolve) => {
-    const quoted = `'${dirPath.replace(/'/g, "'\\''")}'`
-    client.exec(`du -sk ${quoted}/* 2>/dev/null`, (err, stream) => {
-      if (err) {
-        log('warn', `Size scan du exec failed [${dirPath}]: ${err.message}`)
-        return resolve([])
-      }
-      let output = ''
-      stream.on('data', (d) => { output += d.toString() })
-      stream.stderr.on('data', () => {})
-      stream.on('close', () => {
-        const entries = []
-        for (const line of output.trim().split('\n')) {
-          if (!line.trim()) continue
-          const tab = line.indexOf('\t')
-          if (tab < 0) continue
-          const sizeKb = parseInt(line.slice(0, tab), 10)
-          const entryPath = line.slice(tab + 1).trim()
-          if (!isNaN(sizeKb) && entryPath && entryPath !== `${dirPath}/*`) {
-            entries.push({ path: entryPath, sizeKb })
-          }
+  const quoted = `'${dirPath.replace(/'/g, "'\\''")}'`
+  return execWithTimeout(client, `du -sk ${quoted}/* 2>/dev/null | grep -v '@eaDir\\|#recycle\\|\\.@__thumb'`, 300_000)
+    .then(({ stdout }) => {
+      const entries = []
+      for (const line of stdout.trim().split('\n')) {
+        if (!line.trim()) continue
+        const tab = line.indexOf('\t')
+        if (tab < 0) continue
+        const sizeKb = parseInt(line.slice(0, tab), 10)
+        const entryPath = line.slice(tab + 1).trim()
+        if (!isNaN(sizeKb) && entryPath && entryPath !== `${dirPath}/*`) {
+          entries.push({ path: entryPath, sizeKb })
         }
-        resolve(entries)
-      })
+      }
+      return entries
     })
-  })
+    .catch(() => [])
 }
 
 async function getWatcher() {
@@ -897,42 +889,31 @@ function registerIPC() {
 
       // Try SSH exec find — single round-trip regardless of directory size
       if (client) {
-        const execResult = await new Promise((resolve) => {
+        try {
           const safePath = remotePath.replace(/'/g, "'\\''")
-          const cmd = `find '${safePath}' -mindepth 1 -maxdepth 1 -not -name '.*' -printf '%y\\t%s\\t%T@\\t%f\\n'`
-          client.exec(cmd, (err, stream) => {
-            if (err) return resolve(null)
-            const chunks = []
-            stream.stderr.on('data', () => {})
-            stream.on('data', (chunk) => chunks.push(chunk))
-            stream.on('close', (code) => {
-              if (code !== 0) return resolve(null)
-              const output = Buffer.concat(chunks).toString('utf8')
-              const entries = []
-              for (const line of output.split('\n')) {
-                if (!line) continue
-                const t1 = line.indexOf('\t')
-                const t2 = line.indexOf('\t', t1 + 1)
-                const t3 = line.indexOf('\t', t2 + 1)
-                if (t3 === -1) continue
-                const type    = line.slice(0, t1)
-                const sizeStr = line.slice(t1 + 1, t2)
-                const mtStr   = line.slice(t2 + 1, t3)
-                const name    = line.slice(t3 + 1)
-                if (!name) continue
-                entries.push({
-                  name,
-                  type:     type === 'd' ? 'dir' : 'file',
-                  size:     parseInt(sizeStr, 10) || 0,
-                  modified: Math.floor(parseFloat(mtStr)) * 1000,
-                })
-              }
-              resolve({ ok: true, entries: sortEntries(entries) })
-            })
-          })
-        })
-        if (execResult) return execResult
-        // fall through to sftp.readdir on any exec failure
+          const cmd = `find '${safePath}' -mindepth 1 -maxdepth 1 -not -name '.*' -not -name '@eaDir' -not -name '#recycle' -not -name '.@__thumb'`
+          const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); n=$(basename "$p"); printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$n"; done`
+          const { code, stdout } = await execWithTimeout(client, pipeline, 60_000)
+          if (code === 0 && stdout.trim()) {
+            const entries = []
+            for (const line of stdout.split('\n')) {
+              if (!line) continue
+              const parts = line.split('\t')
+              if (parts.length < 4) continue
+              const [type, sizeStr, mtStr, name] = parts
+              if (!name || name === '.') continue
+              entries.push({
+                name,
+                type:     type === 'd' ? 'dir' : 'file',
+                size:     parseInt(sizeStr, 10) || 0,
+                modified: parseInt(mtStr, 10) * 1000,
+              })
+            }
+            return { ok: true, entries: sortEntries(entries) }
+          }
+        } catch (_) {
+          // fall through to sftp.readdir
+        }
       }
 
       // Fallback: sftp.readdir (compatible with restricted shells / busybox)
@@ -962,55 +943,55 @@ function registerIPC() {
       if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
       const { client } = poolEntry
-      return new Promise((resolve) => {
-        // Prune hidden entries; %P is path relative to root (empty for root itself)
-        const safePath = rootPath.replace(/'/g, "'\\''")
-        const cmd = `find '${safePath}' -name '.*' -prune -o -not -name '.*' -printf '%y\\t%s\\t%T@\\t%P\\n'`
-        client.exec(cmd, (err, stream) => {
-          if (err) return resolve({ ok: false, error: err.message })
-          const chunks = []
-          stream.stderr.on('data', () => {})
-          stream.on('data', (chunk) => chunks.push(chunk))
-          stream.on('close', (code) => {
-            if (code !== 0) return resolve({ ok: false, error: `find exited with code ${code}` })
-            const output = Buffer.concat(chunks).toString('utf8')
-            const rootNorm = rootPath.replace(/\/+$/, '') || '/'
-            const dirMap = {}
-            for (const line of output.split('\n')) {
-              if (!line) continue
-              const t1 = line.indexOf('\t')
-              const t2 = line.indexOf('\t', t1 + 1)
-              const t3 = line.indexOf('\t', t2 + 1)
-              if (t3 === -1) continue
-              const type    = line.slice(0, t1)
-              const sizeStr = line.slice(t1 + 1, t2)
-              const mtStr   = line.slice(t2 + 1, t3)
-              const relPath = line.slice(t3 + 1)
-              if (!relPath) continue
-              const parts      = relPath.split('/')
-              const name       = parts.at(-1)
-              const parentRel  = parts.slice(0, -1).join('/')
-              const parentPath = parentRel
-                ? (rootNorm === '/' ? '/' + parentRel : rootNorm + '/' + parentRel)
-                : rootNorm
-              if (!dirMap[parentPath]) dirMap[parentPath] = []
-              dirMap[parentPath].push({
-                name,
-                type:     type === 'd' ? 'dir' : 'file',
-                size:     parseInt(sizeStr, 10) || 0,
-                modified: Math.floor(parseFloat(mtStr)) * 1000,
-              })
-            }
-            for (const arr of Object.values(dirMap)) {
-              arr.sort((a, b) => {
-                if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-                return a.name.localeCompare(b.name)
-              })
-            }
-            resolve({ ok: true, dirMap })
-          })
+
+      const safePath = rootPath.replace(/'/g, "'\\''")
+      const noiseFilter = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.@__thumb'`
+      const cmd = `find '${safePath}' -mindepth 1 ${noiseFilter} -not -name '.*'`
+      const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); rel="\${p#${safePath}/}"; printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$rel"; done`
+
+      let stdout, code
+      try {
+        ;({ code, stdout } = await execWithTimeout(client, pipeline, 60_000))
+      } catch (err) {
+        return { ok: false, error: err.message }
+      }
+
+      // Treat non-zero exit as partial success (Synology @eaDir / permission denied)
+      const rootNorm = rootPath.replace(/\/+$/, '') || '/'
+      const dirMap = {}
+      for (const line of stdout.split('\n')) {
+        if (!line) continue
+        const t1 = line.indexOf('\t')
+        const t2 = line.indexOf('\t', t1 + 1)
+        const t3 = line.indexOf('\t', t2 + 1)
+        if (t3 === -1) continue
+        const type    = line.slice(0, t1)
+        const sizeStr = line.slice(t1 + 1, t2)
+        const mtStr   = line.slice(t2 + 1, t3)
+        const relPath = line.slice(t3 + 1)
+        if (!relPath) continue
+        const parts      = relPath.split('/')
+        const name       = parts.at(-1)
+        const parentRel  = parts.slice(0, -1).join('/')
+        const parentPath = parentRel
+          ? (rootNorm === '/' ? '/' + parentRel : rootNorm + '/' + parentRel)
+          : rootNorm
+        if (!dirMap[parentPath]) dirMap[parentPath] = []
+        dirMap[parentPath].push({
+          name,
+          type:     type === 'd' ? 'dir' : 'file',
+          size:     parseInt(sizeStr, 10) || 0,
+          modified: parseInt(mtStr, 10) * 1000,
         })
-      })
+      }
+      for (const arr of Object.values(dirMap)) {
+        arr.sort((a, b) => {
+          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+      }
+      if (code !== 0) log('warn', `remote:tree exited ${code} for ${rootPath} — returning partial results`)
+      return { ok: true, partial: code !== 0, dirMap }
     } catch (err) {
       return { ok: false, error: err.message }
     }
@@ -1326,38 +1307,32 @@ function registerIPC() {
       // Single-quote the path and escape any literal single quotes inside it
       const quotedPath = `'${remotePath.replace(/'/g, "'\\''")}'`
 
-      return new Promise((resolve) => {
-        poolEntry.client.exec(`df -P -k -- ${quotedPath}`, (err, stream) => {
-          if (err) {
-            _connLabel(connectionId).then((label) =>
-              log('error', `Remote disk usage failed [${label}]: ${err.message}`)
-            )
-            return resolve({ ok: false, error: err.message })
-          }
-          let output = ''
-          stream.on('data', (data) => { output += data.toString() })
-          stream.stderr.on('data', () => {})
-          stream.on('close', () => {
-            // df -P output: one header line then one data line per filesystem
-            // Columns: Filesystem  1024-blocks  Used  Available  Capacity%  Mounted-on
-            const lines = output.trim().split('\n').filter(Boolean)
-            const dataLine = lines[lines.length - 1]
-            if (!dataLine) return resolve({ ok: false, error: 'Empty df output' })
-            const parts = dataLine.trim().split(/\s+/)
-            if (parts.length < 5) return resolve({ ok: false, error: 'Unexpected df output format' })
-            const total = parseInt(parts[1], 10) * 1024
-            const used  = parseInt(parts[2], 10) * 1024
-            const free  = parseInt(parts[3], 10) * 1024
-            if (isNaN(total) || isNaN(used) || isNaN(free)) {
-              return resolve({ ok: false, error: 'Could not parse df output' })
-            }
-            _connLabel(connectionId).then((label) =>
-              log('info', `Remote disk usage [${label}]: ${(free / 1024 ** 3).toFixed(1)} GB free of ${(total / 1024 ** 3).toFixed(1)} GB`)
-            )
-            resolve({ ok: true, total, used, free })
-          })
-        })
-      })
+      let dfOutput
+      try {
+        const { stdout } = await execWithTimeout(poolEntry.client, `df -P -k -- ${quotedPath}`, 60_000)
+        dfOutput = stdout
+      } catch (err) {
+        const label = await _connLabel(connectionId)
+        log('error', `Remote disk usage failed [${label}]: ${err.message}`)
+        return { ok: false, error: err.message }
+      }
+
+      // df -P output: one header line then one data line per filesystem
+      // Columns: Filesystem  1024-blocks  Used  Available  Capacity%  Mounted-on
+      const lines = dfOutput.trim().split('\n').filter(Boolean)
+      const dataLine = lines[lines.length - 1]
+      if (!dataLine) return { ok: false, error: 'Empty df output' }
+      const parts = dataLine.trim().split(/\s+/)
+      if (parts.length < 5) return { ok: false, error: 'Unexpected df output format' }
+      const total = parseInt(parts[1], 10) * 1024
+      const used  = parseInt(parts[2], 10) * 1024
+      const free  = parseInt(parts[3], 10) * 1024
+      if (isNaN(total) || isNaN(used) || isNaN(free)) {
+        return { ok: false, error: 'Could not parse df output' }
+      }
+      const label = await _connLabel(connectionId)
+      log('info', `Remote disk usage [${label}]: ${(free / 1024 ** 3).toFixed(1)} GB free of ${(total / 1024 ** 3).toFixed(1)} GB`)
+      return { ok: true, total, used, free }
     } catch (err) {
       log('error', `Remote disk usage failed [${connectionId}]: ${err.message}`)
       return { ok: false, error: err.message }
