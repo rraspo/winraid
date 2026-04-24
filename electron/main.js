@@ -1959,7 +1959,11 @@ async function initAutoUpdater() {
   }
 
   try {
-    const { autoUpdater } = await import('electron-updater')
+    const mod = await import('electron-updater')
+    const autoUpdater = mod.autoUpdater ?? mod.default?.autoUpdater ?? mod.default
+    if (!autoUpdater || typeof autoUpdater.checkForUpdates !== 'function') {
+      throw new Error('electron-updater did not export autoUpdater')
+    }
     _autoUpdater = autoUpdater
     autoUpdater.autoDownload = true
     autoUpdater.autoInstallOnAppQuit = true
