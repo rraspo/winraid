@@ -1,6 +1,5 @@
-// Extracted SFTP recursive helpers. Each function accepts an optional depth
-// counter and maxDepth limit (default 50) to guard against circular mounts or
-// pathologically deep trees that would otherwise cause a stack overflow.
+import { mkdirSync } from 'fs'
+import { join } from 'path'
 
 export async function sftpRmRf(sftp, remotePath, depth = 0, maxDepth = 50) {
   if (depth > maxDepth) throw new Error('Directory tree too deep (max 50 levels)')
@@ -22,19 +21,19 @@ export async function sftpRmRf(sftp, remotePath, depth = 0, maxDepth = 50) {
   )
 }
 
-export async function remoteWalkCreate(sftp, remotePath, localPath, mkdirSync, join, created = [], depth = 0, maxDepth = 50) {
+export async function remoteWalkCreate(sftp, remotePath, localPath, created = [], depth = 0, maxDepth = 50) {
   if (depth > maxDepth) throw new Error('Directory tree too deep (max 50 levels)')
   mkdirSync(localPath, { recursive: true })
   created.push(localPath)
   return new Promise((resolve, reject) => {
     sftp.readdir(remotePath, (err, list) => {
-      if (err) return resolve() // skip unreadable dirs (permissions etc.)
+      if (err) return reject(err)
       const dirs = list.filter(
         (e) => ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 && !e.filename.startsWith('.')
       )
       Promise.all(
         dirs.map((d) =>
-          remoteWalkCreate(sftp, `${remotePath}/${d.filename}`, join(localPath, d.filename), mkdirSync, join, created, depth + 1, maxDepth)
+          remoteWalkCreate(sftp, `${remotePath}/${d.filename}`, join(localPath, d.filename), created, depth + 1, maxDepth)
         )
       ).then(resolve).catch(reject)
     })
