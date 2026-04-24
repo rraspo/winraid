@@ -7,7 +7,7 @@ vi.mock('path', () => ({ join: (a, b) => `${a}/${b}` }))
 import { mkdirSync } from 'fs'
 import { sftpRmRf, backupWalkRemote, remoteWalkCreate } from './sftp-helpers.js'
 
-function makeSftp({ dirs = {}, files = [] } = {}) {
+function makeSftp({ dirs = {} } = {}) {
   return {
     readdir: vi.fn((path, cb) => {
       const items = dirs[path] ?? []
