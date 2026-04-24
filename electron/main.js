@@ -358,9 +358,6 @@ function rebuildTrayMenu() {
 // Remote browser helpers
 // ---------------------------------------------------------------------------
 
-// sftpRmRf, remoteWalkCreate, and backupWalkRemote are imported from
-// ./sftp-helpers.js (extracted for testability and depth-limit safety).
-
 // Recursively walk a local directory and collect file paths (async to avoid
 // blocking the main-process event loop on large directory trees).
 async function walkLocal(dir, results = []) {
@@ -1035,7 +1032,7 @@ function registerIPC() {
         ? join(localRoot, ...rel.split('/').filter(Boolean))
         : localRoot
       const created = []
-      await remoteWalkCreate(sftp, remotePath, localTarget, mkdirSync, join, created)
+      await remoteWalkCreate(sftp, remotePath, localTarget, created)
       log('info', `Remote checkout [${await _connLabel(connectionId)}]: ${remotePath} -> ${localTarget} (${created.length} files)`)
       return { ok: true, created }
     } catch (err) {
