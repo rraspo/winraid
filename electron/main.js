@@ -1065,10 +1065,17 @@ function registerIPC() {
   // -- Remote browser: read file content ------------------------------------
   ipcMain.handle('remote:read-file', async (_e, connectionId, remotePath) => {
     if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    const MAX_READ_BYTES = 50 * 1024 * 1024
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
       _poolTouch(connectionId)
+      const stat = await new Promise((resolve, reject) =>
+        sftp.stat(remotePath, (err, s) => err ? reject(err) : resolve(s))
+      )
+      if ((stat.size ?? 0) > MAX_READ_BYTES) {
+        return { ok: false, error: `File too large for editor (${Math.round(stat.size / 1024 / 1024)} MB, max 50 MB)` }
+      }
       return new Promise((resolve) => {
         sftp.readFile(remotePath, 'utf8', (err, content) => {
           if (err) return resolve({ ok: false, error: err.message })
