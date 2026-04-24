@@ -187,6 +187,18 @@ All values in `src/styles/tokens.css`. Dark is default; light overrides via `[da
 - CSS Modules only — no CSS-in-JS
 - Shared utilities in `src/utils/` — never duplicate `formatSize`, `formatDate`, or extension logic
 
+## Development methodology
+
+**All changes must follow Test-Driven Development (TDD).** Every feature is working as of 2.2.2. No change ships without tests that cover it, and tests must be written before implementation.
+
+### TDD rules for subagents
+1. Write the failing test first — run it, confirm it fails for the right reason
+2. Write the minimal implementation to make it pass
+3. Run the full test suite — confirm no regressions
+4. Commit only when tests are green
+
+Use Vitest + @testing-library/react + happy-dom. Mock `window.winraid` via `src/__mocks__/winraid.js`. For Electron-side code, unit-test pure functions in isolation; integration behavior is covered by the renderer tests via the mock.
+
 ## Known issues
 
 | Issue | File |
