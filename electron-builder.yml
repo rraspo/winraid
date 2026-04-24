@@ -36,6 +36,7 @@ nsis:
   createStartMenuShortcut: true
   uninstallDisplayName: WinRaid
   perMachine: false
+  artifactName: WinRaid-Setup-${version}.exe
 
 # Auto-updater publishes to GitHub Releases.
 # Set GH_TOKEN env var before running dist.
