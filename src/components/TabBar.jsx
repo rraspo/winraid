@@ -27,6 +27,7 @@ export default function TabBar({ openTabs, activeTabId, connections, onActivate,
             <Tooltip tip="Close tab" side="top">
               <button
                 className={styles.closeBtn}
+                title="Close tab"
                 onClick={(e) => { e.stopPropagation(); onClose(tab.id) }}
               >
                 <X size={10} strokeWidth={2.5} />

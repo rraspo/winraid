@@ -524,7 +524,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     if (isInternalDrag(e)) return
     if (!e.dataTransfer?.types?.includes('Files')) return
     e.preventDefault()
-  }, [])
+    if (!mergerfsWarning) setExternalDropActive(true)
+  }, [mergerfsWarning])
 
   const handleExternalDragLeave = useCallback((e) => {
     if (isInternalDrag(e)) return
