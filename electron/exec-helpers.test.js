@@ -11,7 +11,7 @@ function makeStream({ exitCode = 0, stdout = '', stderr = '', hangMs = null } = 
       on: vi.fn((event, cb) => { listeners[`stderr:${event}`] = cb; return stream }),
     },
     destroy: vi.fn(() => {
-      listeners['close']?.(null, new Error('stream destroyed'))
+      listeners['close']?.(null)
     }),
   }
   if (!hangMs) {
@@ -52,6 +52,23 @@ describe('execWithTimeout', () => {
     const client = { exec: vi.fn((cmd, cb) => cb(null, stream)) }
     const p = execWithTimeout(client, 'sleep 999', 1000)
     vi.advanceTimersByTime(1001)
+    await expect(p).rejects.toThrow('timed out')
+    vi.useRealTimers()
+  })
+
+  it('does not resolve after timeout even if close fires late', async () => {
+    vi.useFakeTimers()
+    const listeners = {}
+    const stream = {
+      on: vi.fn((event, cb) => { listeners[event] = cb; return stream }),
+      resume: vi.fn(),
+      stderr: { on: vi.fn(() => stream) },
+      destroy: vi.fn(() => { listeners['close']?.(0) }),
+    }
+    const client = { exec: vi.fn((cmd, cb) => cb(null, stream)) }
+    const p = execWithTimeout(client, 'sleep 999', 1000)
+    vi.advanceTimersByTime(1001)
+    // destroy fires close(0) immediately — settled guard must reject, not resolve
     await expect(p).rejects.toThrow('timed out')
     vi.useRealTimers()
   })

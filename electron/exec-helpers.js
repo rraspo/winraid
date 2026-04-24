@@ -16,14 +16,14 @@ export function execWithTimeout(client, cmd, timeoutMs) {
         resolve({ code, stdout, stderr })
       }
 
-      timer = setTimeout(() => {
-        stream.destroy()
-        settle(null, new Error(`SSH exec timed out after ${timeoutMs}ms: ${cmd}`))
-      }, timeoutMs)
-
       stream.on('data', (chunk) => { stdout += chunk.toString() })
       stream.stderr.on('data', (chunk) => { stderr += chunk.toString() })
       stream.on('close', (code) => settle(code, null))
+
+      timer = setTimeout(() => {
+        settle(null, new Error(`SSH exec timed out after ${timeoutMs}ms: ${cmd}`))
+        stream.destroy()
+      }, timeoutMs)
     })
   })
 }
