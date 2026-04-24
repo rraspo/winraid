@@ -1362,6 +1362,7 @@ function registerIPC() {
 
       const scanState = { cancelled: false }
       _sizeScans.set(connectionId, scanState)
+      const isActive = () => _sizeScans.get(connectionId) === scanState
 
       const rootPath  = (conn.sftp?.remotePath || '/').replace(/\/+$/, '') || '/'
       const startTime = Date.now()
@@ -1382,29 +1383,33 @@ function registerIPC() {
 
         totalFolders += entries.length
 
-        sendToRenderer('size:level', {
-          connectionId,
-          parentPath: path,
-          entries: entries.map((e) => ({
-            name: e.path.split('/').pop() || e.path,
-            path: e.path,
-            sizeKb: e.sizeKb,
-          })),
-        })
+        if (isActive()) {
+          sendToRenderer('size:level', {
+            connectionId,
+            parentPath: path,
+            entries: entries.map((e) => ({
+              name: e.path.split('/').pop() || e.path,
+              path: e.path,
+              sizeKb: e.sizeKb,
+            })),
+          })
+        }
 
-        sendToRenderer('size:progress', {
-          connectionId,
-          path,
-          count: totalFolders,
-          elapsedMs: Date.now() - startTime,
-        })
+        if (isActive()) {
+          sendToRenderer('size:progress', {
+            connectionId,
+            path,
+            count: totalFolders,
+            elapsedMs: Date.now() - startTime,
+          })
+        }
 
         for (const entry of entries) {
           queue.push({ path: entry.path, depth: depth + 1 })
         }
       }
 
-      if (!scanState.cancelled) {
+      if (!scanState.cancelled && isActive()) {
         sendToRenderer('size:done', {
           connectionId,
           totalFolders,
