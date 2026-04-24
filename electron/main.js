@@ -945,9 +945,10 @@ function registerIPC() {
       const { client } = poolEntry
 
       const safePath = rootPath.replace(/'/g, "'\\''")
+      const rootNorm = rootPath.replace(/\/+$/, '') || '/'
       const noiseFilter = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.@__thumb'`
       const cmd = `find '${safePath}' -mindepth 1 ${noiseFilter} -not -name '.*'`
-      const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); rel="\${p#${safePath}/}"; printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$rel"; done`
+      const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); rel="\${p#${rootNorm}/}"; printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$rel"; done`
 
       let stdout, code
       try {
@@ -957,7 +958,6 @@ function registerIPC() {
       }
 
       // Treat non-zero exit as partial success (Synology @eaDir / permission denied)
-      const rootNorm = rootPath.replace(/\/+$/, '') || '/'
       const dirMap = {}
       for (const line of stdout.split('\n')) {
         if (!line) continue
