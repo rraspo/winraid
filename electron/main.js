@@ -19,6 +19,7 @@ import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { validateRemotePath } from './validation.js'
+import { sftpRmRf, backupWalkRemote, remoteWalkCreate } from './sftp-helpers.js'
 
 // ---------------------------------------------------------------------------
 // Custom protocol scheme declaration — must happen synchronously before
@@ -357,25 +358,8 @@ function rebuildTrayMenu() {
 // Remote browser helpers
 // ---------------------------------------------------------------------------
 
-// Recursively delete a remote directory tree via SFTP (no shell exec, no injection risk)
-async function sftpRmRf(sftp, remotePath) {
-  const list = await new Promise((resolve, reject) =>
-    sftp.readdir(remotePath, (err, items) => err ? reject(err) : resolve(items ?? []))
-  )
-  for (const item of list) {
-    const child = `${remotePath}/${item.filename}`
-    if (((item.attrs.mode ?? 0) & 0o170000) === 0o040000) {
-      await sftpRmRf(sftp, child)
-    } else {
-      await new Promise((resolve, reject) =>
-        sftp.unlink(child, (err) => err ? reject(err) : resolve())
-      )
-    }
-  }
-  await new Promise((resolve, reject) =>
-    sftp.rmdir(remotePath, (err) => err ? reject(err) : resolve())
-  )
-}
+// sftpRmRf, remoteWalkCreate, and backupWalkRemote are imported from
+// ./sftp-helpers.js (extracted for testability and depth-limit safety).
 
 // Recursively walk a local directory and collect file paths (async to avoid
 // blocking the main-process event loop on large directory trees).
@@ -391,51 +375,11 @@ async function walkLocal(dir, results = []) {
   return results
 }
 
-// Recursively mirrors directory structure locally
-async function remoteWalkCreate(sftp, remotePath, localPath, created = []) {
-  mkdirSync(localPath, { recursive: true })
-  created.push(localPath)
-  return new Promise((resolve, reject) => {
-    sftp.readdir(remotePath, (err, list) => {
-      if (err) return resolve() // skip unreadable dirs (permissions etc.)
-      const dirs = list.filter(
-        (e) => ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 && !e.filename.startsWith('.')
-      )
-      Promise.all(
-        dirs.map((d) =>
-          remoteWalkCreate(sftp, `${remotePath}/${d.filename}`, join(localPath, d.filename), created)
-        )
-      ).then(resolve).catch(reject)
-    })
-  })
-}
-
 // ---------------------------------------------------------------------------
 // Backup helpers — NAS → local recursive download
 // ---------------------------------------------------------------------------
 
-// Recursively collect all remote files under remotePath.
-// Returns [{ remotePath, size, relPath }] where relPath is relative to the
-// source root (includes the source dir basename as the first segment).
-async function backupWalkRemote(sftp, remotePath, relBase) {
-  const results = []
-  const list = await new Promise((resolve, reject) =>
-    sftp.readdir(remotePath, (err, items) => err ? reject(err) : resolve(items ?? []))
-  )
-  for (const item of list) {
-    if (item.filename.startsWith('.')) continue
-    const childRemote = `${remotePath}/${item.filename}`
-    const childRel    = relBase ? `${relBase}/${item.filename}` : item.filename
-    const isDir       = ((item.attrs.mode ?? 0) & 0o170000) === 0o040000
-    if (isDir) {
-      const sub = await backupWalkRemote(sftp, childRemote, childRel)
-      results.push(...sub)
-    } else {
-      results.push({ remotePath: childRemote, size: item.attrs.size ?? 0, mtime: item.attrs.mtime ?? 0, relPath: childRel })
-    }
-  }
-  return results
-}
+// backupWalkRemote is imported from ./sftp-helpers.js.
 
 // Recursively sum the size of all files under a local directory.
 async function calcDirSize(dirPath) {
@@ -1091,7 +1035,7 @@ function registerIPC() {
         ? join(localRoot, ...rel.split('/').filter(Boolean))
         : localRoot
       const created = []
-      await remoteWalkCreate(sftp, remotePath, localTarget, created)
+      await remoteWalkCreate(sftp, remotePath, localTarget, mkdirSync, join, created)
       log('info', `Remote checkout [${await _connLabel(connectionId)}]: ${remotePath} -> ${localTarget} (${created.length} files)`)
       return { ok: true, created }
     } catch (err) {
