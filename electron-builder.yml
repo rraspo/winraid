@@ -34,6 +34,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
+  uninstallDisplayName: WinRaid
+  perMachine: false
 
 # Auto-updater publishes to GitHub Releases.
 # Set GH_TOKEN env var before running dist.
