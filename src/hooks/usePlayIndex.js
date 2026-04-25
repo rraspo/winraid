@@ -13,6 +13,8 @@ export function usePlayIndex(connId, path) {
   const indexRef = useRef(0)
   indexRef.current = index
 
+  const filesRef = useRef([])
+
   // Read defaults from config once on mount
   useEffect(() => {
     let cancelled = false
@@ -31,6 +33,7 @@ export function usePlayIndex(connId, path) {
   useEffect(() => {
     if (!initialized) return
     setFiles([])
+    filesRef.current = []
     setIndex(0)
     setScanning(true)
     setError(null)
@@ -38,7 +41,11 @@ export function usePlayIndex(connId, path) {
     const scanPath = path  // capture root path for fatal-error detection
 
     const unsubFound = window.winraid?.remote.onMediaFound(({ files: incoming }) => {
-      setFiles((prev) => [...prev, ...incoming])
+      setFiles((prev) => {
+        const next = [...prev, ...incoming]
+        filesRef.current = next
+        return next
+      })
     })
     const unsubDone  = window.winraid?.remote.onMediaDone(() => setScanning(false))
     // Fatal errors arrive with errPath === scanPath; per-directory errors are non-fatal
@@ -60,10 +67,7 @@ export function usePlayIndex(connId, path) {
   }, [connId, path, recursive, initialized, scanKey])
 
   const next = useCallback(() => {
-    setFiles((prevFiles) => {
-      setIndex((i) => Math.min(i + 1, prevFiles.length - 1))
-      return prevFiles
-    })
+    setIndex((i) => (filesRef.current.length === 0 ? 0 : Math.min(i + 1, filesRef.current.length - 1)))
   }, [])
 
   const prev = useCallback(() => {
@@ -72,10 +76,11 @@ export function usePlayIndex(connId, path) {
 
   const toggleShuffle = useCallback(() => {
     setShuffle((prevShuffle) => {
-      const next = !prevShuffle
-      if (next) {
+      const nextShuffle = !prevShuffle
+      if (nextShuffle) {
         setFiles((prevFiles) => {
           const arr   = [...prevFiles]
+          filesRef.current = arr
           const start = indexRef.current + 1
           for (let i = arr.length - 1; i > start; i--) {
             const j = start + Math.floor(Math.random() * (i - start + 1))
@@ -84,7 +89,7 @@ export function usePlayIndex(connId, path) {
           return arr
         })
       }
-      return next
+      return nextShuffle
     })
   }, [])
 
