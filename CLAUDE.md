@@ -21,20 +21,25 @@ Windows desktop app for homelab file sync. Watches local folders and pushes file
 ```
 winraid/
 ├── electron/
-│   ├── main.js          # IPC handlers, SFTP pool, nas-stream:// protocol, backup, tray, auto-updater (~2250 lines)
+│   ├── main.js          # IPC handlers, SFTP pool, nas-stream:// protocol, backup, tray, auto-updater (~2100 lines)
 │   ├── preload.js       # contextBridge — exposes window.winraid to renderer
 │   ├── config.js        # JSON config at %APPDATA%\WinRaid\config.json
 │   ├── queue.js         # Job queue persisted to queue.json; atomic writes
 │   ├── worker.js        # Serial job processor — dequeues and calls backend
 │   ├── watcher.js       # WatcherManager — Map<connId, WatcherInstance> with chokidar
 │   ├── logger.js        # Dated log files + IPC push to renderer
+│   ├── sftp-helpers.js  # sftpRmRf, backupWalkRemote, remoteWalkCreate — depth-guarded recursive helpers
+│   ├── exec-helpers.js  # execWithTimeout — SSH exec with configurable wall-clock timeout
 │   └── backends/
 │       ├── sftp.js      # SFTP transfer, mkdirp, openRemoteChecker
 │       └── smb.js       # SMB/UNC copy backend
 ├── src/
 │   ├── App.jsx          # Root: view routing, shared state, IPC subscriptions
+│   ├── services/
+│   │   └── remoteFS.js          # Singleton directory-listing cache: list, tree, update, invalidate, subscribe
 │   ├── hooks/
-│   │   ├── useBrowse.js         # Browse state + handlers; composes useSelection + useDragDrop
+│   │   ├── useBrowse.js         # Browse state + handlers; fetches via remoteFS; composes useSelection + useDragDrop
+│   │   ├── useRemoteDir.js      # useSyncExternalStore wrapper for remoteFS cache reads
 │   │   ├── useSelection.js      # Pointer/rubber-band selection, Shift/Ctrl/plain click
 │   │   ├── useDragDrop.js       # Multi-file drag, stacked ghost, dwell-timer, move ops
 │   │   ├── useVirtualizers.js   # useGridVirtualizer + useListVirtualizer
@@ -189,7 +194,7 @@ All values in `src/styles/tokens.css`. Dark is default; light overrides via `[da
 
 ## Development methodology
 
-**All changes must follow Test-Driven Development (TDD).** Every feature is working as of 2.2.2. No change ships without tests that cover it, and tests must be written before implementation.
+**All changes must follow Test-Driven Development (TDD).** Every feature is working as of 2.3.0. No change ships without tests that cover it, and tests must be written before implementation.
 
 ### TDD rules for subagents
 1. Write the failing test first — run it, confirm it fails for the right reason
@@ -197,13 +202,13 @@ All values in `src/styles/tokens.css`. Dark is default; light overrides via `[da
 3. Run the full test suite — confirm no regressions
 4. Commit only when tests are green
 
-Use Vitest + @testing-library/react + happy-dom. Mock `window.winraid` via `src/__mocks__/winraid.js`. For Electron-side code, unit-test pure functions in isolation; integration behavior is covered by the renderer tests via the mock.
+Use Vitest + @testing-library/react + happy-dom. Mock `window.winraid` via `src/__mocks__/winraid.js`. Mock `remoteFS` via `src/__mocks__/remoteFS.js` (use `vi.mock('../services/remoteFS')` in hook tests). For Electron-side code, unit-test pure functions in isolation; integration behavior is covered by the renderer tests via the mock.
 
 ## Known issues
 
 | Issue | File |
 |---|---|
-| `main.js` is ~2250 lines — SFTP pool, protocol, backup, ops, tray, IPC in one file | `electron/main.js` |
+| `main.js` is ~2100 lines — SFTP pool, protocol, backup, ops, tray, IPC in one file | `electron/main.js` |
 | No automatic retry — ERROR jobs require manual retry; no exponential backoff | `electron/worker.js` |
 | `calcDirSize` blocks the main process (sync fs calls in backup handler) | `electron/main.js` |
 | `activeTransfers` counter can be stale — should derive from TRANSFERRING jobs | `src/App.jsx` |
