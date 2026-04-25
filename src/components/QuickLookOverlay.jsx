@@ -4,14 +4,7 @@ import Tooltip from './ui/Tooltip'
 import styles from './QuickLookOverlay.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt } from '../utils/fileTypes'
-
-function nasStreamUrl(connectionId, remotePath) {
-  // nas-stream://{connectionId}{/remote/path}
-  // Encode each path segment so filenames with special characters (spaces,
-  // brackets, etc.) don't break URL parsing in the protocol handler.
-  const encodedPath = remotePath.split('/').map(encodeURIComponent).join('/')
-  return `nas-stream://${connectionId}${encodedPath}`
-}
+import { nasStreamUrl } from '../utils/nasStream'
 
 // ---------------------------------------------------------------------------
 // Preview sub-components

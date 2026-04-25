@@ -5,10 +5,12 @@ import { createWinraidMock } from '../__mocks__/winraid'
 
 let onMediaFoundCb = null
 let onMediaDoneCb  = null
+let onMediaErrorCb = null
 
 function setup() {
   onMediaFoundCb = null
   onMediaDoneCb  = null
+  onMediaErrorCb = null
   window.winraid = createWinraidMock({
     config: { get: vi.fn().mockResolvedValue({ recursive: true, shuffle: true }) },
     remote: {
@@ -16,7 +18,7 @@ function setup() {
       mediaCancel:  vi.fn().mockResolvedValue({ ok: true }),
       onMediaFound: vi.fn().mockImplementation((cb) => { onMediaFoundCb = cb; return () => {} }),
       onMediaDone:  vi.fn().mockImplementation((cb) => { onMediaDoneCb  = cb; return () => {} }),
-      onMediaError: vi.fn().mockReturnValue(() => {}),
+      onMediaError: vi.fn().mockImplementation((cb) => { onMediaErrorCb = cb; return () => {} }),
     },
   })
 }
@@ -104,5 +106,38 @@ describe('PlayOverlay', () => {
     await act(async () => {})
     expect(screen.getByLabelText('Toggle recursive scan')).toBeTruthy()
     expect(screen.getByLabelText('Toggle shuffle')).toBeTruthy()
+  })
+
+  it('shows error message and Retry button when fatal error fires', async () => {
+    setup()
+    render(<PlayOverlay {...defaultProps} />)
+    await act(async () => {})
+    act(() => {
+      onMediaErrorCb?.({ path: '/photos', msg: 'Connection lost', code: 'ECONNRESET' })
+    })
+    expect(screen.getByText('Connection lost')).toBeTruthy()
+    expect(screen.getByText('Retry')).toBeTruthy()
+  })
+
+  it('clicking Retry triggers a new mediaScan', async () => {
+    setup()
+    render(<PlayOverlay {...defaultProps} />)
+    await act(async () => {})
+    act(() => {
+      onMediaErrorCb?.({ path: '/photos', msg: 'Connection lost', code: 'ECONNRESET' })
+    })
+    const initialCallCount = window.winraid.remote.mediaScan.mock.calls.length
+    fireEvent.click(screen.getByText('Retry'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan.mock.calls.length).toBeGreaterThan(initialCallCount)
+  })
+
+  it('Escape key calls onClose', async () => {
+    setup()
+    const onClose = vi.fn()
+    render(<PlayOverlay {...defaultProps} onClose={onClose} />)
+    await act(async () => {})
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })

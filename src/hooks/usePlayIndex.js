@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 export function usePlayIndex(connId, path) {
   const [files,       setFiles]       = useState([])
   const [index,       setIndex]       = useState(0)
-  const [scanning,    setScanning]    = useState(false)
+  const [scanning,    setScanning]    = useState(true)
   const [error,       setError]       = useState(null)
   const [recursive,   setRecursive]   = useState(true)
   const [shuffle,     setShuffle]     = useState(true)
