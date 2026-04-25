@@ -21,6 +21,12 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.config,
     },
 
+    cache: {
+      thumbSize: vi.fn().mockResolvedValue({ bytes: 0 }),
+      clearThumbs: vi.fn().mockResolvedValue(undefined),
+      ...overrides.cache,
+    },
+
     watcher: {
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
