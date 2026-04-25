@@ -50,10 +50,9 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const prevPath          = useRef(path)
   const initialPushed     = useRef(false)
   const pathRef           = useRef(path)
-  const dirCache          = useRef(new Map())
-  const entriesRef        = useRef([])
-  const cacheModeRef      = useRef('stale')
-  const cacheMutRef       = useRef('update')
+  const entriesRef   = useRef([])
+  const cacheModeRef = useRef('stale')
+  const cacheMutRef  = useRef('update')
 
   browseRestoreRef.current = browseRestore
   pathRef.current          = path
@@ -395,14 +394,15 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       setOpInFlight(false)
     }
     if (res?.ok) {
-      const key = `${selectedId}:${path}`
       if (cacheMutRef.current === 'update') {
-        const cached = dirCache.current.get(key)
-        if (cached) dirCache.current.set(key, cached.filter((e) => e.name !== target.name))
+        remoteFS.update(selectedId, path, (entries) => entries.filter((e) => e.name !== target.name))
+      } else {
+        remoteFS.invalidate(selectedId, path)
       }
       setEntries((prev) => prev.filter((e) => e.name !== target.name))
       setStatus({ ok: true, msg: `Deleted ${target.path}` })
     } else {
+      remoteFS.invalidate(selectedId, path)
       setStatus({ ok: false, msg: res?.error || 'Delete failed' })
       fetchDir(path)
     }
@@ -423,28 +423,26 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         const srcName    = srcPath.split('/').at(-1)
         const dstName    = dstPath.split('/').at(-1)
         const dstDir     = dstPath.split('/').slice(0, -1).join('/') || '/'
-        const srcKey     = `${selectedId}:${path}`
         const movedEntry = entriesRef.current.find((e) => e.name === srcName)
+        remoteFS.update(selectedId, path, (entries) => entries.filter((e) => e.name !== srcName))
         setEntries((prev) => prev.filter((e) => e.name !== srcName))
-        const srcCached = dirCache.current.get(srcKey)
-        if (srcCached) dirCache.current.set(srcKey, srcCached.filter((e) => e.name !== srcName))
         if (movedEntry) {
-          const dstKey    = `${selectedId}:${dstDir}`
-          const dstCached = dirCache.current.get(dstKey)
-          if (dstCached) {
-            const updated = [...dstCached, { ...movedEntry, name: dstName }].sort((a, b) => {
+          remoteFS.update(selectedId, dstDir, (entries) => {
+            const updated = [...entries, { ...movedEntry, name: dstName }]
+            return updated.sort((a, b) => {
               if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
               return a.name.localeCompare(b.name)
             })
-            dirCache.current.set(dstKey, updated)
-          }
+          })
         }
         setStatus({ ok: true, msg: `Moved to ${dstPath}` })
       } else {
+        remoteFS.invalidate(selectedId, path)
         await fetchDir(path)
         setStatus({ ok: true, msg: `Moved to ${dstPath}` })
       }
     } else {
+      remoteFS.invalidate(selectedId, path)
       await fetchDir(path)
       setStatus({ ok: false, msg: res?.error || 'Move failed' })
     }
@@ -468,10 +466,9 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
           return a.name.localeCompare(b.name)
         })
         setEntries((prev) => splice(prev))
-        const key = `${selectedId}:${path}`
-        const cached = dirCache.current.get(key)
-        if (cached) dirCache.current.set(key, splice(cached))
+        remoteFS.update(selectedId, path, splice)
       } else {
+        remoteFS.invalidate(selectedId, path)
         await fetchDir(path)
       }
       setStatus({ ok: true, msg: `Created folder ${name}` })
@@ -642,9 +639,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     selection.clearSelection()
     if (cacheMutRef.current === 'update') {
       setEntries((prev) => prev.filter((e) => !deletedNames.has(e.name)))
-      const key = `${selectedId}:${path}`
-      const cached = dirCache.current.get(key)
-      if (cached) dirCache.current.set(key, cached.filter((e) => !deletedNames.has(e.name)))
+      remoteFS.update(selectedId, path, (entries) => entries.filter((e) => !deletedNames.has(e.name)))
     } else {
       await fetchDir(path)
     }
@@ -678,9 +673,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     selection.clearSelection()
     if (cacheMutRef.current === 'update') {
       setEntries((prev) => prev.filter((e) => !movedNames.has(e.name)))
-      const key = `${selectedId}:${path}`
-      const cached = dirCache.current.get(key)
-      if (cached) dirCache.current.set(key, cached.filter((e) => !movedNames.has(e.name)))
+      remoteFS.update(selectedId, path, (entries) => entries.filter((e) => !movedNames.has(e.name)))
     } else {
       await fetchDir(path)
     }
