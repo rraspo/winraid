@@ -265,4 +265,33 @@ describe('mediaWalk', () => {
     expect(paths).toEqual(['/m/visible.png'])
     expect(sftp.readdir).not.toHaveBeenCalledWith('/m/.hiddenDir', expect.any(Function))
   })
+
+  it('calls onError and continues walking when tree is deeper than maxDepth', async () => {
+    const dirs = {}
+    let path = '/m'
+    // Build a chain deeper than maxDepth=4
+    for (let i = 0; i < 6; i++) {
+      const child = `${path}/sub`
+      dirs[path] = [dirItem('sub'), fileItem(`file${i}.jpg`)]
+      path = child
+    }
+    dirs[path] = [fileItem('deepest.jpg')]
+    const sftp = makeSftp({ dirs })
+    const batches = []
+    const errors = []
+    await mediaWalk(sftp, '/m', {
+      onBatch: (b) => batches.push(b),
+      onError: (e) => errors.push(e),
+      maxDepth: 4,
+    })
+    // The walk should have completed and reported at least one too-deep error
+    expect(errors.length).toBeGreaterThanOrEqual(1)
+    const tooDeep = errors.find((e) => /too deep/i.test(e.msg))
+    expect(tooDeep).toBeDefined()
+    expect(tooDeep.msg).toMatch(/max 4 levels/)
+    expect(tooDeep.code).toBeUndefined()
+    // Files at depths within the limit should still be emitted
+    const paths = flatten(batches).map((f) => f.path)
+    expect(paths).toContain('/m/file0.jpg')
+  })
 })
