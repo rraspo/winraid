@@ -18,6 +18,7 @@ beforeEach(() => {
   remoteFS.getSnapshot.mockReturnValue(null)
   remoteFS.subscribe.mockReturnValue(() => {})
   remoteFS.list.mockResolvedValue([{ name: 'a.jpg', type: 'file', size: 100, modified: 0 }])
+  remoteFS.tree.mockResolvedValue(undefined)
   window.winraid = {
     config: {
       get: vi.fn().mockImplementation((key) => {
@@ -68,5 +69,22 @@ describe('useBrowse fetchDir — mode stale', () => {
     expect(remoteFS.list).toHaveBeenCalledWith('conn1', expect.any(String))
     // And remoteFS.invalidate should have been called before the refresh (stale-while-revalidate)
     expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', expect.any(String))
+  })
+})
+
+describe('useBrowse fetchDir — mode tree', () => {
+  it('returns cached snapshot and does NOT call remoteFS.list when hit', async () => {
+    const cached = [{ name: 'cached.jpg', type: 'file', size: 0, modified: 0 }]
+    remoteFS.getSnapshot.mockReturnValue(cached)
+    window.winraid.config.get.mockImplementation((key) => {
+      if (key === 'connections') return Promise.resolve(CONNECTIONS)
+      if (key === 'browse') return Promise.resolve({ cacheMode: 'tree' })
+      return Promise.resolve(null)
+    })
+    const { result } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    await waitFor(() => expect(result.current.entries).toEqual(cached))
+    expect(remoteFS.list).not.toHaveBeenCalled()
   })
 })
