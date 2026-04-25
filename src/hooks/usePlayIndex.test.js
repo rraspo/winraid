@@ -105,6 +105,33 @@ describe('usePlayIndex', () => {
     expect(tailPaths.sort()).toEqual(['/f4.jpg', '/f5.jpg', '/f6.jpg', '/f7.jpg', '/f8.jpg', '/f9.jpg'])
   })
 
+  it('toggleShuffle OFF does not reorder files', async () => {
+    window.winraid = createWinraidMock({
+      config: {
+        get: vi.fn().mockResolvedValue({ recursive: false, shuffle: true }), // shuffle starts ON
+      },
+      remote: {
+        mediaScan:    vi.fn().mockResolvedValue({ ok: true }),
+        mediaCancel:  vi.fn().mockResolvedValue({ ok: true }),
+        onMediaFound: vi.fn().mockImplementation((cb) => { onMediaFoundCb = cb; return () => { onMediaFoundCb = null } }),
+        onMediaDone:  vi.fn().mockImplementation((cb) => { onMediaDoneCb  = cb; return () => { onMediaDoneCb  = null } }),
+        onMediaError: vi.fn().mockImplementation((cb) => { onMediaErrorCb = cb; return () => { onMediaErrorCb = null } }),
+      },
+    })
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    const files = Array.from({ length: 5 }, (_, i) => ({
+      path: `/f${i}.jpg`, size: 0, mtime: 0, type: 'image',
+    }))
+    act(() => { onMediaFoundCb?.({ files }) })
+    const before = result.current.files.map((f) => f.path)
+    // Toggle shuffle OFF
+    act(() => { result.current.toggleShuffle() })
+    const after = result.current.files.map((f) => f.path)
+    // File order must not change when toggling OFF
+    expect(after).toEqual(before)
+  })
+
   it('toggleRecursive cancels the scan and restarts it', async () => {
     const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
     await act(async () => {})

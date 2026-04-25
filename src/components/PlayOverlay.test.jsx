@@ -140,4 +140,22 @@ describe('PlayOverlay', () => {
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledOnce()
   })
+
+  it('navigates forward on wheel down and backward on wheel up', async () => {
+    setup()
+    render(<PlayOverlay {...defaultProps} />)
+    await act(async () => {})
+    act(() => {
+      onMediaFoundCb?.({ files: [
+        { path: '/photos/a.jpg', size: 0, mtime: 0, type: 'image' },
+        { path: '/photos/b.jpg', size: 0, mtime: 0, type: 'image' },
+      ] })
+    })
+    const img = () => screen.getByRole('img')
+    expect(img().src).toContain('a.jpg')
+    fireEvent.wheel(window, { deltaY: 100 })
+    expect(img().src).toContain('b.jpg')
+    fireEvent.wheel(window, { deltaY: -100 })
+    expect(img().src).toContain('a.jpg')
+  })
 })
