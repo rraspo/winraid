@@ -47,8 +47,9 @@ export async function mediaWalk(sftp, rootPath, {
   onBatch,
   onError,
   concurrency = 16,
+  maxDepth    = 50,
 } = {}) {
-  const queue   = [rootPath]
+  const queue   = [{ path: rootPath, depth: 0 }]
   let inFlight  = 0
   let firstSent = false
   let buffer    = []
@@ -79,7 +80,7 @@ export async function mediaWalk(sftp, rootPath, {
     }
   }
 
-  async function processDir(dirPath) {
+  async function processDir(dirPath, depth) {
     let list
     try {
       list = await new Promise((resolve, reject) =>
@@ -96,7 +97,15 @@ export async function mediaWalk(sftp, rootPath, {
       const childPath = `${dirPath}/${item.filename}`
       const isDir     = ((item.attrs?.mode ?? 0) & 0o170000) === 0o040000
       if (isDir) {
-        if (recursive) queue.push(childPath)
+        if (!recursive) continue
+        const childDepth = depth + 1
+        if (childDepth > maxDepth) {
+          if (typeof onError === 'function') {
+            onError({ path: childPath, msg: `Directory tree too deep (max ${maxDepth} levels)`, code: undefined })
+          }
+          continue
+        }
+        queue.push({ path: childPath, depth: childDepth })
         continue
       }
       const name  = item.filename
@@ -128,7 +137,7 @@ export async function mediaWalk(sftp, rootPath, {
         const next = queue.shift()
         inFlight++
         Promise.resolve()
-          .then(() => processDir(next))
+          .then(() => processDir(next.path, next.depth))
           .finally(() => {
             inFlight--
             pump()
