@@ -87,3 +87,8 @@ export function invalidateConnection(connId) {
   }
   notify()
 }
+
+export function clearAll() {
+  cache.clear()
+  inflight.clear()
+}

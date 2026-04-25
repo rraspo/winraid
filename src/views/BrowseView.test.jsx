@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
+import * as remoteFS from '../services/remoteFS'
 
 // ---------------------------------------------------------------------------
 // Test data
@@ -53,6 +54,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  remoteFS.clearAll()
   delete window.winraid
   vi.restoreAllMocks()
 })
