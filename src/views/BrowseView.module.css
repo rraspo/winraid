@@ -107,6 +107,19 @@
 
 .viewToggleBtn:hover { color: var(--text); }
 
+.playBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+
+.playBtn:hover { color: var(--text); }
+
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
 .breadcrumb {
   display: flex;
