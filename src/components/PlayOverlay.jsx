@@ -25,8 +25,16 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
       if (e.key === 'ArrowLeft')  { e.preventDefault(); prev() }
       if (e.key === 'Escape')     { e.preventDefault(); onClose() }
     }
+    function onWheel(e) {
+      if (e.deltaY > 0) next()
+      else if (e.deltaY < 0) prev()
+    }
     window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('wheel', onWheel)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('wheel', onWheel)
+    }
   }, [next, prev, onClose])
 
   useEffect(() => { overlayRef.current?.focus() }, [])
