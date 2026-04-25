@@ -1,21 +1,19 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { X, ChevronLeft, ChevronRight, List, Shuffle, Maximize2, Loader } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
 import styles from './PlayOverlay.module.css'
 import { usePlayIndex } from '../hooks/usePlayIndex'
-
-function nasStreamUrl(connectionId, remotePath) {
-  const encodedPath = remotePath.split('/').map(encodeURIComponent).join('/')
-  return `nas-stream://${connectionId}${encodedPath}`
-}
+import { nasStreamUrl } from '../utils/nasStream'
 
 export default function PlayOverlay({ connectionId, path, onClose }) {
   const {
-    files, index, setIndex, scanning,
+    files, index, scanning,
     recursive, toggleRecursive,
     shuffle, toggleShuffle,
     next, prev, error, retry,
   } = usePlayIndex(connectionId, path)
+
+  const overlayRef = useRef(null)
 
   const currentFile = files[index] ?? null
   const isAtEnd     = !scanning && files.length > 0 && index === files.length - 1
@@ -30,6 +28,8 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [next, prev, onClose])
+
+  useEffect(() => { overlayRef.current?.focus() }, [])
 
   function handleFullscreen() {
     if (!document.fullscreenElement) {
@@ -52,7 +52,7 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
   }
 
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Play">
+    <div ref={overlayRef} className={styles.overlay} role="dialog" aria-modal="true" aria-label="Play" tabIndex={-1}>
       <div className={styles.topBar}>
         <div className={styles.topBarLeft}>
           {currentFile && (
