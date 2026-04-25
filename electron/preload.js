@@ -209,5 +209,15 @@ contextBridge.exposeInMainWorld('winraid', {
     sizeLoadCache: (connectionId) => ipcRenderer.invoke('size:load-cache', connectionId),
     /** Persist scan result for a connection. */
     sizeSaveCache: (connectionId, data) => ipcRenderer.invoke('size:save-cache', connectionId, data),
+    /** Start a media scan (BFS walk for images+videos). Results stream via media:* push events. */
+    mediaScan:   (connectionId, path, opts) => ipcRenderer.invoke('remote:media-scan', connectionId, path, opts),
+    /** Cancel an in-progress media scan. */
+    mediaCancel: (connectionId) => ipcRenderer.invoke('remote:media-cancel', connectionId),
+    /** Subscribe to media files found. Payload: { files: [{ path, size, mtime, type }] } */
+    onMediaFound: (cb) => on('media:found', cb),
+    /** Subscribe to scan-complete event. Payload: { totalMatches, durationMs } */
+    onMediaDone:  (cb) => on('media:done', cb),
+    /** Subscribe to per-directory scan errors (non-fatal). Payload: { path, code, msg } */
+    onMediaError: (cb) => on('media:error', cb),
   },
 })
