@@ -22,6 +22,8 @@ export default function SettingsView() {
   const [clearing, setClearing] = useState(false)
   const [cacheMode,     setCacheMode]     = useState('stale')
   const [cacheMutation, setCacheMutation] = useState('update')
+  const [playRecursive, setPlayRecursive] = useState(true)
+  const [playShuffle,   setPlayShuffle]   = useState(true)
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -43,6 +45,13 @@ export default function SettingsView() {
     window.winraid?.config.get('browse').then((browse) => {
       if (browse?.cacheMode)     setCacheMode(browse.cacheMode)
       if (browse?.cacheMutation) setCacheMutation(browse.cacheMutation)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('playDefaults').then((defaults) => {
+      if (defaults?.recursive !== undefined) setPlayRecursive(defaults.recursive)
+      if (defaults?.shuffle   !== undefined) setPlayShuffle(defaults.shuffle)
     }).catch(() => {})
   }, [])
 
@@ -97,6 +106,18 @@ export default function SettingsView() {
   async function handleCacheMutationChange(value) {
     setCacheMutation(value)
     await window.winraid?.config.set('browse.cacheMutation', value)
+  }
+
+  async function handlePlayRecursiveChange() {
+    const next = !playRecursive
+    setPlayRecursive(next)
+    await window.winraid?.config.set('playDefaults', { recursive: next, shuffle: playShuffle })
+  }
+
+  async function handlePlayShuffleChange() {
+    const next = !playShuffle
+    setPlayShuffle(next)
+    await window.winraid?.config.set('playDefaults', { recursive: playRecursive, shuffle: next })
   }
 
   const status = updateStatus?.status
@@ -197,6 +218,32 @@ export default function SettingsView() {
                   </span>
                 </label>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>Play</div>
+          <div className={styles.sectionBody}>
+            <div className={styles.field}>
+              <span className={styles.label}>Default to recursive scan</span>
+              <div
+                role="switch"
+                aria-checked={playRecursive}
+                aria-label="Default to recursive scan"
+                className={[styles.switch, playRecursive ? styles.switchOn : ''].filter(Boolean).join(' ')}
+                onClick={handlePlayRecursiveChange}
+              />
+            </div>
+            <div className={styles.field}>
+              <span className={styles.label}>Default to shuffle</span>
+              <div
+                role="switch"
+                aria-checked={playShuffle}
+                aria-label="Default to shuffle"
+                className={[styles.switch, playShuffle ? styles.switchOn : ''].filter(Boolean).join(' ')}
+                onClick={handlePlayShuffleChange}
+              />
             </div>
           </div>
         </section>
