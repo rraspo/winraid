@@ -91,4 +91,5 @@ export function invalidateConnection(connId) {
 export function clearAll() {
   cache.clear()
   inflight.clear()
+  notify()
 }
