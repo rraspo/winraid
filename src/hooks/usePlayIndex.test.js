@@ -140,4 +140,13 @@ describe('usePlayIndex', () => {
     unmount()
     expect(window.winraid.remote.mediaCancel).toHaveBeenCalledWith('conn1')
   })
+
+  it('retry() triggers a new mediaScan', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(1)
+    act(() => { result.current.retry() })
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(2)
+  })
 })
