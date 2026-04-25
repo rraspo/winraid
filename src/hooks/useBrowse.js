@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSelection } from './useSelection'
 import { useDragDrop } from './useDragDrop'
+import * as remoteFS from '../services/remoteFS'
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (no JSX, no external deps)
@@ -223,26 +224,21 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const fetchDir = useCallback(async (targetPath) => {
     if (!selectedId) return
     const mode = cacheModeRef.current
-    const key  = `${selectedId}:${targetPath}`
 
     if (mode === 'stale') {
-      const cached = dirCache.current.get(key)
+      const cached = remoteFS.getSnapshot(selectedId, targetPath)
       if (cached) {
         setEntries(cached)
         setError('')
         setLoading(false)
-        // background refresh — don't touch status; clearing it here causes layout
-        // shifts (statusFlash disappears) on every background revalidation
-        window.winraid?.remote.list(selectedId, targetPath).then((res) => {
-          if (res?.ok) {
-            setEntries(res.entries)
-            dirCache.current.set(key, res.entries)
-          }
-        })
+        remoteFS.invalidate(selectedId, targetPath)
+        remoteFS.list(selectedId, targetPath).then((entries) => {
+          setEntries(entries)
+        }).catch(() => {})
         return
       }
     } else if (mode === 'tree') {
-      const cached = dirCache.current.get(key)
+      const cached = remoteFS.getSnapshot(selectedId, targetPath)
       if (cached) {
         setEntries(cached)
         setError('')
@@ -250,20 +246,18 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         setStatus(null)
         return
       }
-      // tree not populated yet — fall through to single-dir fetch
     }
 
-    // 'none' mode, or cache miss
     setLoading(true)
     setError('')
     setStatus(null)
-    const res = await window.winraid?.remote.list(selectedId, targetPath)
-    setLoading(false)
-    if (res?.ok) {
-      setEntries(res.entries)
-      dirCache.current.set(key, res.entries)
-    } else {
-      setError(res?.error || 'Failed to list directory')
+    try {
+      const entries = await remoteFS.list(selectedId, targetPath)
+      setLoading(false)
+      setEntries(entries)
+    } catch (err) {
+      setLoading(false)
+      setError(err.message || 'Failed to list directory')
       setEntries([])
     }
   }, [selectedId])
@@ -279,12 +273,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     const conn = connections.find((c) => c.id === selectedId)
     if (conn?.type !== 'sftp' || !conn?.sftp?.remotePath) return
     const rootPath = conn.sftp.remotePath.replace(/\/+$/, '') || '/'
-    window.winraid?.remote.tree(selectedId, rootPath).then((res) => {
-      if (!res?.ok) return
-      for (const [dirPath, dirEntries] of Object.entries(res.dirMap)) {
-        dirCache.current.set(`${selectedId}:${dirPath}`, dirEntries)
-      }
-    }).catch(() => {})
+    remoteFS.tree(selectedId, rootPath).catch(() => {})
   }, [selectedId, connections])
 
   useEffect(() => {
