@@ -1461,12 +1461,16 @@ function registerIPC() {
     const existing = _mediaScans.get(connectionId)
     if (existing) existing.abort()
 
+    const ac = new AbortController()
+    _mediaScans.set(connectionId, ac)
+
     const sftp = await _poolGet(connectionId)
-    if (!sftp) return { ok: false, error: 'Connection unavailable' }
+    if (!sftp) {
+      _mediaScans.delete(connectionId)
+      return { ok: false, error: 'Connection unavailable' }
+    }
     _poolTouch(connectionId)
 
-    const ac        = new AbortController()
-    _mediaScans.set(connectionId, ac)
     const startTime = Date.now()
     let totalMatches = 0
 
@@ -1480,6 +1484,7 @@ function registerIPC() {
           sendToRenderer('media:found', { files })
         },
         onError({ path, code, msg }) {
+          if (_mediaScans.get(connectionId) !== ac) return
           sendToRenderer('media:error', { path, code, msg })
           log('warn', `media:scan dir error [${connectionId}] ${path}: ${msg}`)
         },
@@ -1487,11 +1492,11 @@ function registerIPC() {
 
       if (_mediaScans.get(connectionId) === ac) {
         sendToRenderer('media:done', { totalMatches, durationMs: Date.now() - startTime })
+        _mediaScans.delete(connectionId)
       }
-      _mediaScans.delete(connectionId)
       return { ok: true }
     } catch (err) {
-      _mediaScans.delete(connectionId)
+      if (_mediaScans.get(connectionId) === ac) _mediaScans.delete(connectionId)
       sendToRenderer('media:error', { path: remotePath, code: err.code, msg: err.message })
       log('error', `media:scan failed [${connectionId}]: ${err.message}`)
       return { ok: false, error: err.message }
