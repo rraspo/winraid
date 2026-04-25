@@ -68,13 +68,22 @@ describe('handleDelete', () => {
 })
 
 describe('handleMove', () => {
-  it('calls remoteFS.update on src dir to remove moved entry', async () => {
+  it('calls remoteFS.update twice — removes from src dir and adds to dst dir', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'photo.jpg', type: 'file', size: 100, modified: 0 },
+    ])
     const { result } = renderHook(() =>
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
-    await waitFor(() => result.current.selectedId === 'conn1')
-    await act(() => result.current.handleMove('/media/photo.jpg', '/media/archive/photo.jpg'))
-    expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
+    await waitFor(() => result.current.selectedId === 'conn1' && result.current.entries.length === 1)
+    await act(() =>
+      result.current.handleMove('/media/photo.jpg', '/media/archive/photo.jpg')
+    )
+    expect(remoteFS.update).toHaveBeenCalledTimes(2)
+    // First call removes from source dir
+    expect(remoteFS.update).toHaveBeenNthCalledWith(1, 'conn1', expect.any(String), expect.any(Function))
+    // Second call adds to destination dir
+    expect(remoteFS.update).toHaveBeenNthCalledWith(2, 'conn1', expect.any(String), expect.any(Function))
   })
 
   it('calls remoteFS.invalidate on move failure', async () => {
