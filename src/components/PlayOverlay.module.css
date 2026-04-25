@@ -1,0 +1,171 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex;
+  flex-direction: column;
+  outline: none;
+}
+
+/* ── Top bar ── */
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--space-4);
+  height: 48px;
+  flex-shrink: 0;
+  background: rgba(0, 0, 0, 0.4);
+  gap: var(--space-3);
+}
+
+.topBarLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
+}
+
+.topBarRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.fileName {
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: rgba(255, 255, 255, 0.9);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scanningSpinner {
+  color: rgba(255, 255, 255, 0.5);
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Toggle buttons ── */
+.toggleBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.5);
+  transition: color var(--transition), background var(--transition);
+}
+
+.toggleBtn:hover { color: rgba(255, 255, 255, 0.9); }
+
+.toggleBtnOn {
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.closeBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.6);
+  transition: color var(--transition);
+  margin-left: var(--space-1);
+}
+
+.closeBtn:hover { color: rgba(255, 255, 255, 0.95); }
+
+/* ── Content area ── */
+.content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+}
+
+.previewArea {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.media {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* ── Nav buttons ── */
+.navBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 64px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color var(--transition);
+}
+
+.navBtn:hover:not(:disabled) { color: rgba(255, 255, 255, 0.9); }
+.navBtn:disabled              { opacity: 0.2; cursor: default; }
+.navBtnDimmed                 { opacity: 0.3; }
+
+/* ── States ── */
+.emptyState,
+.errorState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
+  color: rgba(255, 255, 255, 0.45);
+  font-size: var(--font-size-md);
+}
+
+.retryBtn {
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--radius-sm);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: var(--font-size-sm);
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.retryBtn:hover { border-color: rgba(255, 255, 255, 0.5); color: rgba(255, 255, 255, 0.9); }
+
+/* ── Counter ── */
+.counter {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.4);
+  pointer-events: none;
+}
+
+.endLabel {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: var(--font-size-xs);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-xs);
+  padding: 1px 5px;
+}
