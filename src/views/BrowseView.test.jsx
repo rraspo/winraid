@@ -5,6 +5,14 @@ import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
 import * as remoteFS from '../services/remoteFS'
 
+vi.mock('../components/PlayOverlay', () => ({
+  default: ({ onClose }) => (
+    <div data-testid="play-overlay">
+      <button onClick={onClose}>close-play</button>
+    </div>
+  ),
+}))
+
 // ---------------------------------------------------------------------------
 // Test data
 // ---------------------------------------------------------------------------
@@ -410,6 +418,20 @@ describe('BrowseView', () => {
     // The Documents folder row should have the lastVisited class
     const docRow = screen.getByText('Documents').closest('.row')
     expect(docRow.className).toContain('lastVisited')
+  })
+
+  it('renders a Play button in the toolbar', async () => {
+    render(<BrowseView onHistoryPush={() => {}} />)
+    expect(await screen.findByLabelText('Play media slideshow')).toBeInTheDocument()
+  })
+
+  it('mounts PlayOverlay when Play is clicked and unmounts on close', async () => {
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('New Folder')
+    fireEvent.click(screen.getByLabelText('Play media slideshow'))
+    expect(screen.getByTestId('play-overlay')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('close-play'))
+    expect(screen.queryByTestId('play-overlay')).not.toBeInTheDocument()
   })
 
   describe('browse directory cache', () => {
