@@ -13,7 +13,9 @@ export function usePlayIndex(connId, path) {
   const indexRef = useRef(0)
   indexRef.current = index
 
-  const filesRef = useRef([])
+  const filesRef   = useRef([])
+  const shuffleRef = useRef(shuffle)
+  shuffleRef.current = shuffle
 
   // Read defaults from config once on mount
   useEffect(() => {
@@ -42,7 +44,17 @@ export function usePlayIndex(connId, path) {
 
     const unsubFound = window.winraid?.remote.onMediaFound(({ files: incoming }) => {
       setFiles((prev) => {
-        const next = [...prev, ...incoming]
+        let next
+        if (shuffleRef.current) {
+          next = [...prev]
+          const start = indexRef.current + 1
+          for (const f of incoming) {
+            const pos = start + Math.floor(Math.random() * (next.length - start + 1))
+            next.splice(pos, 0, f)
+          }
+        } else {
+          next = [...prev, ...incoming]
+        }
         filesRef.current = next
         return next
       })

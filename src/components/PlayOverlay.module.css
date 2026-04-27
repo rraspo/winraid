@@ -22,10 +22,18 @@
 
 .topBarLeft {
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.fileNameRow {
+  display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  flex: 1;
 }
 
 .topBarRight {
@@ -42,6 +50,49 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.filePath {
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.45);
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.pathCrumb {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.pathSegment {
+  color: rgba(255, 255, 255, 0.55);
+  padding: 0 2px;
+  text-decoration: none;
+  text-underline-offset: 2px;
+  transition: color var(--transition), text-decoration-color var(--transition);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pathSegmentActive {
+  text-decoration: underline;
+  text-decoration-color: rgba(255, 255, 255, 0.4);
+}
+
+.pathSegment:hover {
+  color: var(--accent-dark);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-dark);
+}
+
+.pathSep {
+  color: rgba(255, 255, 255, 0.25);
+  padding: 0 1px;
+  flex-shrink: 0;
 }
 
 .scanningSpinner {
@@ -94,6 +145,7 @@
 }
 
 .previewArea {
+  position: relative;
   flex: 1;
   min-width: 0;
   height: 100%;
@@ -110,21 +162,22 @@
   display: block;
 }
 
-/* ── Nav buttons ── */
-.navBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 44px;
-  height: 64px;
-  flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.5);
-  transition: color var(--transition);
+/* ── Story-style tap zones (left half = prev, right half = next) ── */
+.tapZone {
+  position: absolute;
+  top: 0;
+  bottom: 64px;
+  width: 50%;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  z-index: 5;
 }
 
-.navBtn:hover:not(:disabled) { color: rgba(255, 255, 255, 0.9); }
-.navBtn:disabled              { opacity: 0.2; cursor: default; }
-.navBtnDimmed                 { opacity: 0.3; }
+.tapZoneLeft  { left: 0; }
+.tapZoneRight { right: 0; }
+
+.tapZone:disabled { cursor: default; }
 
 /* ── States ── */
 .emptyState,

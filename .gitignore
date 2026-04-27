@@ -71,6 +71,7 @@ $RECYCLE.BIN/
 .superpowers/
 .claude/
 .stitch/
+docs/superpowers/
 
 # ---- Git worktrees ----------------------------------------------------------
 .worktrees/

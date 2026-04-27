@@ -1,33 +1,62 @@
-import { useEffect, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, List, Shuffle, Maximize2, Loader } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { X, List, Shuffle, Maximize2, Loader } from 'lucide-react'
 import Tooltip from './ui/Tooltip'
 import styles from './PlayOverlay.module.css'
 import { usePlayIndex } from '../hooks/usePlayIndex'
 import { nasStreamUrl } from '../utils/nasStream'
 
+function buildPathSegments(fileDir) {
+  const segments = [{ label: '/', path: '/' }]
+  if (!fileDir || fileDir === '/') return segments
+  let cumulative = ''
+  for (const part of fileDir.split('/').filter(Boolean)) {
+    cumulative += '/' + part
+    segments.push({ label: part, path: cumulative })
+  }
+  return segments
+}
+
 export default function PlayOverlay({ connectionId, path, onClose }) {
+  const [scanRoot, setScanRoot] = useState(path)
+  const [pinnedFile, setPinnedFile] = useState(null)
+
   const {
     files, index, scanning,
     recursive, toggleRecursive,
     shuffle, toggleShuffle,
     next, prev, error, retry,
-  } = usePlayIndex(connectionId, path)
+  } = usePlayIndex(connectionId, scanRoot)
+
+  function handleSegmentClick(segPath) {
+    if (segPath === scanRoot) return
+    if (files[index]) setPinnedFile(files[index])
+    setScanRoot(segPath)
+  }
+
+  function handleNext() {
+    if (pinnedFile) { setPinnedFile(null); return }
+    next()
+  }
+  function handlePrev() {
+    if (pinnedFile) { setPinnedFile(null); return }
+    prev()
+  }
 
   const overlayRef = useRef(null)
 
-  const currentFile = files[index] ?? null
-  const isAtEnd     = !scanning && files.length > 0 && index === files.length - 1
-  const isEmpty     = !scanning && files.length === 0
+  const currentFile = pinnedFile ?? files[index] ?? null
+  const isAtEnd     = !pinnedFile && !scanning && files.length > 0 && index === files.length - 1
+  const isEmpty     = !pinnedFile && !scanning && files.length === 0
 
   useEffect(() => {
     function onKeyDown(e) {
-      if (e.key === 'ArrowRight') { e.preventDefault(); next() }
-      if (e.key === 'ArrowLeft')  { e.preventDefault(); prev() }
+      if (e.key === 'ArrowRight') { e.preventDefault(); handleNext() }
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev() }
       if (e.key === 'Escape')     { e.preventDefault(); onClose() }
     }
     function onWheel(e) {
-      if (e.deltaY > 0) next()
-      else if (e.deltaY < 0) prev()
+      if (e.deltaY > 0) handleNext()
+      else if (e.deltaY < 0) handlePrev()
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('wheel', onWheel)
@@ -35,7 +64,7 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('wheel', onWheel)
     }
-  }, [next, prev, onClose])
+  }, [pinnedFile, next, prev, onClose])
 
   useEffect(() => { overlayRef.current?.focus() }, [])
 
@@ -64,11 +93,34 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
       <div className={styles.topBar}>
         <div className={styles.topBarLeft}>
           {currentFile && (
-            <span className={styles.fileName}>
-              {currentFile.path.split('/').pop()}
-            </span>
+            <>
+              <div className={styles.fileNameRow}>
+                <span className={styles.fileName}>
+                  {currentFile.path.split('/').pop()}
+                </span>
+                {scanning && (
+                  <Loader size={14} className={styles.scanningSpinner} aria-label="Scanning" />
+                )}
+              </div>
+              <span className={styles.filePath}>
+                {buildPathSegments(
+                  currentFile.path.slice(0, currentFile.path.lastIndexOf('/')) || '/'
+                ).map((seg, i) => (
+                  <span key={seg.path} className={styles.pathCrumb}>
+                    {i > 0 && <span className={styles.pathSep}>/</span>}
+                    <button
+                      type="button"
+                      className={[styles.pathSegment, seg.path === scanRoot ? styles.pathSegmentActive : ''].filter(Boolean).join(' ')}
+                      onClick={() => handleSegmentClick(seg.path)}
+                    >
+                      {seg.label}
+                    </button>
+                  </span>
+                ))}
+              </span>
+            </>
           )}
-          {scanning && (
+          {!currentFile && scanning && (
             <Loader size={14} className={styles.scanningSpinner} aria-label="Scanning" />
           )}
         </div>
@@ -107,15 +159,6 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
       </div>
 
       <div className={styles.content}>
-        <button
-          className={[styles.navBtn, styles.navBtnLeft].join(' ')}
-          onClick={prev}
-          disabled={index === 0}
-          aria-label="Previous"
-        >
-          <ChevronLeft size={22} />
-        </button>
-
         <div className={styles.previewArea}>
           {isEmpty && !error && (
             <div className={styles.emptyState}>No media files found</div>
@@ -127,16 +170,25 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
             </div>
           )}
           {renderMedia()}
+          {currentFile && !error && (
+            <>
+              <button
+                type="button"
+                className={[styles.tapZone, styles.tapZoneLeft].join(' ')}
+                onClick={handlePrev}
+                disabled={!pinnedFile && index === 0}
+                aria-label="Previous"
+              />
+              <button
+                type="button"
+                className={[styles.tapZone, styles.tapZoneRight].join(' ')}
+                onClick={handleNext}
+                disabled={isAtEnd}
+                aria-label="Next"
+              />
+            </>
+          )}
         </div>
-
-        <button
-          className={[styles.navBtn, styles.navBtnRight, isAtEnd ? styles.navBtnDimmed : ''].filter(Boolean).join(' ')}
-          onClick={next}
-          disabled={isAtEnd}
-          aria-label="Next"
-        >
-          <ChevronRight size={22} />
-        </button>
       </div>
 
       {files.length > 0 && (
