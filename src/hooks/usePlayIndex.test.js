@@ -105,6 +105,30 @@ describe('usePlayIndex', () => {
     expect(tailPaths.sort()).toEqual(['/f4.jpg', '/f5.jpg', '/f6.jpg', '/f7.jpg', '/f8.jpg', '/f9.jpg'])
   })
 
+  it('inserts files at random positions when shuffle is on at scan start', async () => {
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0)
+    window.winraid = createWinraidMock({
+      config: { get: vi.fn().mockResolvedValue({ recursive: false, shuffle: true }) },
+      remote: {
+        mediaScan:    vi.fn().mockResolvedValue({ ok: true }),
+        mediaCancel:  vi.fn().mockResolvedValue({ ok: true }),
+        onMediaFound: vi.fn().mockImplementation((cb) => { onMediaFoundCb = cb; return () => { onMediaFoundCb = null } }),
+        onMediaDone:  vi.fn().mockImplementation((cb) => { onMediaDoneCb  = cb; return () => { onMediaDoneCb  = null } }),
+        onMediaError: vi.fn().mockImplementation((cb) => { onMediaErrorCb = cb; return () => { onMediaErrorCb = null } }),
+      },
+    })
+    const { result } = renderHook(() => usePlayIndex('conn1', '/'))
+    await act(async () => {})
+    const incoming = ['A', 'B', 'C', 'D', 'E'].map((n) => ({
+      path: `/${n}.jpg`, size: 0, mtime: 0, type: 'image',
+    }))
+    act(() => { onMediaFoundCb?.({ files: incoming }) })
+    expect(result.current.files.map((f) => f.path)).toEqual(
+      ['/A.jpg', '/E.jpg', '/D.jpg', '/C.jpg', '/B.jpg']
+    )
+    randomSpy.mockRestore()
+  })
+
   it('toggleShuffle OFF does not reorder files', async () => {
     window.winraid = createWinraidMock({
       config: {

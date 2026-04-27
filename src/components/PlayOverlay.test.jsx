@@ -158,4 +158,33 @@ describe('PlayOverlay', () => {
     fireEvent.wheel(window, { deltaY: -100 })
     expect(img().src).toContain('a.jpg')
   })
+
+  it('clicking a breadcrumb starts a new scan and pins the current image until navigation', async () => {
+    setup()
+    render(<PlayOverlay {...defaultProps} />)
+    await act(async () => {})
+    act(() => {
+      onMediaFoundCb?.({ files: [
+        { path: '/photos/2025/vacation/img.jpg', size: 0, mtime: 0, type: 'image' },
+      ] })
+    })
+    const img = () => screen.getByRole('img')
+    expect(img().src).toContain('img.jpg')
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos', { recursive: true })
+
+    fireEvent.click(screen.getByRole('button', { name: '2025' }))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos/2025', { recursive: true })
+    expect(img().src).toContain('img.jpg')
+
+    act(() => {
+      onMediaFoundCb?.({ files: [
+        { path: '/photos/2025/spring.jpg', size: 0, mtime: 0, type: 'image' },
+      ] })
+    })
+    expect(img().src).toContain('img.jpg')
+
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    expect(img().src).toContain('spring.jpg')
+  })
 })
