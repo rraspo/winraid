@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, AlertTriangle, Loader, FolderPlus, List, LayoutGrid,
-  Trash2, FolderInput, X as XIcon,
+  Trash2, FolderInput, X as XIcon, Play,
 } from 'lucide-react'
 import styles from './BrowseView.module.css'
 import { formatSize } from '../utils/format'
@@ -17,6 +17,7 @@ import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
 import { useBrowse } from '../hooks/useBrowse'
+import PlayOverlay from '../components/PlayOverlay'
 
 export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
@@ -50,6 +51,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
   const sftpCfg = (connections ?? []).find((c) => c.id === selectedId)?.sftp ?? null
 
   const [diskUsage, setDiskUsage] = useState(null)
+  const [showPlay, setShowPlay] = useState(false)
 
   useEffect(() => {
     if (!selectedId) return
@@ -97,6 +99,13 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
             onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
             setDeleteTarget(target)
           }}
+        />
+      )}
+      {showPlay && (
+        <PlayOverlay
+          connectionId={selectedId}
+          path={path}
+          onClose={() => setShowPlay(false)}
         />
       )}
       {confirmTarget && (
@@ -189,6 +198,15 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               disabled={loading || noConfig}
             >
               <RefreshCw size={13} className={loading ? styles.spinning : ''} />
+            </button>
+          </Tooltip>
+          <Tooltip tip="Play media slideshow" side="bottom">
+            <button
+              className={styles.playBtn}
+              onClick={() => setShowPlay(true)}
+              aria-label="Play media slideshow"
+            >
+              <Play size={14} />
             </button>
           </Tooltip>
         </div>

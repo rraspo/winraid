@@ -19,7 +19,7 @@ import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { validateRemotePath } from './validation.js'
-import { sftpRmRf, backupWalkRemote, remoteWalkCreate } from './sftp-helpers.js'
+import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
 import { execWithTimeout } from './exec-helpers.js'
 
 // ---------------------------------------------------------------------------
@@ -64,6 +64,9 @@ let _queue   = null
 
 /** Active size scans: connectionId → { cancelled: boolean } */
 const _sizeScans = new Map()
+
+/** Active media scans: connectionId → AbortController */
+const _mediaScans = new Map()
 
 /**
  * Run `du -sk <path>/*` via SSH exec on an already-pooled client.
@@ -1440,6 +1443,70 @@ function registerIPC() {
     }
     const scanState = _sizeScans.get(connectionId)
     if (scanState) scanState.cancelled = true
+    return { ok: true }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Remote: media scan — BFS walk emitting image/video paths
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('remote:media-scan', async (_e, connectionId, remotePath, opts) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) {
+      return { ok: false, error: 'Invalid connectionId' }
+    }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+
+    const recursive = opts?.recursive !== false
+
+    const existing = _mediaScans.get(connectionId)
+    if (existing) existing.abort()
+
+    const ac = new AbortController()
+    _mediaScans.set(connectionId, ac)
+
+    const sftp = await _poolGet(connectionId)
+    if (!sftp) {
+      _mediaScans.delete(connectionId)
+      return { ok: false, error: 'Connection unavailable' }
+    }
+    _poolTouch(connectionId)
+
+    const startTime = Date.now()
+    let totalMatches = 0
+
+    try {
+      await mediaWalk(sftp, remotePath, {
+        recursive,
+        signal: ac.signal,
+        onBatch(files) {
+          if (_mediaScans.get(connectionId) !== ac) return
+          totalMatches += files.length
+          sendToRenderer('media:found', { files })
+        },
+        onError({ path, code, msg }) {
+          if (_mediaScans.get(connectionId) !== ac) return
+          sendToRenderer('media:error', { path, code, msg })
+          log('warn', `media:scan dir error [${connectionId}] ${path}: ${msg}`)
+        },
+      })
+
+      if (_mediaScans.get(connectionId) === ac) {
+        sendToRenderer('media:done', { totalMatches, durationMs: Date.now() - startTime })
+        _mediaScans.delete(connectionId)
+      }
+      return { ok: true }
+    } catch (err) {
+      if (_mediaScans.get(connectionId) === ac) _mediaScans.delete(connectionId)
+      sendToRenderer('media:error', { path: remotePath, code: err.code, msg: err.message })
+      log('error', `media:scan failed [${connectionId}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('remote:media-cancel', (_e, connectionId) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false }
+    const ac = _mediaScans.get(connectionId)
+    if (ac) ac.abort()
     return { ok: true }
   })
 
