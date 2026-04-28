@@ -12,11 +12,13 @@ const ENTRY_PATHS = { 'a.txt': '/foo/a.txt', 'b.txt': '/foo/b.txt', 'sub': '/foo
 function setup({ selected = new Set(), viewMode = 'list' } = {}) {
   const fetchDir = vi.fn()
   const navigate = vi.fn()
+  const clearSelection = vi.fn()
   window.winraid = { remote: { move: vi.fn().mockResolvedValue({ ok: true }) } }
   const entriesWithPaths = ENTRIES.map((e) => ({ ...e, entryPath: ENTRY_PATHS[e.name] }))
   return {
     fetchDir,
     navigate,
+    clearSelection,
     ...renderHook(() =>
       useDragDrop({
         selected,
@@ -26,6 +28,7 @@ function setup({ selected = new Set(), viewMode = 'list' } = {}) {
         viewMode,
         fetchDir,
         navigate,
+        clearSelection,
       })
     ),
   }
@@ -123,6 +126,40 @@ describe('handleDrop', () => {
     })
 
     expect(result.current.dragSource).toBeNull()
+  })
+
+  it('calls clearSelection after a committed drop', async () => {
+    const { result, clearSelection } = setup({ selected: new Set(['a.txt', 'b.txt']) })
+    const entry = { name: 'a.txt', type: 'file', size: 100, modified: Date.now() }
+
+    act(() => result.current.handleDragStart(
+      { dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() }, preventDefault: vi.fn() },
+      entry,
+      '/foo/a.txt',
+    ))
+
+    await act(async () => {
+      await result.current.handleDrop({ preventDefault: vi.fn() }, '/foo/sub')
+    })
+
+    expect(clearSelection).toHaveBeenCalled()
+  })
+
+  it('does not call clearSelection when drop is cancelled (target is source)', async () => {
+    const { result, clearSelection } = setup()
+    const entry = { name: 'sub', type: 'dir', size: 0, modified: Date.now() }
+
+    act(() => result.current.handleDragStart(
+      { dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() }, preventDefault: vi.fn() },
+      entry,
+      '/foo/sub',
+    ))
+
+    await act(async () => {
+      await result.current.handleDrop({ preventDefault: vi.fn() }, '/foo/sub')
+    })
+
+    expect(clearSelection).not.toHaveBeenCalled()
   })
 
   it('does not move when target is the source itself', async () => {
