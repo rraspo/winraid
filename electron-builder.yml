@@ -30,12 +30,11 @@ win:
   icon: assets/winraid_icon.ico
 
 nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  oneClick: true
+  perMachine: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
   uninstallDisplayName: WinRaid
-  perMachine: false
   artifactName: WinRaid-Setup-${version}.exe
 
 # Auto-updater publishes to GitHub Releases.
