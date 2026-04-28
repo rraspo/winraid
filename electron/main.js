@@ -2009,7 +2009,7 @@ function registerUpdateIPC() {
 
   ipcMain.handle('update:install', () => {
     if (!_autoUpdater) return
-    _autoUpdater.quitAndInstall(false, true)
+    _autoUpdater.quitAndInstall(true, true)
   })
 }
 
