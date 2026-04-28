@@ -489,6 +489,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     fetchDir,
     navigate,
     setStatus,
+    clearSelection: selection.clearSelection,
   })
 
   // Counter tracks how many nested dragenter/dragleave pairs are in flight.
@@ -624,9 +625,11 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setBulkAction(null)
     setOpInFlight(true)
     setStatus(null)
+    const targets = selectedEntries
+    selection.clearSelection()
     let ok = 0, fail = 0
     const deletedNames = new Set()
-    for (const entry of selectedEntries) {
+    for (const entry of targets) {
       if (cancelledRef.current) break
       const entryPath = joinRemote(path, entry.name)
       const isDir = entry.type === 'dir'
@@ -636,7 +639,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
-    selection.clearSelection()
     if (cacheMutRef.current === 'update') {
       setEntries((prev) => prev.filter((e) => !deletedNames.has(e.name)))
       remoteFS.update(selectedId, path, (entries) => entries.filter((e) => !deletedNames.has(e.name)))
@@ -657,9 +659,11 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setBulkMoveDest('')
     setOpInFlight(true)
     setStatus(null)
+    const targets = selectedEntries
+    selection.clearSelection()
     let ok = 0, fail = 0
     const movedNames = new Set()
-    for (const entry of selectedEntries) {
+    for (const entry of targets) {
       if (cancelledRef.current) break
       const srcPath = joinRemote(path, entry.name)
       const dstPath = joinRemote(dest, entry.name)
@@ -670,7 +674,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
-    selection.clearSelection()
     if (cacheMutRef.current === 'update') {
       setEntries((prev) => prev.filter((e) => !movedNames.has(e.name)))
       remoteFS.update(selectedId, path, (entries) => entries.filter((e) => !movedNames.has(e.name)))
@@ -688,8 +691,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     if (!selectedId || !localFolder) return
     setOpInFlight(true)
     setStatus(null)
+    const targets = selectedEntries
+    selection.clearSelection()
     let ok = 0, fail = 0
-    for (const entry of selectedEntries) {
+    for (const entry of targets) {
       if (cancelledRef.current) break
       const entryPath = joinRemote(path, entry.name)
       const res = await window.winraid?.remote.checkout(selectedId, entryPath, localFolder)
@@ -698,7 +703,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
-    selection.clearSelection()
     if (fail === 0) {
       setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''}` })
     } else {

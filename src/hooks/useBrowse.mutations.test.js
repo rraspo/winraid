@@ -39,6 +39,7 @@ beforeEach(() => {
       delete: vi.fn().mockResolvedValue({ ok: true }),
       move: vi.fn().mockResolvedValue({ ok: true }),
       mkdir: vi.fn().mockResolvedValue({ ok: true }),
+      checkout: vi.fn().mockResolvedValue({ ok: true, created: [] }),
       readFile: vi.fn().mockResolvedValue({ ok: false, content: '' }),
       onDownloadProgress: vi.fn().mockReturnValue(() => {}),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, clean: true }),
@@ -166,5 +167,65 @@ describe('handleBulkMove', () => {
     await act(async () => result.current.setBulkMoveDest('/media/archive'))
     await act(() => result.current.handleBulkMove())
     expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
+  })
+})
+
+describe('selection clearing after bulk operations', () => {
+  it('handleBulkDelete clears selection after running', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+      { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries.length).toBe(2)
+    })
+    await act(async () => result.current.toggleSelectAll())
+    await waitFor(() => expect(result.current.selected.size).toBe(2))
+    await act(() => result.current.handleBulkDelete())
+    expect(result.current.selected.size).toBe(0)
+  })
+
+  it('handleBulkMove clears selection after running', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+      { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries.length).toBe(2)
+    })
+    await act(async () => result.current.toggleSelectAll())
+    await waitFor(() => expect(result.current.selected.size).toBe(2))
+    await act(async () => result.current.setBulkMoveDest('/media/archive'))
+    await act(() => result.current.handleBulkMove())
+    expect(result.current.selected.size).toBe(0)
+  })
+
+  it('handleBulkCheckout clears selection after running', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+      { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries.length).toBe(2)
+    })
+    await act(async () => result.current.toggleSelectAll())
+    await waitFor(() => expect(result.current.selected.size).toBe(2))
+    await act(() => result.current.handleBulkCheckout())
+    expect(result.current.selected.size).toBe(0)
   })
 })

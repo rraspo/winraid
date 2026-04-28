@@ -60,7 +60,7 @@ function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
 }
 
-export function useDragDrop({ selected, entries, selectedId, path, viewMode, fetchDir, navigate = () => {}, setStatus }) {
+export function useDragDrop({ selected, entries, selectedId, path, viewMode, fetchDir, navigate = () => {}, setStatus, clearSelection = () => {} }) {
   const [dragSource,   setDragSource]   = useState(null)
   const [moveInFlight, setMoveInFlight] = useState(null)
 
@@ -156,6 +156,7 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
 
     dragSourceRef.current = null
     setDragSource(null)
+    clearSelection()
 
     const firstName = src.entries[0]?.name ?? ''
     const label = src.entries.length > 1 ? `${src.entries.length} items` : firstName
@@ -178,7 +179,7 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     } else {
       setStatus?.({ ok: true, msg: `Moved ${label}` })
     }
-  }, [selectedId, fetchDir, setStatus])
+  }, [selectedId, fetchDir, setStatus, clearSelection])
 
   return {
     dragSource,
