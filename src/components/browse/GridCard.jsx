@@ -15,9 +15,13 @@ const GridCard = memo(function GridCard({
 }) {
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
-    : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" />
+    : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" modified={entry.modified} />
 
   function handleCardClick(e) {
+    // Drop the 2nd+ click of a double-click — the row at this DOM position
+    // becomes a different file after click 1 navigates / opens, and letting
+    // click 2 through would target the wrong path.
+    if (e.detail > 1) return
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       onItemPointer(index, { ctrl: true })

@@ -123,6 +123,106 @@
   background: var(--bg-hover);
 }
 
+.fileMenuBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Inline crop toolbar (shown next to top-bar buttons in crop mode) ── */
+.cropToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.cropToolbarLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  margin-right: var(--space-1);
+}
+
+.cropAspectBtn {
+  height: 26px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: var(--bg-card);
+  transition: color var(--transition), background var(--transition);
+}
+
+.cropAspectBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.cropAspectBtnActive {
+  color: var(--text);
+  background: var(--accent-subtle);
+}
+
+.cropAspectBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cropError {
+  font-size: var(--font-size-xs);
+  color: var(--danger, #f87171);
+  padding: 0 var(--space-2);
+}
+
+.cropCancelBtn,
+.cropSaveBtn,
+.cropOverwriteBtn {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  transition: opacity var(--transition), background var(--transition);
+}
+
+.cropCancelBtn {
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.cropCancelBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.cropSaveBtn {
+  color: var(--text);
+  background: var(--bg-card);
+}
+
+.cropSaveBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.cropOverwriteBtn {
+  color: #fff;
+  background: var(--accent);
+}
+
+.cropOverwriteBtn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.cropCancelBtn:disabled,
+.cropSaveBtn:disabled,
+.cropOverwriteBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .fileMenuDrop {
   position: absolute;
   top: calc(100% + 4px);
@@ -267,8 +367,23 @@
 }
 
 .previewImage {
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  display: block;
+}
+
+/* Crop mode: ReactCrop's wrapper hugs the image so the crop overlay matches
+   the image's bounds exactly. The img's max-width/max-height are set inline
+   in pixels by JS (via ResizeObserver on mediaWrap) so the chain doesn't
+   need to traverse ReactCrop's inline-block child-wrapper. */
+.cropImage {
+  width: auto;
+  height: auto;
   object-fit: contain;
   border-radius: var(--radius-md);
   box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
@@ -445,4 +560,26 @@
   border-radius: var(--radius-xl);
   pointer-events: none;
   user-select: none;
+}
+
+.snapToast {
+  position: absolute;
+  top: var(--space-5);
+  right: var(--space-5);
+  background: rgba(0, 0, 0, 0.78);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: var(--font-size-sm);
+  pointer-events: none;
+  animation: snapToastFade 2.2s ease forwards;
+  z-index: 5;
+}
+
+@keyframes snapToastFade {
+  0%   { opacity: 0; transform: translateY(-4px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  85%  { opacity: 1; }
+  100% { opacity: 0; }
 }

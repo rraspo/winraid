@@ -229,3 +229,122 @@ describe('selection clearing after bulk operations', () => {
     expect(result.current.selected.size).toBe(0)
   })
 })
+
+describe('handlePasteImage / handleConfirmPaste / handleDiscardPaste', () => {
+  let createObjectURL, revokeObjectURL
+  beforeEach(() => {
+    createObjectURL = vi.fn(() => 'blob:fake')
+    revokeObjectURL = vi.fn()
+    Object.defineProperty(globalThis, 'URL', {
+      configurable: true,
+      value: { ...globalThis.URL, createObjectURL, revokeObjectURL },
+    })
+  })
+
+  it('handlePasteImage stages the blob without writing', async () => {
+    window.winraid.remote.writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
+
+    const blob = new Blob(['x'], { type: 'image/png' })
+    await act(() => result.current.handlePasteImage(blob))
+
+    expect(result.current.pendingPaste).toBeTruthy()
+    expect(result.current.pendingPaste.previewUrl).toBe('blob:fake')
+    expect(result.current.pendingPaste.mime).toBe('image/png')
+    expect(window.winraid.remote.writeFileBinary).not.toHaveBeenCalled()
+  })
+
+  it('handleConfirmPaste writes the staged blob and clears pendingPaste', async () => {
+    window.winraid.remote.list = vi.fn().mockResolvedValue({ ok: true, entries: [] })
+    window.winraid.remote.writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+    window.winraid.cache = { invalidateFile: vi.fn().mockResolvedValue({ ok: true }) }
+
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
+
+    const blob = new Blob(['x'], { type: 'image/png' })
+    await act(() => result.current.handlePasteImage(blob))
+    await act(() => result.current.handleConfirmPaste())
+
+    expect(window.winraid.remote.writeFileBinary).toHaveBeenCalledTimes(1)
+    const [, dest] = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(dest).toMatch(/\/pasted_\d{4}-\d{2}-\d{2}_\d{6}\.png$/)
+    expect(result.current.pendingPaste).toBeNull()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake')
+  })
+
+  it('handlePasteUrl fetches via IPC and stages with suggestedName + sourceUrl', async () => {
+    const fakeBytes = new ArrayBuffer(8)
+    window.winraid.url = {
+      fetch: vi.fn().mockResolvedValue({
+        ok: true,
+        mime: 'image/png',
+        filename: 'logo.png',
+        bytes: fakeBytes,
+      }),
+    }
+
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
+
+    await act(() => result.current.handlePasteUrl('https://example.com/logo.png'))
+
+    expect(window.winraid.url.fetch).toHaveBeenCalledWith('https://example.com/logo.png')
+    expect(result.current.pendingPaste).toBeTruthy()
+    expect(result.current.pendingPaste.mime).toBe('image/png')
+    expect(result.current.pendingPaste.suggestedName).toBe('logo.png')
+    expect(result.current.pendingPaste.sourceUrl).toBe('https://example.com/logo.png')
+  })
+
+  it('handleConfirmPaste uses suggestedName when present (no timestamp prefix)', async () => {
+    const fakeBytes = new ArrayBuffer(4)
+    window.winraid.url = {
+      fetch: vi.fn().mockResolvedValue({ ok: true, mime: 'image/png', filename: 'pic.png', bytes: fakeBytes }),
+    }
+    window.winraid.remote.list = vi.fn().mockResolvedValue({ ok: true, entries: [] })
+    window.winraid.remote.writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+    window.winraid.cache = { invalidateFile: vi.fn().mockResolvedValue({ ok: true }) }
+
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
+
+    await act(() => result.current.handlePasteUrl('https://example.com/pic.png'))
+    await act(() => result.current.handleConfirmPaste())
+
+    const [, dest] = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(dest).toMatch(/\/pic\.png$/)
+  })
+
+  it('handleDiscardPaste clears pendingPaste without writing', async () => {
+    window.winraid.remote.writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
+
+    const blob = new Blob(['x'], { type: 'image/png' })
+    await act(() => result.current.handlePasteImage(blob))
+    expect(result.current.pendingPaste).toBeTruthy()
+
+    await act(() => result.current.handleDiscardPaste())
+    expect(result.current.pendingPaste).toBeNull()
+    expect(window.winraid.remote.writeFileBinary).not.toHaveBeenCalled()
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:fake')
+  })
+})

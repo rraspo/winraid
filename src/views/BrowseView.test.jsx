@@ -493,7 +493,7 @@ describe('External file drop (from Explorer)', () => {
       value: {
         types:   hasFiles ? ['Files'] : ['text/plain'],
         files:   hasFiles
-          ? [Object.assign(new File([''], 'photo.jpg'), { path: 'C:\\Users\\porras\\Pictures\\photo.jpg' })]
+          ? [Object.assign(new File([''], 'photo.jpg'), { path: 'C:\\Users\\test\\Pictures\\photo.jpg' })]
           : [],
         preventDefault: () => {},
       },
@@ -554,7 +554,7 @@ describe('External file drop (from Explorer)', () => {
       expect(dropUpload).toHaveBeenCalledWith(
         'conn-1',
         '/mnt/user/data',
-        ['C:\\Users\\porras\\Pictures\\photo.jpg'],
+        ['C:\\Users\\test\\Pictures\\photo.jpg'],
       )
     )
   })

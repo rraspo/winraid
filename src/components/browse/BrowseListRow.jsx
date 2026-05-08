@@ -17,10 +17,15 @@ const BrowseListRow = memo(function BrowseListRow({
   const icon = isDir
     ? <Folder size={14} className={styles.iconDir} />
     : (isImageFile(entry.name) || isVideoFile(entry.name))
-      ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="list" />
+      ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="list" modified={entry.modified} />
       : <File size={14} className={styles.iconFile} />
 
   function handleRowClick(e) {
+    // Ignore the 2nd+ click of a double-click. After click 1 navigates, the
+    // entries list re-renders so the row at the same DOM position now belongs
+    // to a different file — letting click 2 through would navigate into a
+    // wrong (often nonexistent) path.
+    if (e.detail > 1) return
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault()
       onItemPointer(index, { ctrl: true })

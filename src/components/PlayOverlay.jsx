@@ -58,10 +58,10 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
       if (e.deltaY > 0) handleNext()
       else if (e.deltaY < 0) handlePrev()
     }
-    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, true)
     window.addEventListener('wheel', onWheel)
     return () => {
-      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('wheel', onWheel)
     }
   }, [pinnedFile, next, prev, onClose])

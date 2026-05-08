@@ -6,7 +6,9 @@ import {
   session,
   Tray,
   Menu,
+  MenuItem,
   nativeImage,
+  clipboard,
   dialog,
   shell,
   Notification,
@@ -239,6 +241,61 @@ function createWindow() {
       console.warn(`[main] Renderer gone (${reason}) — reloading`)
       mainWindow.webContents.reload()
     }
+  })
+
+  // Native right-click context menu for nas-stream:// images.
+  // Mirrors Chrome's image right-click behaviour (Copy image, Copy address).
+  function popupImageContextMenu(connId, remotePath) {
+    if (!connId || !validateRemotePath(remotePath)) return
+    const menu = new Menu()
+    menu.append(new MenuItem({
+      label: 'Copy image',
+      click: async () => {
+        try {
+          const sftp = await _poolGet(connId)
+          if (!sftp) return
+          _poolTouch(connId)
+          const buf = await new Promise((resolve, reject) => {
+            const chunks = []
+            const stream = sftp.createReadStream(remotePath)
+            stream.on('data', (c) => chunks.push(c))
+            stream.on('end',  () => resolve(Buffer.concat(chunks)))
+            stream.on('error', reject)
+          })
+          const img = nativeImage.createFromBuffer(buf)
+          if (img.isEmpty()) {
+            log('warn', `Copy image: nativeImage failed to decode ${remotePath}`)
+            return
+          }
+          clipboard.writeImage(img)
+          log('info', `Copied image to clipboard [${connId}]: ${remotePath}`)
+        } catch (err) {
+          log('error', `Copy image failed [${connId}] ${remotePath}: ${err.message}`)
+        }
+      },
+    }))
+    menu.append(new MenuItem({
+      label: 'Copy image address',
+      click: () => clipboard.writeText(remotePath),
+    }))
+    menu.popup({ window: mainWindow })
+  }
+
+  // Fires automatically for thumbnails — the img src is a real nas-stream:// URL.
+  mainWindow.webContents.on('context-menu', (_e, params) => {
+    if (params.mediaType !== 'image') return
+    const srcURL = params.srcURL || ''
+    if (!srcURL.startsWith('nas-stream://')) return
+    const url = new URL(srcURL)
+    popupImageContextMenu(url.hostname, decodeURIComponent(url.pathname))
+  })
+
+  // Fallback for cases where the img.src is a blob: URL (e.g. QuickLook's
+  // ImagePreview swaps to a blob URL after streaming the response). The
+  // renderer calls this directly with the canonical connId + remotePath.
+  ipcMain.handle('image:context-menu', (_e, connectionId, remotePath) => {
+    popupImageContextMenu(connectionId, remotePath)
+    return { ok: true }
   })
 
   // app.isPackaged is false during `electron-vite dev`, true in built .exe
@@ -803,6 +860,54 @@ function registerIPC() {
     }
   })
 
+  // -- Fetch a remote URL (http/https) and return its bytes + content-type ----
+  // Used by the paste-from-URL flow so the renderer can preview and save
+  // arbitrary remote content (images, videos, generic files) without dealing
+  // with CORS in the renderer.
+  ipcMain.handle('url:fetch', async (_e, url) => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+      return { ok: false, error: 'Only http(s) URLs are supported' }
+    }
+    try {
+      const res = await fetch(url, { redirect: 'follow' })
+      if (!res.ok) return { ok: false, error: `HTTP ${res.status} ${res.statusText}` }
+
+      const ab = await res.arrayBuffer()
+      if (ab.byteLength > 100 * 1024 * 1024) return { ok: false, error: 'Payload too large (max 100 MB)' }
+
+      const rawMime = res.headers.get('content-type') ?? 'application/octet-stream'
+      const mime    = rawMime.split(';')[0].trim()
+
+      let filename = ''
+      const cd = res.headers.get('content-disposition')
+      if (cd) {
+        const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i)
+        if (m) { try { filename = decodeURIComponent(m[1]) } catch { filename = m[1] } }
+      }
+      if (!filename) {
+        try {
+          const u = new URL(url)
+          filename = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() ?? '')
+        } catch {}
+      }
+
+      return { ok: true, mime, filename, bytes: ab }
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Invalidate the on-disk full + thumb cache for a single remote path -----
+  // Used after a remote-mutating operation (e.g. crop save) so the next
+  // request streams fresh bytes from SFTP rather than serving the stale copy.
+  ipcMain.handle('cache:invalidate-file', async (_e, connectionId, remotePath) => {
+    if (typeof connectionId !== 'string' || !connectionId) return { ok: false, error: 'Invalid connection' }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    await unlinkAsync(fullCachePath(connectionId, remotePath)).catch(() => {})
+    await unlinkAsync(thumbCachePath(connectionId, remotePath)).catch(() => {})
+    return { ok: true }
+  })
+
   // -- SSH: test connection ---------------------------------------------------
   ipcMain.handle('ssh:test', async (_e, cfg) => {
     try {
@@ -1296,6 +1401,73 @@ function registerIPC() {
       return result
     } catch (err) {
       log('error', `Remote write failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote browser: write binary file content (e.g. cropped image) --------
+  ipcMain.handle('remote:write-file-binary', async (_e, connectionId, remotePath, data, opts = {}) => {
+    if (typeof connectionId !== 'string' || !connectionId) return { ok: false, error: 'Invalid connection' }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    const buf = Buffer.isBuffer(data) ? data
+              : data instanceof Uint8Array ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+              : data instanceof ArrayBuffer ? Buffer.from(data)
+              : null
+    if (!buf) return { ok: false, error: 'Invalid payload' }
+    if (buf.length === 0) return { ok: false, error: 'Empty payload' }
+    if (buf.length > 100 * 1024 * 1024) return { ok: false, error: 'Payload too large (max 100 MB)' }
+
+    try {
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+
+      const writeOpts = { flag: 'w', mode: 0o644 }
+      const target = opts?.atomic ? `${remotePath}.winraid-tmp-${process.pid}-${Date.now()}` : remotePath
+
+      const written = await new Promise((resolve) => {
+        sftp.writeFile(target, buf, writeOpts, (err) => {
+          if (err) return resolve({ ok: false, error: err.message })
+          resolve({ ok: true })
+        })
+      })
+      if (!written.ok) {
+        if (opts?.atomic) sftp.unlink(target, () => {})
+        log('error', `Remote binary write failed [${await _connLabel(connectionId)}]: ${remotePath} — ${written.error}`)
+        return written
+      }
+
+      if (opts?.atomic) {
+        const renamed = await new Promise((resolve) => {
+          sftp.rename(target, remotePath, (err) => {
+            if (!err) return resolve({ ok: true })
+            // Some servers reject rename when target exists — unlink + rename
+            sftp.unlink(remotePath, (unlinkErr) => {
+              if (unlinkErr) {
+                sftp.unlink(target, () => {})
+                return resolve({ ok: false, error: unlinkErr.message })
+              }
+              sftp.rename(target, remotePath, (err2) => {
+                if (err2) {
+                  sftp.unlink(target, () => {})
+                  return resolve({ ok: false, error: err2.message })
+                }
+                resolve({ ok: true })
+              })
+            })
+          })
+        })
+        if (!renamed.ok) {
+          log('error', `Remote binary rename failed [${await _connLabel(connectionId)}]: ${remotePath} — ${renamed.error}`)
+          return renamed
+        }
+      }
+
+      _poolTouch(connectionId)
+      log('info', `Remote binary written [${await _connLabel(connectionId)}]: ${remotePath} (${buf.length} bytes)`)
+      return { ok: true }
+    } catch (err) {
+      log('error', `Remote binary write failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -2413,8 +2585,14 @@ function registerNasStreamProtocol() {
       // No Range + full file (full-res image or non-image)
       // Check the full-res disk cache first; on a miss, buffer from SFTP,
       // persist both the full-res copy and (if absent) the thumbnail, then serve.
+      // If the request URL has ?bust=..., invalidate the disk cache so we read
+      // fresh bytes (used after overwrite-saves like the crop feature).
+      const bustRequest = url.searchParams.has('bust')
       const fcp    = fullCachePath(connId, remotePath)
-      const cached = await readFileAsync(fcp).catch(() => null)
+      if (bustRequest) {
+        await unlinkAsync(fcp).catch(() => {})
+      }
+      const cached = bustRequest ? null : await readFileAsync(fcp).catch(() => null)
       if (cached) {
         return new Response(cached, {
           status: 200,

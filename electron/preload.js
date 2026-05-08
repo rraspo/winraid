@@ -30,6 +30,8 @@ contextBridge.exposeInMainWorld('winraid', {
     thumbSize:   () => ipcRenderer.invoke('cache:thumb-size'),
     /** Delete all cached thumbnails. */
     clearThumbs: () => ipcRenderer.invoke('cache:clear-thumbs'),
+    /** Invalidate the on-disk full+thumb cache for a single remote file (after a mutation). */
+    invalidateFile: (connectionId, remotePath) => ipcRenderer.invoke('cache:invalidate-file', connectionId, remotePath),
   },
 
   // -- Config --------------------------------------------------------------
@@ -45,6 +47,14 @@ contextBridge.exposeInMainWorld('winraid', {
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
   /** Opens a save dialog (for files) or folder picker (for dirs). Resolves to chosen path or null. */
   selectDownloadPath: (defaultName, isDir) => ipcRenderer.invoke('dialog:select-download-path', defaultName, isDir),
+  /** Pop up the native right-click image context menu (Copy image, Copy address) for a remote path. */
+  showImageContextMenu: (connectionId, remotePath) => ipcRenderer.invoke('image:context-menu', connectionId, remotePath),
+
+  // -- URL fetch (paste-from-URL flow) -------------------------------------
+  url: {
+    /** Fetch an http(s) URL via the main process. Returns { ok, mime, filename, bytes }. */
+    fetch: (url) => ipcRenderer.invoke('url:fetch', url),
+  },
 
   // -- Watcher -------------------------------------------------------------
   watcher: {
@@ -179,6 +189,8 @@ contextBridge.exposeInMainWorld('winraid', {
     readFile: (connectionId, path) => ipcRenderer.invoke('remote:read-file', connectionId, path),
     /** Write UTF-8 text content to a remote file. */
     writeFile: (connectionId, path, content) => ipcRenderer.invoke('remote:write-file', connectionId, path, content),
+    /** Write binary content (ArrayBuffer/Uint8Array/Buffer) to a remote file. opts.atomic uses tmp+rename for overwrite safety. */
+    writeFileBinary: (connectionId, path, data, opts) => ipcRenderer.invoke('remote:write-file-binary', connectionId, path, data, opts),
     /** Delete a remote file or directory tree. */
     delete: (connectionId, path, isDir) => ipcRenderer.invoke('remote:delete', connectionId, path, isDir),
     /** Move / rename a remote path via SFTP rename. */

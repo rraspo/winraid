@@ -14,6 +14,10 @@ export function createWinraidMock(overrides = {}) {
     getVersion: vi.fn().mockResolvedValue('1.1.0'),
     getPathForFile: vi.fn((f) => f?.path ?? ''),
     selectFolder: vi.fn().mockResolvedValue(null),
+    showImageContextMenu: vi.fn().mockResolvedValue({ ok: true }),
+    url: {
+      fetch: vi.fn().mockResolvedValue({ ok: true, mime: 'image/png', filename: 'fetched.png', bytes: new ArrayBuffer(4) }),
+    },
 
     config: {
       get: vi.fn().mockResolvedValue({}),
@@ -24,6 +28,7 @@ export function createWinraidMock(overrides = {}) {
     cache: {
       thumbSize: vi.fn().mockResolvedValue({ bytes: 0 }),
       clearThumbs: vi.fn().mockResolvedValue(undefined),
+      invalidateFile: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.cache,
     },
 
@@ -91,6 +96,7 @@ export function createWinraidMock(overrides = {}) {
       checkout: vi.fn().mockResolvedValue({ ok: true, created: [] }),
       readFile: vi.fn().mockResolvedValue({ ok: true, content: '' }),
       writeFile: vi.fn().mockResolvedValue({ ok: true }),
+      writeFileBinary: vi.fn().mockResolvedValue({ ok: true }),
       delete: vi.fn().mockResolvedValue({ ok: true }),
       move: vi.fn().mockResolvedValue({ ok: true }),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, total: 0, confirmed: [], notFound: [] }),

@@ -4,10 +4,11 @@ import VideoThumb from './VideoThumb'
 import { isImageFile, isVideoFile } from '../../utils/fileTypes'
 import styles from './Thumbnail.module.css'
 
-const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size }) {
+const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size, modified }) {
   const [error, setError] = useState(false)
   const encodedPath = remotePath.split('/').map(encodeURIComponent).join('/')
-  const url    = `nas-stream://${connectionId}${encodedPath}?thumb=1`
+  const ver    = modified ? `&v=${modified}` : ''
+  const url    = `nas-stream://${connectionId}${encodedPath}?thumb=1${ver}`
   const isGrid = size === 'grid'
 
   if (!error && isImageFile(name)) {

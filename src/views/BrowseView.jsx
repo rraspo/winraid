@@ -13,6 +13,7 @@ import MoveModal from '../components/modals/MoveModal'
 import ConfirmModal from '../components/modals/ConfirmModal'
 import BulkDeleteModal from '../components/modals/BulkDeleteModal'
 import BulkMoveModal from '../components/modals/BulkMoveModal'
+import PasteImageModal from '../components/modals/PasteImageModal'
 import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
@@ -37,6 +38,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     handleDownload,
     handleDelete, handleMove,
     handleBulkDelete, handleBulkMove, handleBulkCheckout, clearSelection,
+    handlePasteImage, handlePasteUrl, handleConfirmPaste, handleDiscardPaste, pendingPaste,
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
     handleItemPointer, toggleSelectAll,
     handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
@@ -62,6 +64,37 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       ?.catch(() => {})
     return () => { cancelled = true }
   }, [selectedId])
+
+  // Ctrl+V / Cmd+V to paste clipboard content into the current directory.
+  // Image bytes go through handlePasteImage; a URL string triggers an
+  // http(s) fetch via handlePasteUrl. Skipped when an input/textarea is
+  // focused so it doesn't interfere with text input.
+  useEffect(() => {
+    function onPaste(e) {
+      const tag = (e.target?.tagName ?? '').toLowerCase()
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return
+
+      const items = e.clipboardData?.items ?? []
+      for (const item of items) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const blob = item.getAsFile()
+          if (blob) {
+            e.preventDefault()
+            handlePasteImage(blob)
+            return
+          }
+        }
+      }
+
+      const text = (e.clipboardData?.getData('text/uri-list') || e.clipboardData?.getData('text/plain') || '').trim()
+      if (/^https?:\/\/\S+$/i.test(text)) {
+        e.preventDefault()
+        handlePasteUrl(text)
+      }
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [handlePasteImage, handlePasteUrl])
 
   return (
     <div
@@ -130,6 +163,13 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           sftpCfg={sftpCfg}
           onConfirm={handleMove}
           onCancel={() => setMoveTarget(null)}
+        />
+      )}
+      {pendingPaste && (
+        <PasteImageModal
+          pending={pendingPaste}
+          onConfirm={handleConfirmPaste}
+          onDiscard={handleDiscardPaste}
         />
       )}
       {bulkAction === 'delete' && (

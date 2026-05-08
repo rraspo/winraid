@@ -536,6 +536,144 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     await window.winraid?.queue.dropUpload(selectedId, pathRef.current, localPaths)
   }, [selectedId, mergerfsWarning])
 
+  // ── Paste image from clipboard ──────────────────────────────────────────────
+  // Two-stage: handlePasteImage stages the blob and produces a preview URL,
+  // PasteImageModal shows it to the user, then handleConfirmPaste writes it
+  // (or handleDiscardPaste cancels).
+  const [pendingPaste, setPendingPaste] = useState(null)
+  const pendingPasteRef = useRef(null)
+  pendingPasteRef.current = pendingPaste
+
+  function extensionForMime(mime) {
+    return ({
+      'image/png':       '.png',
+      'image/jpeg':      '.jpg',
+      'image/webp':      '.webp',
+      'image/gif':       '.gif',
+      'image/bmp':       '.bmp',
+      'image/svg+xml':   '.svg',
+      'video/mp4':       '.mp4',
+      'video/webm':      '.webm',
+      'video/quicktime': '.mov',
+      'audio/mpeg':      '.mp3',
+      'audio/wav':       '.wav',
+      'audio/ogg':       '.ogg',
+      'application/pdf': '.pdf',
+      'application/zip': '.zip',
+      'text/plain':      '.txt',
+    })[mime] ?? ''
+  }
+
+  function buildPastedName(pending, existingNames) {
+    // Prefer the suggested filename (from URL fetch) if it has a basename.
+    if (pending.suggestedName) {
+      const dot  = pending.suggestedName.lastIndexOf('.')
+      const stem = dot > 0 ? pending.suggestedName.slice(0, dot) : pending.suggestedName
+      const ext  = dot > 0 ? pending.suggestedName.slice(dot)    : (extensionForMime(pending.mime) || '')
+      let name = `${stem}${ext}`
+      for (let i = 2; existingNames.has(name) && i < 1000; i++) name = `${stem}_${i}${ext}`
+      return name
+    }
+    const ext = extensionForMime(pending.mime) || '.bin'
+    const now = new Date()
+    const pad = (n) => String(n).padStart(2, '0')
+    const stem = `pasted_${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`
+    let name = `${stem}${ext}`
+    for (let i = 2; existingNames.has(name) && i < 1000; i++) name = `${stem}_${i}${ext}`
+    return name
+  }
+
+  const handlePasteImage = useCallback((blob) => {
+    if (!selectedId || mergerfsWarning || !blob) return
+    // Replace any prior pending paste — revoke the old object URL.
+    if (pendingPasteRef.current?.previewUrl) {
+      URL.revokeObjectURL(pendingPasteRef.current.previewUrl)
+    }
+    setPendingPaste({
+      blob,
+      previewUrl: URL.createObjectURL(blob),
+      mime: blob.type || 'image/png',
+      size: blob.size,
+      dir: pathRef.current,
+    })
+  }, [selectedId, mergerfsWarning])
+
+  // Fetch a URL via main-process IPC and stage it in pendingPaste, same as
+  // handlePasteImage — the modal then previews it (image/video/generic file).
+  const handlePasteUrl = useCallback(async (url) => {
+    if (!selectedId || mergerfsWarning || !url) return
+    setStatus({ ok: true, msg: `Fetching ${url}…` })
+    try {
+      const res = await window.winraid?.url?.fetch?.(url)
+      if (!res?.ok) {
+        setStatus({ ok: false, msg: res?.error || 'Fetch failed' })
+        return
+      }
+      const blob = new Blob([res.bytes], { type: res.mime || 'application/octet-stream' })
+      if (pendingPasteRef.current?.previewUrl) {
+        URL.revokeObjectURL(pendingPasteRef.current.previewUrl)
+      }
+      setPendingPaste({
+        blob,
+        previewUrl:    URL.createObjectURL(blob),
+        mime:          blob.type || 'application/octet-stream',
+        size:          blob.size,
+        dir:           pathRef.current,
+        suggestedName: res.filename || '',
+        sourceUrl:     url,
+      })
+      setStatus(null)
+    } catch (err) {
+      setStatus({ ok: false, msg: err.message || 'Fetch failed' })
+    }
+  }, [selectedId, mergerfsWarning])
+
+  const handleDiscardPaste = useCallback(() => {
+    if (pendingPasteRef.current?.previewUrl) {
+      URL.revokeObjectURL(pendingPasteRef.current.previewUrl)
+    }
+    setPendingPaste(null)
+  }, [])
+
+  const handleConfirmPaste = useCallback(async () => {
+    const pending = pendingPasteRef.current
+    if (!pending || !selectedId) return
+
+    const dir = pending.dir
+    const list = await window.winraid?.remote.list(selectedId, dir)
+    const names = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+    const name = buildPastedName(pending, names)
+    const dest = dir.replace(/\/+$/, '') === '' ? `/${name}` : `${dir.replace(/\/+$/, '')}/${name}`
+
+    setOpInFlight(true)
+    setStatus(null)
+    try {
+      const buf = await pending.blob.arrayBuffer()
+      const res = await window.winraid?.remote.writeFileBinary(selectedId, dest, buf)
+      if (!res?.ok) throw new Error(res?.error ?? 'Write failed')
+      await window.winraid?.cache.invalidateFile(selectedId, dest)
+      remoteFS.invalidate(selectedId, dir)
+      // Re-fetch the listing AND push it into useBrowse's local `entries`
+      // state so BrowseView re-renders with the new file visible.
+      const fresh = await remoteFS.list(selectedId, dir).catch(() => null)
+      if (fresh && dir === pathRef.current) setEntries(fresh)
+      setHighlightFile(name)
+      setStatus({ ok: true, msg: `Pasted as ${name}` })
+      handleDiscardPaste()
+    } catch (err) {
+      setStatus({ ok: false, msg: err.message })
+    } finally {
+      setOpInFlight(false)
+    }
+  }, [selectedId, handleDiscardPaste])
+
+  // Revoke any pending blob URL when the hook unmounts.
+  useEffect(() => () => {
+    if (pendingPasteRef.current?.previewUrl) {
+      URL.revokeObjectURL(pendingPasteRef.current.previewUrl)
+    }
+  }, [])
+
   // Stable ref so the queue:updated subscription never needs to re-create just
   // because fetchDir changed — avoids missing the DONE event during re-renders.
   const fetchDirRef = useRef(fetchDir)
@@ -727,6 +865,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     handleCheckout, handleConfirm, handleSetRoot,
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,
+    handlePasteImage, handlePasteUrl, handleConfirmPaste, handleDiscardPaste, pendingPaste,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
     externalDropActive,
     mergerfsWarning,

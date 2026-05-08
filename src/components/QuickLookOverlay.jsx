@@ -1,10 +1,57 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera } from 'lucide-react'
+import ReactCrop from 'react-image-crop'
+import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
 import styles from './QuickLookOverlay.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt } from '../utils/fileTypes'
 import { nasStreamUrl } from '../utils/nasStream'
+import { computePan } from '../utils/panMath'
+import * as remoteFS from '../services/remoteFS'
+import {
+  cropMimeType,
+  cropCopyPath,
+  nextAvailableCopyPath,
+  fullImageCrop,
+  centeredAspectCrop,
+  rotateCropImage,
+  applyCropToImage,
+} from '../utils/cropHelpers'
+// Removed: ImageCropModal — crop is now inline in this overlay
+
+const CROP_ASPECTS = [
+  { label: 'Free',   value: undefined },
+  { label: '1:1',    value: 1 },
+  { label: '4:3',    value: 4 / 3 },
+  { label: '3:2',    value: 3 / 2 },
+  { label: '16:9',   value: 16 / 9 },
+]
+
+// Format a duration in seconds as HH-MM-SS for filenames (no colons).
+function formatVideoTimestamp(seconds) {
+  const total = Math.max(0, Math.floor(seconds || 0))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${pad(h)}-${pad(m)}-${pad(s)}`
+}
+
+// Capture the current frame of a <video> element to a PNG Blob.
+function captureVideoFrame(videoEl) {
+  return new Promise((resolve, reject) => {
+    if (!videoEl?.videoWidth || !videoEl?.videoHeight) {
+      reject(new Error('Video not ready'))
+      return
+    }
+    const canvas  = document.createElement('canvas')
+    canvas.width  = videoEl.videoWidth
+    canvas.height = videoEl.videoHeight
+    canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('toBlob failed')), 'image/png')
+  })
+}
 
 // ---------------------------------------------------------------------------
 // Preview sub-components
@@ -56,8 +103,12 @@ function ProgressRing({ progress }) {
   )
 }
 
-function ImagePreview({ src, size, zoom, pan, mediaRef }) {
-  const [activeSrc, setActiveSrc] = useState(src + '?thumb=1')
+function withThumb(url) {
+  return url + (url.includes('?') ? '&' : '?') + 'thumb=1'
+}
+
+function ImagePreview({ src, size, zoom, pan, mediaRef, onContextMenu }) {
+  const [activeSrc, setActiveSrc] = useState(withThumb(src))
   const [progress,  setProgress]  = useState(0)   // 0-1
   const [done,      setDone]      = useState(false)
 
@@ -77,7 +128,7 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
     }
 
     // Show thumb while full-res downloads
-    setActiveSrc(src + '?thumb=1')
+    setActiveSrc(withThumb(src))
     setProgress(0)
     setDone(false)
 
@@ -142,8 +193,53 @@ function ImagePreview({ src, size, zoom, pan, mediaRef }) {
         alt=""
         draggable={false}
         style={panStyle(zoom, pan)}
+        onContextMenu={onContextMenu}
       />
       {!done && size > 0 && <ProgressRing progress={progress} />}
+    </div>
+  )
+}
+
+function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onLoad, onContextMenu }) {
+  const wrapRef = useRef(null)
+  const [bounds, setBounds] = useState({ w: 0, h: 0 })
+
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!el) return
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      setBounds({ w: r.width, h: r.height })
+    }
+    measure()
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const imgStyle = bounds.w > 0
+    ? { maxWidth: bounds.w, maxHeight: bounds.h }
+    : { visibility: 'hidden' }
+
+  return (
+    <div className={styles.mediaWrap} ref={wrapRef}>
+      <ReactCrop
+        crop={crop}
+        onChange={onChange}
+        onComplete={onComplete}
+        {...(aspect !== undefined ? { aspect } : {})}
+      >
+        <img
+          ref={imgRef}
+          src={src}
+          alt=""
+          className={styles.cropImage}
+          draggable={false}
+          onLoad={onLoad}
+          style={imgStyle}
+          onContextMenu={onContextMenu}
+        />
+      </ReactCrop>
     </div>
   )
 }
@@ -367,6 +463,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   // Arrow key navigation + spacebar play/pause (Escape is handled in useBrowse)
   useEffect(() => {
     function onKeyDown(e) {
+      // While cropping, lock everything except Escape (which exits crop mode)
+      if (latestRef.current.cropping) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitCropMode() }
+        return
+      }
       if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev(); return }
       if (e.key === 'ArrowRight') { e.preventDefault(); handleNext(); return }
       if (e.key === ' ' && mediaRef.current?.tagName === 'VIDEO') {
@@ -385,13 +486,30 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [zoom,      setZoom]      = useState(1)
   const [pan,       setPan]       = useState({ x: 0, y: 0 })
   const [invertPan, setInvertPan] = useState(() => localStorage.getItem('ql-invert-pan') === 'true')
+  const [cacheBust, setCacheBust] = useState(0)
+
+  // Crop mode (inline — no modal). Snapshot the file at entry so that a stray
+  // navigation cannot retarget the save to a different path.
+  const [cropping,    setCropping]    = useState(false)
+  const [cropFile,    setCropFile]    = useState(null)
+  const [crop,        setCrop]        = useState()
+  const [compCrop,    setCompCrop]    = useState(null)
+  const [cropAspect,  setCropAspect]  = useState(0)
+  const [cropSrc,     setCropSrc]     = useState(null)
+  const [cropSaving,  setCropSaving]  = useState(false)
+  const [cropError,   setCropError]   = useState(null)
+  const [cropRotating, setCropRotating] = useState(false)
+  const [snapMsg, setSnapMsg] = useState(null)
+  const snapMsgTimerRef = useRef(null)
+  const cropImgRef     = useRef(null)
+  const rotatedUrlsRef = useRef([])
   const scrollThrottleRef = useRef(false)
   const overlayRef        = useRef(null)
   const previewAreaRef    = useRef(null)
   const mediaRef          = useRef(null)
   const panRef            = useRef({ x: 0, y: 0 })
   const latestRef         = useRef({})
-  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev }
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping }
 
 
   function handleLoopChange(v) {
@@ -421,11 +539,182 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     localStorage.setItem('ql-invert-pan', String(v))
   }
 
+  // ── Crop handlers ──────────────────────────────────────────────────────────
+  function enterCropMode() {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    panRef.current = { x: 0, y: 0 }
+    setCropFile(file)
+    setCropSrc(nasStreamUrl(connectionId, file.path))
+    setCrop(undefined)
+    setCompCrop(null)
+    setCropError(null)
+    setCropping(true)
+  }
+
+  function exitCropMode() {
+    rotatedUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
+    rotatedUrlsRef.current = []
+    setCropping(false)
+    setCropFile(null)
+    setCropSrc(null)
+    setCrop(undefined)
+    setCompCrop(null)
+    setCropError(null)
+  }
+
+  // Reset crop selection to fit the loaded image
+  function handleCropImageLoad(e) {
+    const { width, height } = e.currentTarget
+    const aspect = CROP_ASPECTS[cropAspect].value
+    const c = aspect ? centeredAspectCrop(width, height, aspect) : fullImageCrop(width, height)
+    setCrop(c)
+    setCompCrop(c)
+  }
+
+  // Recompute crop selection when aspect changes
+  useEffect(() => {
+    if (!cropping) return
+    const img = cropImgRef.current
+    if (!img || !img.width) return
+    const aspect = CROP_ASPECTS[cropAspect].value
+    const c = aspect ? centeredAspectCrop(img.width, img.height, aspect) : fullImageCrop(img.width, img.height)
+    setCrop(c)
+    setCompCrop(c)
+  }, [cropAspect, cropping])
+
+  // Clean up rotation blob URLs on unmount or when leaving crop
+  useEffect(() => () => rotatedUrlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
+
+  async function handleCropRotate() {
+    const img = cropImgRef.current
+    if (!img || cropRotating || cropSaving || !cropFile) return
+    setCropRotating(true)
+    try {
+      const blob = await rotateCropImage(img, cropMimeType(cropFile.name))
+      const url  = URL.createObjectURL(blob)
+      rotatedUrlsRef.current.push(url)
+      setCropSrc(url)
+      setCrop(undefined)
+      setCompCrop(null)
+    } finally {
+      setCropRotating(false)
+    }
+  }
+
+  // Capture the current video frame and save it as a PNG next to the video.
+  async function handleSnapshot() {
+    const video = mediaRef.current
+    if (!video || video.tagName !== 'VIDEO') return
+
+    try {
+      const blob = await captureVideoFrame(video)
+      const buf  = await blob.arrayBuffer()
+
+      const slash    = file.path.lastIndexOf('/')
+      const dir      = slash > 0 ? file.path.slice(0, slash) : '/'
+      const dot      = file.name.lastIndexOf('.')
+      const stem     = dot > 0 ? file.name.slice(0, dot) : file.name
+      const ts       = formatVideoTimestamp(video.currentTime)
+
+      // Find a non-colliding filename: <stem>_snap_HH-MM-SS.png, then _2, _3, ...
+      const list = await window.winraid?.remote.list(connectionId, dir)
+      const taken = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+      let name = `${stem}_snap_${ts}.png`
+      for (let i = 2; taken.has(name) && i < 1000; i++) name = `${stem}_snap_${ts}_${i}.png`
+      const dest = dir === '/' ? `/${name}` : `${dir}/${name}`
+
+      const res = await window.winraid?.remote.writeFileBinary(connectionId, dest, buf)
+      if (!res?.ok) throw new Error(res?.error ?? 'Write failed')
+
+      await window.winraid?.cache.invalidateFile(connectionId, dest)
+      remoteFS.invalidate(connectionId, dir)
+      remoteFS.list(connectionId, dir).catch(() => {})
+
+      // Brief in-overlay confirmation toast.
+      clearTimeout(snapMsgTimerRef.current)
+      setSnapMsg(`Saved ${name}`)
+      snapMsgTimerRef.current = setTimeout(() => setSnapMsg(null), 2200)
+    } catch (err) {
+      clearTimeout(snapMsgTimerRef.current)
+      setSnapMsg(err.message || 'Snapshot failed')
+      snapMsgTimerRef.current = setTimeout(() => setSnapMsg(null), 2200)
+    }
+  }
+
+  // Cleanup the snap-toast timer on unmount.
+  useEffect(() => () => clearTimeout(snapMsgTimerRef.current), [])
+
+  async function handleCropSave(overwrite) {
+    const img = cropImgRef.current
+    const c   = compCrop
+    if (!img || !c || c.width < 1 || c.height < 1 || !cropFile) return
+    setCropSaving(true)
+    setCropError(null)
+    try {
+      const mime = cropMimeType(cropFile.name)
+      const blob = await applyCropToImage(img, c, mime)
+      const buf  = await blob.arrayBuffer()
+
+      let dest
+      if (overwrite) {
+        dest = cropFile.path
+      } else {
+        // Pick the next free _cropped / _cropped_2 / _cropped_3 ... name in the
+        // parent directory so saving never clobbers an existing copy.
+        const slash = cropFile.path.lastIndexOf('/')
+        const dir   = slash > 0 ? cropFile.path.slice(0, slash) : '/'
+        const list  = await window.winraid?.remote.list(connectionId, dir)
+        const names = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+        dest = nextAvailableCopyPath(cropFile.path, names)
+      }
+
+      const res = await window.winraid?.remote.writeFileBinary(connectionId, dest, buf, { atomic: overwrite })
+      if (!res?.ok) throw new Error(res?.error ?? 'Write failed')
+
+      // Invalidate the on-disk full+thumb cache for any path that was just
+      // mutated. For overwrite that's the original file; for copy it's the
+      // new dest (in case a stale cache entry exists from a prior copy with
+      // the same name that was deleted).
+      await window.winraid?.cache.invalidateFile(connectionId, dest)
+
+      // Refresh the directory listing so the BrowseView shows the new file
+      // (for copies) and so thumbnail URLs pick up the new mtime.
+      // invalidate() alone only clears the cache — list() then re-fetches
+      // and notifies subscribers so the listing updates immediately.
+      const slash    = dest.lastIndexOf('/')
+      const destDir  = slash > 0 ? dest.slice(0, slash) : '/'
+      remoteFS.invalidate(connectionId, destDir)
+      const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
+
+      if (overwrite) {
+        setCacheBust(Date.now())
+        exitCropMode()
+      } else {
+        // Navigate to the new copy so the user immediately sees the result
+        // (mirroring how Overwrite shows the cropped image right away).
+        const destName = dest.slice(slash + 1)
+        const entry    = refreshed?.find((e) => e.name === destName)
+        const newFile  = entry
+          ? { ...entry, path: dest }
+          : { name: destName, path: dest, size: buf.byteLength, modified: Date.now(), type: 'file' }
+        exitCropMode()
+        onNavigate?.(newFile)
+      }
+    } catch (err) {
+      setCropError(err.message)
+    } finally {
+      setCropSaving(false)
+    }
+  }
+
   // Wheel: zoom or scroll-navigate (passive:false so we can preventDefault)
   useEffect(() => {
     const el = previewAreaRef.current
     if (!el) return
     function onWheel(e) {
+      // While cropping, no wheel-based navigation or zoom
+      if (latestRef.current.cropping) return
       // Horizontal tilt wheel → navigate files (always, regardless of wheel mode)
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && e.deltaX !== 0) {
         e.preventDefault()
@@ -465,25 +754,19 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     function onMouseMove(e) {
       const { zoom: z, invertPan: ip } = latestRef.current
       if (z <= 1) return
-      const rect    = el.getBoundingClientRect()
-      const offsetX = e.clientX - (rect.left + rect.width  / 2)
-      const offsetY = e.clientY - (rect.top  + rect.height / 2)
-
-      const sign = ip ? 1 : -1
-      let x = sign * offsetX * (z - 1)
-      let y = sign * offsetY * (z - 1)
-
-      // Clamp so the image can't pan off screen
+      const rect  = el.getBoundingClientRect()
       const media = mediaRef.current
-      if (media) {
-        const maxX = Math.max(0, (media.offsetWidth  * z - rect.width)  / 2)
-        const maxY = Math.max(0, (media.offsetHeight * z - rect.height) / 2)
-
-        x = Math.max(-maxX, Math.min(maxX, x))
-        y = Math.max(-maxY, Math.min(maxY, y))
-      }
-
-      const next = { x, y }
+      if (!media) return
+      const next = computePan({
+        offsetX:   e.clientX - (rect.left + rect.width  / 2),
+        offsetY:   e.clientY - (rect.top  + rect.height / 2),
+        viewportW: rect.width,
+        viewportH: rect.height,
+        mediaW:    media.offsetWidth,
+        mediaH:    media.offsetHeight,
+        zoom:      z,
+        invertPan: ip,
+      })
       panRef.current = next
       setPan(next)
     }
@@ -501,13 +784,43 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   const type = fileType(file.name)
-  const src  = (type === 'image' || type === 'video' || type === 'audio' || type === 'pdf')
+  const rawSrc = (type === 'image' || type === 'video' || type === 'audio' || type === 'pdf')
     ? nasStreamUrl(connectionId, file.path)
     : null
+  // Bake the file's mtime into the URL so the browser cache key changes when
+  // the remote file is mutated. cacheBust is a one-shot bump after a save in
+  // this same QuickLook lifetime — the protocol handler treats `bust=` as a
+  // signal to also delete the on-disk cache file.
+  const baseSrc = rawSrc && file.modified
+    ? `${rawSrc}?v=${file.modified}`
+    : rawSrc
+  const src = baseSrc && cacheBust > 0
+    ? `${baseSrc}${baseSrc.includes('?') ? '&' : '?'}bust=${cacheBust}`
+    : baseSrc
+
+  function handleImageContextMenu(e) {
+    e.preventDefault()
+    const target = cropping && cropFile ? cropFile : file
+    window.winraid?.showImageContextMenu?.(connectionId, target.path)
+  }
 
   function renderPreview() {
+    if (cropping && type === 'image') {
+      return (
+        <CropImagePreview
+          src={cropSrc}
+          crop={crop}
+          onChange={(c) => setCrop(c)}
+          onComplete={(c) => setCompCrop(c)}
+          aspect={CROP_ASPECTS[cropAspect].value}
+          imgRef={cropImgRef}
+          onLoad={handleCropImageLoad}
+          onContextMenu={handleImageContextMenu}
+        />
+      )
+    }
     switch (type) {
-      case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} />
+      case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} onContextMenu={handleImageContextMenu} />
       case 'video': return <VideoPreview src={src} loop={loop} zoom={zoom} pan={pan} mediaRef={mediaRef} />
       case 'audio': return <AudioPreview file={file} src={src} />
       case 'pdf':   return <PdfPreview src={src} />
@@ -523,7 +836,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       ref={overlayRef}
       className={styles.overlay}
       tabIndex={-1}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
+      onClick={(e) => { if (e.target === e.currentTarget && !cropping) onClose() }}
       onPointerUp={() => overlayRef.current?.focus()}
       role="dialog"
       aria-modal="true"
@@ -545,6 +858,65 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             <span>{formatDate(file.modified)}</span>
           </span>
         </div>
+        {type === 'image' && !cropping && (
+          <Tooltip tip="Crop" side="bottom">
+            <button
+              className={styles.fileMenuBtn}
+              onClick={enterCropMode}
+              aria-label="Crop image"
+            >
+              <Crop size={16} />
+            </button>
+          </Tooltip>
+        )}
+        {type === 'video' && (
+          <Tooltip tip="Save snapshot of current frame" side="bottom">
+            <button
+              className={styles.fileMenuBtn}
+              onClick={handleSnapshot}
+              aria-label="Save video snapshot"
+            >
+              <Camera size={16} />
+            </button>
+          </Tooltip>
+        )}
+        {cropping && (
+          <div className={styles.cropToolbar}>
+            <span className={styles.cropToolbarLabel}>Aspect</span>
+            {CROP_ASPECTS.map((a, i) => (
+              <button
+                key={a.label}
+                className={[styles.cropAspectBtn, i === cropAspect ? styles.cropAspectBtnActive : ''].filter(Boolean).join(' ')}
+                onClick={() => setCropAspect(i)}
+                disabled={cropSaving || cropRotating}
+              >
+                {a.label}
+              </button>
+            ))}
+            <Tooltip tip="Rotate 90°" side="bottom">
+              <button
+                className={styles.fileMenuBtn}
+                onClick={handleCropRotate}
+                disabled={cropSaving || cropRotating}
+                aria-label="Rotate 90 degrees"
+              >
+                {cropRotating ? <Loader size={14} /> : <RotateCw size={14} />}
+              </button>
+            </Tooltip>
+            {cropError && <span className={styles.cropError}>{cropError}</span>}
+            <button className={styles.cropCancelBtn} onClick={exitCropMode} disabled={cropSaving}>
+              Cancel
+            </button>
+            <button className={styles.cropSaveBtn} onClick={() => handleCropSave(false)} disabled={cropSaving || cropRotating || !compCrop}>
+              {cropSaving ? <Loader size={13} /> : null}
+              Save copy
+            </button>
+            <button className={styles.cropOverwriteBtn} onClick={() => handleCropSave(true)} disabled={cropSaving || cropRotating || !compCrop}>
+              {cropSaving ? <Loader size={13} /> : null}
+              Overwrite
+            </button>
+          </div>
+        )}
         <FileMenu file={file} onDelete={onDelete} loop={loop} onLoopChange={handleLoopChange} wheelMode={wheelMode} onWheelModeChange={handleWheelModeChange} invertPan={invertPan} onInvertPanChange={handleInvertPanChange} />
         <Tooltip tip="Close (Esc)" side="bottom">
         <button
@@ -564,7 +936,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnLeft].join(' ')}
             onClick={handlePrev}
-            disabled={!hasPrev}
+            disabled={!hasPrev || cropping}
             aria-label="Previous file"
           >
             <ChevronLeft size={22} />
@@ -588,7 +960,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnRight].join(' ')}
             onClick={handleNext}
-            disabled={!hasNext}
+            disabled={!hasNext || cropping}
             aria-label="Next file"
           >
             <ChevronRight size={22} />
@@ -602,6 +974,9 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           {currentIdx + 1} / {files.length}
         </div>
       )}
+
+      {snapMsg && <div className={styles.snapToast}>{snapMsg}</div>}
+
     </div>
   )
 }
