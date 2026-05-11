@@ -25,6 +25,14 @@ import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-
 import { execWithTimeout } from './exec-helpers.js'
 
 // ---------------------------------------------------------------------------
+// Process and app identity — must run synchronously before app.whenReady().
+// Without these, Chromium child processes (GPU, utility, renderer) inherit
+// the package.json "description" field as their Task Manager name.
+// ---------------------------------------------------------------------------
+app.setName('WinRaid')
+app.setAppUserModelId('com.winraid.app')
+
+// ---------------------------------------------------------------------------
 // Custom protocol scheme declaration — must happen synchronously before
 // app.whenReady(), before any BrowserWindow is created.
 // ---------------------------------------------------------------------------
