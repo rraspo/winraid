@@ -103,3 +103,92 @@ describe('QuickLookOverlay — Crop button', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+describe('QuickLookOverlay — Snapshot encoding', () => {
+  const videoFile = { name: 'clip.mp4', path: '/media/clip.mp4', size: 100, modified: 0 }
+
+  // Replace document.createElement so canvas.toBlob is observable, while
+  // letting other elements (divs, buttons) render normally.
+  let canvasMock, origCreateElement
+
+  beforeEach(() => {
+    canvasMock = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ({ drawImage: vi.fn() })),
+      toBlob: vi.fn((cb, mime) => cb(new Blob(['x'], { type: mime ?? 'image/png' }))),
+    }
+    origCreateElement = document.createElement.bind(document)
+    document.createElement = (tag) =>
+      tag === 'canvas' ? canvasMock : origCreateElement(tag)
+  })
+
+  afterEach(() => {
+    document.createElement = origCreateElement
+  })
+
+  // Helper: render the overlay with a video file, attach a fake video element
+  // to mediaRef so handleSnapshot finds a non-zero videoWidth/videoHeight,
+  // and click the snapshot button.
+  async function renderAndSnapshot({ formatConfigValue }) {
+    window.winraid = createWinraidMock({
+      config: {
+        get: vi.fn().mockImplementation((key) => {
+          if (key === 'snapshot.format') return Promise.resolve(formatConfigValue)
+          return Promise.resolve({})
+        }),
+        set: vi.fn().mockResolvedValue(undefined),
+      },
+      remote: {
+        list:            vi.fn().mockResolvedValue({ ok: true, entries: [] }),
+        writeFileBinary: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    })
+
+    const { container } = render(<QuickLookOverlay {...baseProps} file={videoFile} />)
+    await act(async () => {})
+
+    // Stub the video element so captureVideoFrame proceeds.
+    const videos = container.querySelectorAll('video')
+    expect(videos.length).toBe(1)
+    Object.defineProperty(videos[0], 'videoWidth',  { value: 1920, configurable: true })
+    Object.defineProperty(videos[0], 'videoHeight', { value: 1080, configurable: true })
+    Object.defineProperty(videos[0], 'currentTime', { value: 5,    configurable: true })
+
+    fireEvent.click(screen.getByLabelText('Save video snapshot'))
+    await act(async () => {})
+  }
+
+  it('encodes as image/jpeg with quality 0.92 and saves with .jpg extension when format is "jpeg"', async () => {
+    await renderAndSnapshot({ formatConfigValue: 'jpeg' })
+    expect(canvasMock.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.92)
+    const writeCall = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(writeCall[1]).toMatch(/\.jpg$/)
+  })
+
+  it('encodes as image/png with undefined quality and saves with .png extension when format is "png"', async () => {
+    await renderAndSnapshot({ formatConfigValue: 'png' })
+    expect(canvasMock.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/png', undefined)
+    const writeCall = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(writeCall[1]).toMatch(/\.png$/)
+  })
+
+  it('encodes as image/webp with quality 0.92 and saves with .webp extension when format is "webp"', async () => {
+    await renderAndSnapshot({ formatConfigValue: 'webp' })
+    expect(canvasMock.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/webp', 0.92)
+    const writeCall = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(writeCall[1]).toMatch(/\.webp$/)
+  })
+
+  it('falls back to JPEG when config returns undefined', async () => {
+    await renderAndSnapshot({ formatConfigValue: undefined })
+    expect(canvasMock.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.92)
+    const writeCall = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(writeCall[1]).toMatch(/\.jpg$/)
+  })
+
+  it('falls back to JPEG when config returns an unknown format', async () => {
+    await renderAndSnapshot({ formatConfigValue: 'tiff' })
+    expect(canvasMock.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.92)
+  })
+})

@@ -1,0 +1,63 @@
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.bar {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-input);
+  width: fit-content;
+}
+
+.segment,
+.segmentActive {
+  appearance: none;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  padding: 6px 14px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.segment:first-child,
+.segmentActive:first-child {
+  border-left: none;
+}
+
+.segment:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.segmentActive {
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+.segment:focus-visible,
+.segmentActive:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.desc {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+}

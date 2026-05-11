@@ -117,7 +117,7 @@
 .saveMsg.ok    { color: var(--success); background: var(--success-subtle); }
 .saveMsg.error { color: var(--error);   background: var(--error-subtle); }
 
-/* ---- Thumbnail cache ---- */
+/* ---- Storage ---- */
 .cacheRow {
   display: flex;
   align-items: center;
@@ -183,48 +183,41 @@
   animation: spin 1s linear infinite;
 }
 
-/* ---- Radio group ---- */
-.radioGroup {
+/* ---- Advanced accordion ---- */
+.advancedHeader {
+  appearance: none;
+  background: transparent;
+  border: none;
+  width: 100%;
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.radioGroupLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-faint);
-  margin-bottom: var(--space-1);
-}
-
-.radioOption {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
   cursor: pointer;
+  text-align: left;
 }
 
-.radioOption input[type="radio"] {
-  margin-top: 2px;
-  accent-color: var(--accent);
-  flex-shrink: 0;
+.advancedHeader:hover {
+  background: var(--bg-hover);
 }
 
-.radioOptionText {
+.advancedBody {
+  padding: var(--space-4) var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: var(--space-4);
+  border-top: 1px solid var(--border);
 }
 
-.radioOptionLabel {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-medium);
+.chevron {
   color: var(--text-muted);
+  transition: transform var(--transition), color var(--transition);
 }
 
-.radioOptionDesc {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
+.chevronOpen {
+  color: var(--accent);
+  transform: rotate(90deg);
 }

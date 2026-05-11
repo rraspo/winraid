@@ -18,6 +18,7 @@ import {
   rotateCropImage,
   applyCropToImage,
 } from '../utils/cropHelpers'
+import { resolveSnapshotFormat } from '../utils/snapshotFormats'
 // Removed: ImageCropModal — crop is now inline in this overlay
 
 const CROP_ASPECTS = [
@@ -38,8 +39,9 @@ function formatVideoTimestamp(seconds) {
   return `${pad(h)}-${pad(m)}-${pad(s)}`
 }
 
-// Capture the current frame of a <video> element to a PNG Blob.
-function captureVideoFrame(videoEl) {
+// Capture the current frame of a <video> element to a Blob in the given format.
+// fmt is a SNAPSHOT_FORMATS triple: { mime, ext, quality }.
+function captureVideoFrame(videoEl, fmt) {
   return new Promise((resolve, reject) => {
     if (!videoEl?.videoWidth || !videoEl?.videoHeight) {
       reject(new Error('Video not ready'))
@@ -49,7 +51,11 @@ function captureVideoFrame(videoEl) {
     canvas.width  = videoEl.videoWidth
     canvas.height = videoEl.videoHeight
     canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height)
-    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('toBlob failed')), 'image/png')
+    canvas.toBlob(
+      (blob) => blob ? resolve(blob) : reject(new Error('toBlob failed')),
+      fmt.mime,
+      fmt.quality,
+    )
   })
 }
 
@@ -602,13 +608,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
   }
 
-  // Capture the current video frame and save it as a PNG next to the video.
+  // Capture the current video frame and save it next to the video, in the
+  // user-configured format (jpeg, png, or webp; default jpeg).
   async function handleSnapshot() {
     const video = mediaRef.current
     if (!video || video.tagName !== 'VIDEO') return
 
     try {
-      const blob = await captureVideoFrame(video)
+      const fmtKey = await window.winraid?.config.get('snapshot.format')
+      const fmt    = resolveSnapshotFormat(fmtKey)
+
+      const blob = await captureVideoFrame(video, fmt)
       const buf  = await blob.arrayBuffer()
 
       const slash    = file.path.lastIndexOf('/')
@@ -617,11 +627,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       const stem     = dot > 0 ? file.name.slice(0, dot) : file.name
       const ts       = formatVideoTimestamp(video.currentTime)
 
-      // Find a non-colliding filename: <stem>_snap_HH-MM-SS.png, then _2, _3, ...
+      // Find a non-colliding filename: <stem>_snap_HH-MM-SS.<ext>, then _2, _3, ...
       const list = await window.winraid?.remote.list(connectionId, dir)
       const taken = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
-      let name = `${stem}_snap_${ts}.png`
-      for (let i = 2; taken.has(name) && i < 1000; i++) name = `${stem}_snap_${ts}_${i}.png`
+      let name = `${stem}_snap_${ts}.${fmt.ext}`
+      for (let i = 2; taken.has(name) && i < 1000; i++) name = `${stem}_snap_${ts}_${i}.${fmt.ext}`
       const dest = dir === '/' ? `/${name}` : `${dir}/${name}`
 
       const res = await window.winraid?.remote.writeFileBinary(connectionId, dest, buf)
@@ -631,7 +641,6 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       remoteFS.invalidate(connectionId, dir)
       remoteFS.list(connectionId, dir).catch(() => {})
 
-      // Brief in-overlay confirmation toast.
       clearTimeout(snapMsgTimerRef.current)
       setSnapMsg(`Saved ${name}`)
       snapMsgTimerRef.current = setTimeout(() => setSnapMsg(null), 2200)

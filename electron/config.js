@@ -46,6 +46,9 @@ const DEFAULTS = {
     cacheMutation: 'update',  // 'update' | 'refetch'
   },
   connections:        [],
+  snapshot: {
+    format: 'jpeg',   // 'jpeg' | 'png' | 'webp'
+  },
   activeConnectionId: null,
 }
 

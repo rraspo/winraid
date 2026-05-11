@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Download } from 'lucide-react'
+import { RefreshCw, Download, ChevronRight } from 'lucide-react'
 
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
+import SegmentedControl from '../components/ui/SegmentedControl'
 import { formatSize } from '../utils/format'
+import { SNAPSHOT_FORMATS } from '../utils/snapshotFormats'
 import styles from './SettingsView.module.css'
 
 const HINTS = {
-  startWatcher:  'Begin scanning the watch folder for new files. Runs in the background even when the window is hidden to the tray.',
-  stopWatcher:   'Pause scanning. Already-queued transfers still complete; new files are ignored until resumed.',
+  startWatcher: 'Begin scanning each connection’s watch folder for new or changed files. Runs in the background even when the window is hidden to the tray. On restart it automatically picks up files that appeared while stopped.',
+  stopWatcher:  'Pause scanning. Already-queued transfers still complete; new files are ignored until resumed.',
 }
 
 export default function SettingsView() {
@@ -24,6 +26,10 @@ export default function SettingsView() {
   const [cacheMutation, setCacheMutation] = useState('update')
   const [playRecursive, setPlayRecursive] = useState(true)
   const [playShuffle,   setPlayShuffle]   = useState(true)
+  const [snapshotFormat, setSnapshotFormat] = useState('jpeg')
+  const [advancedOpen, setAdvancedOpen] = useState(
+    () => localStorage.getItem('settings-advanced-open') === 'true'
+  )
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -52,6 +58,12 @@ export default function SettingsView() {
     window.winraid?.config.get('playDefaults').then((defaults) => {
       if (defaults?.recursive !== undefined) setPlayRecursive(defaults.recursive)
       if (defaults?.shuffle   !== undefined) setPlayShuffle(defaults.shuffle)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('snapshot.format').then((fmt) => {
+      if (typeof fmt === 'string' && fmt in SNAPSHOT_FORMATS) setSnapshotFormat(fmt)
     }).catch(() => {})
   }, [])
 
@@ -120,6 +132,17 @@ export default function SettingsView() {
     await window.winraid?.config.set('playDefaults', { recursive: playRecursive, shuffle: next })
   }
 
+  async function handleSnapshotFormatChange(value) {
+    setSnapshotFormat(value)
+    await window.winraid?.config.set('snapshot.format', value)
+  }
+
+  function toggleAdvanced() {
+    const next = !advancedOpen
+    setAdvancedOpen(next)
+    localStorage.setItem('settings-advanced-open', String(next))
+  }
+
   const status = updateStatus?.status
   const isChecking    = status === 'checking'
   const isDownloading = status === 'downloading'
@@ -163,66 +186,6 @@ export default function SettingsView() {
         </section>
 
         <section className={styles.section}>
-          <div className={styles.sectionHeader}>Scanner</div>
-          <div className={styles.sectionBody}>
-            <p style={{ color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)', margin: 0 }}>
-              The scanner watches each connection's local folder and queues new or changed files for transfer.
-              On restart it automatically picks up files that appeared while stopped.
-            </p>
-          </div>
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>Browse</div>
-          <div className={styles.sectionBody}>
-            <div className={styles.radioGroup}>
-              <div className={styles.radioGroupLabel}>Directory cache</div>
-              {[
-                { value: 'stale', label: 'Stale while revalidate', desc: 'Show cached entries immediately, then refresh in background.' },
-                { value: 'tree',  label: 'Full tree on connect',   desc: 'Fetch entire directory tree via SSH on connection, navigate from cache. SFTP only.' },
-                { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
-              ].map(({ value, label, desc }) => (
-                <label key={value} className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="cacheMode"
-                    value={value}
-                    checked={cacheMode === value}
-                    onChange={() => handleCacheModeChange(value)}
-                  />
-                  <span className={styles.radioOptionText}>
-                    <span className={styles.radioOptionLabel}>{label}</span>
-                    <span className={styles.radioOptionDesc}>{desc}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-
-            <div className={styles.radioGroup}>
-              <div className={styles.radioGroupLabel}>On folder mutation</div>
-              {[
-                { value: 'update',  label: 'Update in place', desc: 'Directly splice entries on create, delete, and move — no re-fetch.' },
-                { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
-              ].map(({ value, label, desc }) => (
-                <label key={value} className={styles.radioOption}>
-                  <input
-                    type="radio"
-                    name="cacheMutation"
-                    value={value}
-                    checked={cacheMutation === value}
-                    onChange={() => handleCacheMutationChange(value)}
-                  />
-                  <span className={styles.radioOptionText}>
-                    <span className={styles.radioOptionLabel}>{label}</span>
-                    <span className={styles.radioOptionDesc}>{desc}</span>
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.section}>
           <div className={styles.sectionHeader}>Play</div>
           <div className={styles.sectionBody}>
             <div className={styles.field}>
@@ -249,15 +212,74 @@ export default function SettingsView() {
         </section>
 
         <section className={styles.section}>
-          <div className={styles.sectionHeader}>Thumbnail cache</div>
+          <div className={styles.sectionHeader}>Snapshot</div>
           <div className={styles.sectionBody}>
-            <div className={styles.cacheRow}>
-              <span className={styles.cacheSize}>{formatSize(cacheBytes)}</span>
-              <Button size="sm" variant="ghost" onClick={handleClearCache} disabled={clearing}>
-                {clearing ? 'Clearing...' : 'Clear cache'}
-              </Button>
-            </div>
+            <SegmentedControl
+              label="Video snapshot format"
+              value={snapshotFormat}
+              onChange={handleSnapshotFormatChange}
+              options={[
+                { value: 'jpeg', label: 'JPEG', desc: 'Smallest files for photo-like frames. Slight quality loss.' },
+                { value: 'png',  label: 'PNG',  desc: 'Lossless. Larger files, best for screenshots and graphics.' },
+                { value: 'webp', label: 'WebP', desc: 'Smaller than JPEG at similar quality. Modern format.' },
+              ]}
+            />
           </div>
+        </section>
+
+        <section className={styles.section}>
+          <button
+            type="button"
+            className={styles.advancedHeader}
+            aria-expanded={advancedOpen}
+            onClick={toggleAdvanced}
+          >
+            <span>Advanced settings</span>
+            <ChevronRight
+              size={16}
+              className={`${styles.chevron} ${advancedOpen ? styles.chevronOpen : ''}`}
+            />
+          </button>
+          {advancedOpen && (
+            <div className={styles.advancedBody}>
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>Browse</div>
+                <div className={styles.sectionBody}>
+                  <SegmentedControl
+                    label="Directory cache"
+                    value={cacheMode}
+                    onChange={handleCacheModeChange}
+                    options={[
+                      { value: 'stale', label: 'Stale while revalidate', desc: 'Show cached entries immediately, then refresh in background.' },
+                      { value: 'tree',  label: 'Full tree on connect',   desc: 'Fetch entire directory tree via SSH on connection, navigate from cache. SFTP only.' },
+                      { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
+                    ]}
+                  />
+                  <SegmentedControl
+                    label="On folder mutation"
+                    value={cacheMutation}
+                    onChange={handleCacheMutationChange}
+                    options={[
+                      { value: 'update',  label: 'Update in place', desc: 'Directly splice entries on create, delete, and move — no re-fetch.' },
+                      { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
+                    ]}
+                  />
+                </div>
+              </section>
+
+              <section className={styles.section}>
+                <div className={styles.sectionHeader}>Storage</div>
+                <div className={styles.sectionBody}>
+                  <div className={styles.cacheRow}>
+                    <span className={styles.cacheSize}>{formatSize(cacheBytes)}</span>
+                    <Button size="sm" variant="ghost" onClick={handleClearCache} disabled={clearing}>
+                      {clearing ? 'Clearing...' : 'Clear cache'}
+                    </Button>
+                  </div>
+                </div>
+              </section>
+            </div>
+          )}
         </section>
 
         <section className={styles.section}>
