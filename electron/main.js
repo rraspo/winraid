@@ -27,10 +27,21 @@ import { execWithTimeout } from './exec-helpers.js'
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
 // Without these, Chromium child processes (GPU, utility, renderer) inherit
-// the package.json "description" field as their Task Manager name.
+// the package.json "description" field as their Task Manager name in the
+// packaged build.
+//
+// setAppUserModelId is skipped in dev: Windows looks up the AUMID in its
+// registered apps, and without a Start Menu shortcut (which the NSIS
+// installer creates in production) the lookup falls back to Electron's
+// default icon — overriding BrowserWindow.icon. In dev we want Electron's
+// own binary identity for Task Manager (unavoidable anyway) but the
+// WinRaid icon on the taskbar entry, which the BrowserWindow.icon option
+// provides as long as AUMID isn't redirecting it elsewhere.
 // ---------------------------------------------------------------------------
 app.setName('WinRaid')
-app.setAppUserModelId('com.winraid.app')
+if (app.isPackaged) {
+  app.setAppUserModelId('com.winraid.app')
+}
 
 // ---------------------------------------------------------------------------
 // Custom protocol scheme declaration — must happen synchronously before
