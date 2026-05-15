@@ -54,7 +54,7 @@ export async function mediaWalk(sftp, rootPath, {
   let firstSent = false
   let buffer    = []
   let timer     = null
-  const FLUSH_SIZE = 20
+  const FLUSH_SIZE = 500
   const FLUSH_MS   = 100
 
   function flush() {
@@ -92,6 +92,11 @@ export async function mediaWalk(sftp, rootPath, {
       }
       return
     }
+    // SFTP readdir returns entries in server-dependent order (often inode or
+    // hash, rarely alphabetic). Sort here so emission order matches what the
+    // file browser shows, which is the order the user expects sequential Play
+    // to walk through and the basis they perceive as "the first file."
+    list.sort((a, b) => a.filename.localeCompare(b.filename))
     for (const item of list) {
       if (item.filename.startsWith('.')) continue
       const childPath = `${dirPath}/${item.filename}`

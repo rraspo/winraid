@@ -128,6 +128,16 @@ describe('mediaWalk', () => {
     return batches.flat()
   }
 
+  it('emits files in alphabetic order within a directory, matching browse-view sort', async () => {
+    const sftp = makeSftp({
+      dirs: { '/m': [fileItem('c.jpg'), fileItem('a.jpg'), fileItem('b.jpg')] },
+    })
+    const batches = []
+    await mediaWalk(sftp, '/m', { onBatch: (b) => batches.push(b) })
+    const paths = batches.flat().map((f) => f.path)
+    expect(paths).toEqual(['/m/a.jpg', '/m/b.jpg', '/m/c.jpg'])
+  })
+
   it('emits image and video files and skips non-media', async () => {
     const sftp = makeSftp({
       dirs: {
@@ -218,9 +228,9 @@ describe('mediaWalk', () => {
     expect(batches[0]).toHaveLength(1)
     // Total emitted equals 25
     expect(flatten(batches)).toHaveLength(25)
-    // No batch after the first should be larger than 20 (buffer flush threshold)
+    // No batch after the first should be larger than 500 (buffer flush threshold)
     for (let i = 1; i < batches.length; i++) {
-      expect(batches[i].length).toBeLessThanOrEqual(20)
+      expect(batches[i].length).toBeLessThanOrEqual(500)
     }
   })
 
