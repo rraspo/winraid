@@ -5,7 +5,7 @@ vi.mock('fs', () => ({ mkdirSync: vi.fn() }))
 vi.mock('path', () => ({ join: (a, b) => `${a}/${b}` }))
 
 import { mkdirSync } from 'fs'
-import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
+import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk, setSftpTimestamps } from './sftp-helpers.js'
 
 function makeSftp({ dirs = {} } = {}) {
   return {
@@ -293,5 +293,23 @@ describe('mediaWalk', () => {
     // Files at depths within the limit should still be emitted
     const paths = flatten(batches).map((f) => f.path)
     expect(paths).toContain('/m/file0.jpg')
+  })
+})
+
+describe('setSftpTimestamps', () => {
+  it('calls sftp.setstat with seconds-precision atime/mtime derived from millisecond input', async () => {
+    const sftp = { setstat: vi.fn((_p, _attrs, cb) => cb(null)) }
+    await setSftpTimestamps(sftp, '/r/photo.jpg', { atimeMs: 1715000000500, mtimeMs: 1714000000750 })
+    expect(sftp.setstat).toHaveBeenCalledTimes(1)
+    const [path, attrs] = sftp.setstat.mock.calls[0]
+    expect(path).toBe('/r/photo.jpg')
+    expect(attrs).toEqual({ atime: 1715000000, mtime: 1714000000 })
+  })
+
+  it('rejects when sftp.setstat callback fires with an error', async () => {
+    const sftp = { setstat: vi.fn((_p, _attrs, cb) => cb(new Error('permission denied'))) }
+    await expect(
+      setSftpTimestamps(sftp, '/r/x', { atimeMs: 1000, mtimeMs: 2000 })
+    ).rejects.toThrow('permission denied')
   })
 })

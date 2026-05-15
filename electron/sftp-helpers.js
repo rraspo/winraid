@@ -151,6 +151,15 @@ export async function mediaWalk(sftp, rootPath, {
   flush()
 }
 
+export async function setSftpTimestamps(sftp, remotePath, { atimeMs, mtimeMs }) {
+  await new Promise((resolve, reject) =>
+    sftp.setstat(remotePath, {
+      atime: Math.floor(atimeMs / 1000),
+      mtime: Math.floor(mtimeMs / 1000),
+    }, (err) => err ? reject(err) : resolve())
+  )
+}
+
 export async function backupWalkRemote(sftp, remotePath, relBase, depth = 0, maxDepth = 50) {
   if (depth > maxDepth) throw new Error('Directory tree too deep (max 50 levels)')
   const results = []

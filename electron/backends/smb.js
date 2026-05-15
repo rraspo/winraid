@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from 'fs'
-import { access, mkdir, stat } from 'fs/promises'
+import { access, mkdir, stat, utimes } from 'fs/promises'
 import { win32, dirname } from 'path'
 import { spawnSync } from 'child_process'
 import { log } from '../logger.js'
@@ -44,8 +44,16 @@ async function transfer(cfg, job, onProgress) {
   const destDir = dirname(destPath)
   await mkdir(destDir, { recursive: true })
 
-  const { size: totalBytes } = await stat(job.srcPath)
-  await copyWithProgress(job.srcPath, destPath, totalBytes, onProgress)
+  const localStat = await stat(job.srcPath)
+  await copyWithProgress(job.srcPath, destPath, localStat.size, onProgress)
+
+  // Preserve source timestamps — the stream copy otherwise leaves the
+  // destination with the OS's "now" as mtime/atime.
+  try {
+    await utimes(destPath, localStat.atime, localStat.mtime)
+  } catch (err) {
+    log('warn', `SMB utimes failed for ${destPath}: ${err?.message ?? err}`)
+  }
 
   log('info', `SMB transfer complete: ${job.filename} → ${destPath}`)
 }

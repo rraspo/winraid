@@ -3,6 +3,7 @@ import { readFile, stat } from 'fs/promises'
 import { posix } from 'path'
 import { homedir } from 'os'
 import { log } from '../logger.js'
+import { setSftpTimestamps } from '../sftp-helpers.js'
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -120,9 +121,10 @@ async function mkdirpRemote(sftp, remotePath) {
 // ---------------------------------------------------------------------------
 
 async function upload(sftp, localPath, remotePath, onProgress) {
-  const { size: totalBytes } = await stat(localPath)
+  const localStat = await stat(localPath)
+  const totalBytes = localStat.size
 
-  return new Promise((resolve, reject) => {
+  await new Promise((resolve, reject) => {
     sftp.fastPut(localPath, remotePath, {
       // ssh2's fastPut step callback: (totalTransferred, chunkSize, totalSize)
       step: (transferred, _chunk, total) => {
@@ -136,6 +138,17 @@ async function upload(sftp, localPath, remotePath, onProgress) {
       else resolve()
     })
   })
+
+  // Preserve source file timestamps on the remote — fastPut otherwise leaves
+  // the remote file with the server's "now" as mtime/atime.
+  try {
+    await setSftpTimestamps(sftp, remotePath, {
+      atimeMs: localStat.atimeMs,
+      mtimeMs: localStat.mtimeMs,
+    })
+  } catch (err) {
+    log('warn', `SFTP setstat (timestamps) failed for ${remotePath}: ${err?.message ?? err}`)
+  }
 }
 
 // ---------------------------------------------------------------------------
