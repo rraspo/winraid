@@ -3,6 +3,7 @@ import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop,
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
+import ProgressRing from './ui/ProgressRing'
 import styles from './QuickLookOverlay.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt } from '../utils/fileTypes'
@@ -65,48 +66,6 @@ function captureVideoFrame(videoEl, fmt) {
 function panStyle(zoom, pan) {
   if (zoom === 1 && pan.x === 0 && pan.y === 0) return undefined
   return { transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center' }
-}
-
-/**
- * SVG arc progress ring.
- * progress: 0-1. Arc starts empty and fills clockwise as bytes arrive.
- * Only rendered while loading (parent hides it when done).
- */
-function ProgressRing({ progress }) {
-  const r          = 16
-  const stroke     = 3
-  const svgSize    = (r + stroke) * 2
-  const cx         = svgSize / 2
-  const cy         = svgSize / 2
-  const circ       = 2 * Math.PI * r
-  const dashOffset = circ * (1 - Math.min(progress, 1))
-
-  return (
-    <svg
-      className={styles.progressRing}
-      width={svgSize}
-      height={svgSize}
-      viewBox={`0 0 ${svgSize} ${svgSize}`}
-      aria-hidden="true"
-    >
-      <circle
-        className={styles.progressRingTrack}
-        cx={cx} cy={cy} r={r}
-        strokeWidth={stroke}
-        fill="none"
-      />
-      <circle
-        className={styles.progressRingArc}
-        cx={cx} cy={cy} r={r}
-        strokeWidth={stroke}
-        fill="none"
-        strokeLinecap="round"
-        strokeDasharray={circ}
-        strokeDashoffset={dashOffset}
-        style={{ transition: 'stroke-dashoffset 0.1s linear' }}
-      />
-    </svg>
-  )
 }
 
 function withThumb(url) {
