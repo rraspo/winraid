@@ -2,12 +2,24 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSelection } from './useSelection'
 import { useDragDrop } from './useDragDrop'
 import * as remoteFS from '../services/remoteFS'
+import { extractDragUrls } from '../utils/dragUrl'
+import { sortEntries } from '../utils/sortEntries'
+import { resolveSortMode, saveSortMode } from '../utils/sortPersistence'
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (no JSX, no external deps)
 // ---------------------------------------------------------------------------
 function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
+}
+
+// Append a filename to a local-OS directory path, picking the separator
+// from whatever the base already uses (Windows folder dialogs return
+// backslash paths; if a forward-slash base ever sneaks in we accept it).
+function joinLocalPath(base, name) {
+  const trimmed = base.replace(/[/\\]+$/, '')
+  const sep = trimmed.includes('\\') ? '\\' : '/'
+  return `${trimmed}${sep}${name}`
 }
 
 function isOutsideRoot(remotePath, cfgRemotePath) {
@@ -38,14 +50,30 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [showQuickLook,   setShowQuickLook]   = useState(false)
   const [lastVisitedDir,  setLastVisitedDir]  = useState(null)
   const [highlightFile,   setHighlightFile]   = useState(null)
+  // Entry name at the top of whichever view is currently mounted. Saved
+  // by the active view on unmount so the other view can restore the same
+  // scroll position when the user toggles between list and grid mid-scroll.
+  const [scrollAnchor,    setScrollAnchor]    = useState(null)
+  // Live name-substring filter scoped to the current directory's loaded
+  // entries (no IPC — entries are already in memory). Cleared on
+  // navigation so it doesn't carry into the next folder.
+  const [searchQuery,     setSearchQuery]     = useState('')
+  // Entry name currently targeted by type-to-jump. Distinct from
+  // highlightFile (which is a slow shimmer used for things like
+  // just-uploaded files); the cursor snaps with a solid accent tint
+  // and is meant to keep up with rapid keystrokes.
+  const [cursorEntry,     setCursorEntry]     = useState(null)
+  const [sortMode,        setSortModeRaw]     = useState('nameAsc')
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
   const [downloadProgress, setDownloadProgress] = useState(null)
   // shape: null | { name, filesProcessed, totalFiles, bytesTransferred, totalBytes }
   const [externalDropActive, setExternalDropActive] = useState(false)
   const [mergerfsWarning,   setMergerfsWarning]   = useState(false)
-  const mergerfsRootsRef  = useRef({}) // connId → Set<string>
-  const cancelledRef      = useRef(false)
+  const dirsFirstRef       = useRef(true)
+  const sortPersistRef     = useRef('default')
+  const mergerfsRootsRef   = useRef({}) // connId → Set<string>
+  const cancelledRef       = useRef(false)
   const browseRestoreRef  = useRef(browseRestore)
   const prevPath          = useRef(path)
   const initialPushed     = useRef(false)
@@ -64,8 +92,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // Load browse settings once on mount
   useEffect(() => {
     window.winraid?.config.get('browse').then((browse) => {
-      if (browse?.cacheMode)     cacheModeRef.current = browse.cacheMode
-      if (browse?.cacheMutation) cacheMutRef.current  = browse.cacheMutation
+      if (browse?.cacheMode)        cacheModeRef.current   = browse.cacheMode
+      if (browse?.cacheMutation)    cacheMutRef.current     = browse.cacheMutation
+      if (browse?.dirsFirst != null) dirsFirstRef.current   = browse.dirsFirst
+      if (browse?.sortPersistence)  sortPersistRef.current  = browse.sortPersistence
     }).catch(() => {})
   }, [])
 
@@ -135,10 +165,14 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     onBrowseRestoreConsumed?.()
   }, [browseRestore]) // token on browseRestore ensures this fires even if path is same
 
-  // ── Clear highlight on navigation ─────────────────────────────────────────
+  // ── Clear highlight + scroll anchor + search + cursor on navigation ────
   useEffect(() => {
-    if (prevPath.current !== path && !browseRestore?.highlightFile) {
-      setHighlightFile(null)
+    if (prevPath.current !== path) {
+      if (!browseRestore?.highlightFile) setHighlightFile(null)
+      setScrollAnchor(null)
+      setSearchQuery('')
+      setCursorEntry(null)
+      setSortModeRaw(resolveSortMode(path, sortPersistRef.current))
     }
     prevPath.current = path
   }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -207,16 +241,33 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     return result
   }, [path])
 
+  // Apply the search filter as a single source for downstream derivations,
+  // including selection bookkeeping — the views pass row indexes into the
+  // filtered list, so useSelection must resolve them against the same list.
+  // The `selected` Set is keyed by name, so prior selections survive a
+  // filter change naturally (names not in the visible list stay selected
+  // but invisible).
+  const filteredEntries = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    const filtered = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
+    return sortEntries(filtered, sortMode, dirsFirstRef.current)
+  }, [entries, searchQuery, sortMode])
+
+  const setSortMode = useCallback((mode) => {
+    setSortModeRaw(mode)
+    saveSortMode(path, mode, sortPersistRef.current)
+  }, [path])
+
   const fileEntries = useMemo(
-    () => entries
+    () => filteredEntries
       .filter((e) => e.type !== 'dir')
       .map((e) => ({ ...e, path: joinRemote(path, e.name) })),
-    [entries, path],
+    [filteredEntries, path],
   )
 
   const entriesWithPaths = useMemo(
-    () => entries.map((e) => ({ ...e, entryPath: joinRemote(path, e.name) })),
-    [entries, path],
+    () => filteredEntries.map((e) => ({ ...e, entryPath: joinRemote(path, e.name) })),
+    [filteredEntries, path],
   )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -478,7 +529,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   }, [newFolderName, selectedId, path, fetchDir])
 
   // ── Sub-hook composition ───────────────────────────────────────────────────
-  const selection = useSelection({ entries, path })
+  const selection = useSelection({ entries: filteredEntries, path })
 
   const dragDrop = useDragDrop({
     selected: selection.selected,
@@ -500,16 +551,29 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
 
   const isInternalDrag = (e) => e.dataTransfer?.types?.includes('application/x-winraid-internal')
 
+  // An incoming external drag is "acceptable" if it carries native files OR a
+  // URL-flavoured payload (image dragged out of a browser). text/plain is
+  // intentionally not accepted at this stage — it's too generic (every
+  // selected-text drag would falsely qualify); the drop handler will still
+  // examine text/plain as a last resort once the user commits.
+  function hasAcceptableDragData(e) {
+    const types = e.dataTransfer?.types
+    if (!types) return false
+    return types.includes('Files')
+        || types.includes('text/uri-list')
+        || types.includes('text/x-moz-url')
+  }
+
   const handleExternalDragEnter = useCallback((e) => {
     if (isInternalDrag(e)) return
-    if (!e.dataTransfer?.types?.includes('Files')) return
+    if (!hasAcceptableDragData(e)) return
     dragCounterRef.current += 1
     if (!mergerfsWarning) setExternalDropActive(true)
   }, [mergerfsWarning])
 
   const handleExternalDragOver = useCallback((e) => {
     if (isInternalDrag(e)) return
-    if (!e.dataTransfer?.types?.includes('Files')) return
+    if (!hasAcceptableDragData(e)) return
     e.preventDefault()
     if (!mergerfsWarning) setExternalDropActive(true)
   }, [mergerfsWarning])
@@ -523,18 +587,73 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
   }, [])
 
+  // Fetch a list of URLs and write each as a file into the current directory.
+  // Used when the user drags an image out of a browser — the source provides
+  // a URL via text/uri-list (or text/x-moz-url) rather than a native file.
+  // Filenames come from Content-Disposition or the URL path, with
+  // buildPastedName resolving collisions against the destination listing.
+  const handleExternalUrlDrop = useCallback(async (urls) => {
+    if (!selectedId || mergerfsWarning || urls.length === 0) return
+
+    const dir = pathRef.current
+    const list = await window.winraid?.remote.list(selectedId, dir)
+    const existingNames = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+
+    let success = 0
+    let lastFailMsg = null
+
+    for (const url of urls) {
+      setStatus({ ok: true, msg: `Fetching ${url}…` })
+      try {
+        const res = await window.winraid?.url?.fetch?.(url)
+        if (!res?.ok) { lastFailMsg = res?.error || `Fetch failed: ${url}`; continue }
+        const name = buildPastedName({ mime: res.mime, suggestedName: res.filename }, existingNames)
+        const dest = dir.replace(/\/+$/, '') === '' ? `/${name}` : `${dir.replace(/\/+$/, '')}/${name}`
+        const writeRes = await window.winraid?.remote.writeFileBinary(selectedId, dest, res.bytes)
+        if (!writeRes?.ok) { lastFailMsg = writeRes?.error || `Write failed: ${name}`; continue }
+        await window.winraid?.cache.invalidateFile(selectedId, dest)
+        existingNames.add(name)
+        success++
+      } catch (err) {
+        lastFailMsg = err.message || `Failed: ${url}`
+      }
+    }
+
+    remoteFS.invalidate(selectedId, dir)
+    await fetchDir(dir)
+
+    if (success > 0 && !lastFailMsg) {
+      setStatus({ ok: true, msg: `Uploaded ${success} ${success === 1 ? 'file' : 'files'}` })
+    } else if (success > 0) {
+      setStatus({ ok: false, msg: `Uploaded ${success} with errors: ${lastFailMsg}` })
+    } else {
+      setStatus({ ok: false, msg: lastFailMsg || 'Failed to upload' })
+    }
+  }, [selectedId, mergerfsWarning, fetchDir])
+
   const handleExternalDrop = useCallback(async (e) => {
     if (isInternalDrag(e)) return
     e.preventDefault()
     dragCounterRef.current = 0
     setExternalDropActive(false)
     if (!selectedId || mergerfsWarning) return
+
+    // Native files first (drag from Windows Explorer, or browser images
+    // that the source kindly cached as a real file).
     const localPaths = Array.from(e.dataTransfer?.files ?? [])
       .map((f) => window.winraid?.getPathForFile?.(f) ?? '')
       .filter(Boolean)
-    if (!localPaths.length) return
-    await window.winraid?.queue.dropUpload(selectedId, pathRef.current, localPaths)
-  }, [selectedId, mergerfsWarning])
+    if (localPaths.length) {
+      await window.winraid?.queue.dropUpload(selectedId, pathRef.current, localPaths)
+      return
+    }
+
+    // No native files — try URL payloads (image dragged out of a browser).
+    const urls = extractDragUrls(e.dataTransfer)
+    if (urls.length) {
+      await handleExternalUrlDrop(urls)
+    }
+  }, [selectedId, mergerfsWarning, handleExternalUrlDrop])
 
   // ── Paste image from clipboard ──────────────────────────────────────────────
   // Two-stage: handlePasteImage stages the blob and produces a preview URL,
@@ -747,8 +866,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   }, [path, selectedId])
 
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
-  const dirCount  = useMemo(() => entries.filter((e) => e.type === 'dir').length, [entries])
-  const fileCount = entries.length - dirCount
+  const dirCount  = useMemo(() => filteredEntries.filter((e) => e.type === 'dir').length, [filteredEntries])
+  const fileCount = filteredEntries.length - dirCount
 
   const busy     = opInFlight || !!dragDrop.moveInFlight
   const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
@@ -826,27 +945,42 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   }, [bulkMoveDest, selectedEntries, selectedId, path, fetchDir, selection])
 
   const handleBulkCheckout = useCallback(async () => {
-    if (!selectedId || !localFolder) return
+    if (!selectedId) return
+    const targets = selectedEntries
+    if (targets.length === 0) return
+
+    // Folder picker — replaces the old behaviour of silently dumping into
+    // the connection's configured localFolder.
+    const folder = await window.winraid?.selectDownloadPath('', true)
+    if (!folder) return  // user cancelled
+
     setOpInFlight(true)
     setStatus(null)
-    const targets = selectedEntries
+    setDownloadProgress(null)
     selection.clearSelection()
     let ok = 0, fail = 0
+    let lastError = null
     for (const entry of targets) {
       if (cancelledRef.current) break
-      const entryPath = joinRemote(path, entry.name)
-      const res = await window.winraid?.remote.checkout(selectedId, entryPath, localFolder)
+      const remotePath = joinRemote(path, entry.name)
+      const isDir = entry.type === 'dir'
+      // For directories the backend appends `basename(remotePath)` to the
+      // local path itself, so we pass the chosen folder unchanged; for
+      // files we have to spell out the destination filename.
+      const localPath = isDir ? folder : joinLocalPath(folder, entry.name)
+      const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
       if (res?.ok) ok++
-      else fail++
+      else { fail++; if (!lastError) lastError = res?.error }
     }
     if (cancelledRef.current) return
     setOpInFlight(false)
+    setDownloadProgress(null)
     if (fail === 0) {
-      setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''}` })
+      setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''} to ${folder}` })
     } else {
-      setStatus({ ok: false, msg: `Downloaded ${ok}, failed ${fail}` })
+      setStatus({ ok: false, msg: `Downloaded ${ok}, failed ${fail}${lastError ? ': ' + lastError : ''}` })
     }
-  }, [selectedId, localFolder, selectedEntries, selection])
+  }, [selectedId, selectedEntries, path, selection])
 
   return {
     // useBrowse own state/handlers
@@ -854,10 +988,14 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     opInFlight, downloadProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
     lastVisitedDir, highlightFile,
+    scrollAnchor, setScrollAnchor,
+    searchQuery, setSearchQuery,
+    cursorEntry, setCursorEntry,
+    sortMode, setSortMode,
     bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
-    setSelectedFile, setShowQuickLook,
+    setSelectedFile, setShowQuickLook, setHighlightFile,
     selectedConn, cfgRemotePath, localFolder, crumbs,
     fileEntries, entriesWithPaths, dirCount, fileCount, busy, noConfig, selectedEntries,
     highlightRef,

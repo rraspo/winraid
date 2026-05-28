@@ -12,16 +12,17 @@ const TEST_CONNECTIONS = [
 
 function makeJob(overrides = {}) {
   return {
-    id: overrides.id ?? 'job-1',
-    srcPath: '/local/files/test.mp4',
-    filename: overrides.filename ?? 'test.mp4',
-    relPath: 'test.mp4',
-    size: overrides.size ?? 1048576,
-    status: overrides.status ?? 'PENDING',
-    progress: overrides.progress ?? 0,
-    errorMsg: overrides.errorMsg ?? '',
-    connectionId: overrides.connectionId ?? 'conn-1',
-    createdAt: overrides.createdAt ?? Date.now(),
+    id:            'job-1',
+    srcPath:       '/local/files/test.mp4',
+    filename:      'test.mp4',
+    relPath:       'test.mp4',
+    size:          1048576,
+    status:        'PENDING',
+    progress:      0,
+    errorMsg:      '',
+    connectionId:  'conn-1',
+    createdAt:     Date.now(),
+    ...overrides,
   }
 }
 
@@ -73,6 +74,40 @@ describe('QueueView', () => {
     expect(await screen.findByText('Pending')).toBeInTheDocument()
     expect(screen.getByText('Done')).toBeInTheDocument()
     expect(screen.getByText('Error')).toBeInTheDocument()
+  })
+
+  it('shows the full nested destination for drop-uploaded folder children', async () => {
+    // When you drag a folder into WinRaid, each file is queued with a
+    // relPath that includes the dropped folder name as a prefix (e.g.
+    // "myFolder/sub/photo.jpg"). The destination shown in the queue must
+    // include the relPath's directory portion, not just the bare
+    // remoteDest, or it looks like the file went straight into remoteDest
+    // with no parent folder.
+    window.winraid.queue.list.mockResolvedValue([
+      makeJob({
+        id: 'j1',
+        filename: 'photo.jpg',
+        relPath: 'myFolder/sub/photo.jpg',
+        remoteDest: '/dest',
+      }),
+    ])
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('photo.jpg')).toBeInTheDocument()
+    expect(screen.getByText('/dest/myFolder/sub')).toBeInTheDocument()
+  })
+
+  it('shows remoteDest + folder name for a file at the root of a dropped folder', async () => {
+    window.winraid.queue.list.mockResolvedValue([
+      makeJob({
+        id: 'j1',
+        filename: 'photo.jpg',
+        relPath: 'myFolder/photo.jpg',
+        remoteDest: '/dest',
+      }),
+    ])
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('photo.jpg')).toBeInTheDocument()
+    expect(screen.getByText('/dest/myFolder')).toBeInTheDocument()
   })
 
   it('shows transferring status with percentage', async () => {

@@ -25,10 +25,16 @@ export default function BulkMoveModal({ count, names, dest, onDestChange, onConf
                 Move {count} item{count !== 1 ? 's' : ''}
               </h2>
               <p className={styles.modalSubtitle}>
-                Move {names.join(', ')} to a new location.
+                Move the following to a new location.
               </p>
             </div>
           </div>
+
+          <ul className={styles.modalFileList}>
+            {names.map((name) => (
+              <li key={name}>{name}</li>
+            ))}
+          </ul>
 
           <div className={styles.modalFields}>
             <div className={styles.fieldRow}>

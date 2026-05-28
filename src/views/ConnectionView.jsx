@@ -30,7 +30,8 @@ function makeDefault(existing) {
     localFolder: '',
     operation:   'copy',
     folderMode:  'flat',
-    extensions:  [],
+    extensions:         [],
+    ignoredExtensions: [],
   }
   if (existing) return { ...base, ...existing }
   return base
@@ -58,7 +59,8 @@ const HINTS = {
   modeFlat:      'Every file goes directly into the remote path — any local subfolders are ignored.',
   modeMirror:    'Recreates the local subfolder tree at the destination on the NAS.',
   modeMirrorClean: 'Same as Mirror, but also deletes the local source file after it\'s successfully copied to the NAS. Remote files are never deleted.',
-  extensions:    'Restrict transfers to specific file types. Leave empty to transfer every file.',
+  extensions:          'Restrict transfers to specific file types. Leave empty to transfer every file.',
+  ignoredExtensions:   'Skip files with these extensions. Applied after the whitelist.',
   verifyClean:   'Walk the local watch folder and check each file against the NAS over SFTP. Results are shown in a dialog where you can enqueue missing files, delete confirmed local copies, or ignore either group.',
 }
 
@@ -420,6 +422,12 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                     onChange={(v) => setTop('extensions', v)}
                   />
                 </Field>
+                <Field label="Ignored extensions" hint={HINTS.ignoredExtensions}>
+                  <ExtensionPicker
+                    value={conn.ignoredExtensions ?? []}
+                    onChange={(v) => setTop('ignoredExtensions', v)}
+                  />
+                </Field>
               </>
             )}
 
@@ -557,9 +565,30 @@ function ExtensionPicker({ value, onChange }) {
   useEffect(() => {
     if (!open || !chipRowRef.current) return
     const el = chipRowRef.current
+    const MAX_DROP = 280
+    const GAP = 4
     const update = () => {
       const r = el.getBoundingClientRect()
-      setDropRect({ top: r.bottom + 4, left: r.left, width: r.width })
+      const spaceBelow = window.innerHeight - r.bottom - GAP
+      const spaceAbove = r.top - GAP
+      const flipUp = spaceBelow < Math.min(MAX_DROP, 160) && spaceAbove > spaceBelow
+      if (flipUp) {
+        setDropRect({
+          bottom: window.innerHeight - r.top + GAP,
+          left: r.left,
+          width: r.width,
+          maxHeight: Math.min(MAX_DROP, spaceAbove),
+          flipped: true,
+        })
+      } else {
+        setDropRect({
+          top: r.bottom + GAP,
+          left: r.left,
+          width: r.width,
+          maxHeight: Math.min(MAX_DROP, spaceBelow),
+          flipped: false,
+        })
+      }
     }
     const obs = new ResizeObserver(update)
     obs.observe(el)
@@ -631,7 +660,11 @@ function ExtensionPicker({ value, onChange }) {
         <div
           ref={dropRef}
           className={styles.extDropdown}
-          style={{ top: dropRect.top, left: dropRect.left, width: dropRect.width }}
+          style={{
+            ...(dropRect.flipped
+              ? { bottom: dropRect.bottom, left: dropRect.left, width: dropRect.width, maxHeight: dropRect.maxHeight }
+              : { top: dropRect.top, left: dropRect.left, width: dropRect.width, maxHeight: dropRect.maxHeight }),
+          }}
           onMouseDown={(e) => e.preventDefault()}
         >
           {filteredGroups.map(([group, exts]) => (

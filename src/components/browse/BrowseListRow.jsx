@@ -8,7 +8,7 @@ import styles from '../../views/BrowseList.module.css'
 
 const BrowseListRow = memo(function BrowseListRow({
   entry, entryPath, virtualRow, connectionId, index,
-  busy, isSelected, isDragSource, isLastVisited, isHighlighted, highlightRef,
+  busy, isSelected, isDragSource, isLastVisited, isHighlighted, isCursor, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
@@ -56,6 +56,7 @@ const BrowseListRow = memo(function BrowseListRow({
         isSelected ? styles.rowSelected : '',
         isDragSource ? styles.dragging : '',
         isLastVisited ? styles.lastVisited : '',
+        isCursor ? styles.cursor : '',
         isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
       ].join(' ')}
       style={{
@@ -70,7 +71,14 @@ const BrowseListRow = memo(function BrowseListRow({
       onDragEnd={handleDragEnd}
       onDragOver={isDir ? (e) => handleDragOverFolder(e, entryPath) : undefined}
       onDragLeave={isDir ? handleDragLeaveFolder : undefined}
-      onDrop={isDir ? (e) => { e.stopPropagation(); handleDrop(e, entryPath) } : undefined}
+      onDrop={isDir ? (e) => {
+        // Only handle internal moves at the row level; external drags
+        // bubble up to the container's external-drop handler so the
+        // overlay's "drop here = current dir" contract holds.
+        if (!e.dataTransfer?.types?.includes('application/x-winraid-internal')) return
+        e.stopPropagation()
+        handleDrop(e, entryPath)
+      } : undefined}
       onClick={handleRowClick}
     >
       <label className={styles.checkbox} onClick={handleCheckboxClick}>

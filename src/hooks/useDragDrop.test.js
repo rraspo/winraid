@@ -178,4 +178,40 @@ describe('handleDrop', () => {
 
     expect(window.winraid.remote.move).not.toHaveBeenCalled()
   })
+
+  it('does not move or report success when every dropped item is already in the target directory', async () => {
+    // Dragging a.txt (which lives at /foo/a.txt) and dropping onto /foo —
+    // its current parent. Every item's destination equals its existing path,
+    // so the drop is a no-op: no move IPC, no fetchDir refresh, no status.
+    const setStatus = vi.fn()
+    const fetchDir  = vi.fn()
+    const clearSelection = vi.fn()
+    window.winraid = { remote: { move: vi.fn().mockResolvedValue({ ok: true }) } }
+    const entriesWithPaths = ENTRIES.map((e) => ({ ...e, entryPath: ENTRY_PATHS[e.name] }))
+    const { result } = renderHook(() =>
+      useDragDrop({
+        selected: new Set(),
+        entries:  entriesWithPaths,
+        selectedId: 'conn-1',
+        path: '/foo',
+        viewMode: 'list',
+        fetchDir,
+        setStatus,
+        clearSelection,
+      })
+    )
+    const entry = { name: 'a.txt', type: 'file', size: 100, modified: Date.now() }
+    act(() => result.current.handleDragStart(
+      { dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() }, preventDefault: vi.fn() },
+      entry,
+      '/foo/a.txt',
+    ))
+    await act(async () => {
+      await result.current.handleDrop({ preventDefault: vi.fn() }, '/foo')
+    })
+    expect(window.winraid.remote.move).not.toHaveBeenCalled()
+    expect(setStatus).not.toHaveBeenCalled()
+    expect(fetchDir).not.toHaveBeenCalled()
+    expect(clearSelection).not.toHaveBeenCalled()
+  })
 })

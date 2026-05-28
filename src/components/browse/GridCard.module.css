@@ -141,3 +141,12 @@
 .dragging { opacity: 0.45; }
 
 .lastVisited { background: rgba(91, 164, 245, 0.25) !important; }
+
+/* Type-to-jump cursor — instant solid accent tint, snappier than the
+   selection background. Snaps in immediately, eases out on removal so
+   the previous card fades while the new one snaps. */
+.cursor {
+  background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+  border-color: var(--accent) !important;
+  transition: background-color 200ms ease-out, border-color 200ms ease-out;
+}

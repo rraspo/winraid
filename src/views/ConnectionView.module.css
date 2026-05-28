@@ -474,7 +474,6 @@
   border-radius: var(--radius-md);
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   z-index: 200;
-  max-height: 280px;
   overflow-y: auto;
   padding: var(--space-2);
   display: flex;

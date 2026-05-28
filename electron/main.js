@@ -96,8 +96,10 @@ const _mediaScans = new Map()
  */
 function _runDuLevel(client, dirPath) {
   const quoted = `'${dirPath.replace(/'/g, "'\\''")}'`
-  return execWithTimeout(client, `du -sk ${quoted}/* 2>/dev/null | grep -v '@eaDir\\|#recycle\\|\\.@__thumb'`, 300_000)
-    .then(({ stdout }) => {
+  const cmd = `du -sk ${quoted}/* 2>/dev/null | grep -v '@eaDir\\|#recycle\\|\\.@__thumb'`
+  log('info', `[size-scan] du level: ${dirPath}`)
+  return execWithTimeout(client, cmd, 300_000)
+    .then(({ stdout, code }) => {
       const entries = []
       for (const line of stdout.trim().split('\n')) {
         if (!line.trim()) continue
@@ -109,9 +111,13 @@ function _runDuLevel(client, dirPath) {
           entries.push({ path: entryPath, sizeKb })
         }
       }
+      log('info', `[size-scan] du level done: ${dirPath} → ${entries.length} entries (exit ${code}, stdout ${stdout.length} chars)`)
       return entries
     })
-    .catch(() => [])
+    .catch((err) => {
+      log('warn', `[size-scan] du level failed: ${dirPath} — ${err?.message ?? err}`)
+      return []
+    })
 }
 
 async function getWatcher() {
@@ -509,8 +515,9 @@ function registerIPC() {
   })
 
   const CONFIG_SET_ALLOWLIST = [
-    'localFolder', 'operation', 'folderMode', 'extensions',
+    'localFolder', 'operation', 'folderMode', 'extensions', 'ignoredExtensions',
     'backup', 'connections', 'backupByConnection',
+    'browse', 'playDefaults', 'snapshot', 'thumbSeek', 'activeConnectionId',
   ]
 
   ipcMain.handle('config:set', async (_e, key, value) => {
@@ -698,6 +705,7 @@ function registerIPC() {
       if (typeof rel !== 'string' || rel.includes('..')) continue
       const filePath = join(localFolder, ...rel.split('/'))
       if (!resolve(filePath).startsWith(resolvedBase + sep)) continue
+      if (isExtensionBlocked(filePath, conn)) continue
       const relPath  = conn.folderMode === 'flat' ? basename(filePath) : rel
       let fileSize = null
       try { fileSize = statSync(filePath).size } catch { /* file may have been removed */ }
@@ -751,6 +759,7 @@ function registerIPC() {
       try { s = await statAsync(localPath) } catch { continue }
 
       if (s.isFile()) {
+        if (isExtensionBlocked(localPath, conn)) continue
         const jobId = q.enqueue(localPath, {
           relPath:      basename(localPath),
           remoteDest,
@@ -764,6 +773,7 @@ function registerIPC() {
         const dirName = basename(localPath)
         const files   = await collectFiles(localPath, dirName)
         for (const { fullPath, relPath } of files) {
+          if (isExtensionBlocked(fullPath, conn)) continue
           let fileSize = null
           try { fileSize = (await statAsync(fullPath)).size } catch { /* file removed */ }
           const jobId = q.enqueue(fullPath, {
@@ -1544,12 +1554,51 @@ function registerIPC() {
   // Remote: folder size scan via `du -sk path/*` streamed level by level
   // ---------------------------------------------------------------------------
 
+  // BFS du-walker with bounded concurrency. Used by both the full scan
+  // and the on-demand subtree scan. `client` is an ssh2 Client; the
+  // callbacks let each caller decide what events to emit and when to
+  // bail. Returns the total folder count seen.
+  async function _runSizeBFS({ client, connectionId, rootPath, maxDepth, concurrency, isCancelled, isActive, onLevel, onProgress }) {
+    const queue = [{ path: rootPath, depth: 0 }]
+    let totalFolders = 0
+    let inFlight = 0
+
+    await new Promise((resolveDone) => {
+      function tick() {
+        if (isCancelled()) {
+          if (inFlight === 0) resolveDone()
+          return
+        }
+        while (inFlight < concurrency && queue.length > 0) {
+          const { path, depth } = queue.shift()
+          if (depth >= maxDepth) continue
+          inFlight++
+          ;(async () => {
+            _poolTouch(connectionId)
+            const entries = await _runDuLevel(client, path)
+            if (isCancelled()) return
+            totalFolders += entries.length
+            if (isActive?.() !== false) {
+              onLevel?.(path, entries)
+              onProgress?.(path, totalFolders)
+            }
+            for (const entry of entries) queue.push({ path: entry.path, depth: depth + 1 })
+          })().finally(() => {
+            inFlight--
+            tick()
+          })
+        }
+        if (inFlight === 0 && queue.length === 0) resolveDone()
+      }
+      tick()
+    })
+
+    return totalFolders
+  }
+
   ipcMain.handle('remote:size-scan', async (_e, connectionId) => {
     try {
-      if (typeof connectionId !== 'string' || !connectionId.trim()) {
-        return { ok: false, error: 'Invalid connectionId' }
-      }
-      // Cancel any existing scan for this connection before starting a new one
+      if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
       const existing = _sizeScans.get(connectionId)
       if (existing) existing.cancelled = true
       const conn = await _getConnConfig(connectionId)
@@ -1564,58 +1613,51 @@ function registerIPC() {
       const scanState = { cancelled: false }
       _sizeScans.set(connectionId, scanState)
       const isActive = () => _sizeScans.get(connectionId) === scanState
+      const isCancelled = () => scanState.cancelled
 
+      const keepAlive = setInterval(() => _poolTouch(connectionId), 10_000)
       const rootPath  = (conn.sftp?.remotePath || '/').replace(/\/+$/, '') || '/'
       const startTime = Date.now()
-      const MAX_DEPTH = 3
 
-      // BFS queue: { path, depth }
-      const queue = [{ path: rootPath, depth: 0 }]
-      let totalFolders = 0
+      try {
+        const totalFolders = await _runSizeBFS({
+          client: poolEntry.client,
+          connectionId,
+          rootPath,
+          maxDepth: 3,
+          concurrency: 4,
+          isCancelled,
+          isActive,
+          onLevel: (path, entries) => {
+            sendToRenderer('size:level', {
+              connectionId,
+              parentPath: path,
+              entries: entries.map((e) => ({
+                name: e.path.split('/').pop() || e.path,
+                path: e.path,
+                sizeKb: e.sizeKb,
+              })),
+            })
+          },
+          onProgress: (path, count) => {
+            sendToRenderer('size:progress', {
+              connectionId,
+              path,
+              count,
+              elapsedMs: Date.now() - startTime,
+            })
+          },
+        })
 
-      while (queue.length > 0) {
-        if (scanState.cancelled) break
-
-        const { path, depth } = queue.shift()
-        if (depth >= MAX_DEPTH) continue
-
-        const entries = await _runDuLevel(poolEntry.client, path)
-        if (scanState.cancelled) break
-
-        totalFolders += entries.length
-
-        if (isActive()) {
-          sendToRenderer('size:level', {
+        if (!scanState.cancelled && isActive()) {
+          sendToRenderer('size:done', {
             connectionId,
-            parentPath: path,
-            entries: entries.map((e) => ({
-              name: e.path.split('/').pop() || e.path,
-              path: e.path,
-              sizeKb: e.sizeKb,
-            })),
-          })
-        }
-
-        if (isActive()) {
-          sendToRenderer('size:progress', {
-            connectionId,
-            path,
-            count: totalFolders,
+            totalFolders,
             elapsedMs: Date.now() - startTime,
           })
         }
-
-        for (const entry of entries) {
-          queue.push({ path: entry.path, depth: depth + 1 })
-        }
-      }
-
-      if (!scanState.cancelled && isActive()) {
-        sendToRenderer('size:done', {
-          connectionId,
-          totalFolders,
-          elapsedMs: Date.now() - startTime,
-        })
+      } finally {
+        clearInterval(keepAlive)
       }
 
       _sizeScans.delete(connectionId)
@@ -1624,6 +1666,56 @@ function registerIPC() {
       _sizeScans.delete(connectionId)
       sendToRenderer('size:error', { connectionId, error: err.message })
       log('error', `Size scan failed [${connectionId}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // On-demand drill: scans a single subtree without touching the existing
+  // scan state, so the renderer can lazily expand a node the user just
+  // clicked. The size:level events merge into the existing tree on the
+  // renderer side via the parentPath key. No size:done is emitted —
+  // the renderer is already in RESULTS phase.
+  ipcMain.handle('remote:size-scan-subtree', async (_e, connectionId, subRoot) => {
+    try {
+      if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
+      if (typeof subRoot !== 'string' || !subRoot.trim()) return { ok: false, error: 'Invalid subRoot' }
+      if (!validateRemotePath(subRoot)) return { ok: false, error: 'Invalid remote path' }
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Only SFTP supported' }
+
+      await _poolGet(connectionId)
+      _poolTouch(connectionId)
+      const poolEntry = _sftpPool.get(connectionId)
+      if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
+
+      const keepAlive = setInterval(() => _poolTouch(connectionId), 10_000)
+      try {
+        await _runSizeBFS({
+          client: poolEntry.client,
+          connectionId,
+          rootPath: subRoot.replace(/\/+$/, '') || '/',
+          maxDepth: 3,
+          concurrency: 4,
+          isCancelled: () => false,
+          onLevel: (path, entries) => {
+            sendToRenderer('size:level', {
+              connectionId,
+              parentPath: path,
+              entries: entries.map((e) => ({
+                name: e.path.split('/').pop() || e.path,
+                path: e.path,
+                sizeKb: e.sizeKb,
+              })),
+            })
+          },
+        })
+      } finally {
+        clearInterval(keepAlive)
+      }
+      return { ok: true }
+    } catch (err) {
+      log('error', `[size-scan-subtree] failed: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -2018,6 +2110,13 @@ function registerIPC() {
  * @param {string} connectionId
  * @returns {(filePath: string, opts: { isInitial: boolean }) => Promise<void>}
  */
+function isExtensionBlocked(filePath, conn) {
+  const ext = extname(filePath).toLowerCase()
+  if (conn.extensions?.length > 0 && !conn.extensions.includes(ext)) return true
+  if (conn.ignoredExtensions?.length > 0 && conn.ignoredExtensions.includes(ext)) return true
+  return false
+}
+
 function makeFileDetectedCallback(connectionId) {
   // Lazy-opened once per watcher start: a checker that probes individual
   // remote paths over a single persistent connection (SFTP) or UNC stat (SMB).
@@ -2029,6 +2128,11 @@ function makeFileDetectedCallback(connectionId) {
     const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
     if (!conn) {
       log('warn', `File detected for unknown connection ${connectionId} — skipping`)
+      return
+    }
+
+    if (isExtensionBlocked(filePath, conn)) {
+      log('info', `Skipping (extension filtered) [${connectionId}]: ${filePath}`)
       return
     }
 

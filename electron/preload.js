@@ -209,6 +209,11 @@ contextBridge.exposeInMainWorld('winraid', {
     sizeScan:   (connectionId) => ipcRenderer.invoke('remote:size-scan', connectionId),
     /** Cancel an in-progress size scan. */
     sizeCancel: (connectionId) => ipcRenderer.invoke('remote:size-cancel', connectionId),
+    /** On-demand subtree scan — populates a single subtree without resetting
+     *  the existing scan or tree. size:level events still come through and
+     *  the renderer merges them by parentPath. */
+    sizeScanSubtree: (connectionId, subRoot) =>
+      ipcRenderer.invoke('remote:size-scan-subtree', connectionId, subRoot),
     /** Subscribe to scan progress ticks. Payload: { connectionId, path, count, elapsedMs } */
     onSizeProgress: (cb) => on('size:progress', cb),
     /** Subscribe to per-level scan results. Payload: { connectionId, parentPath, entries: [{name,path,sizeKb}] } */

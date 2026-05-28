@@ -245,13 +245,23 @@
 
 .legend {
   position: absolute;
-  bottom: var(--space-5);
+  top: var(--space-5);
   right: var(--space-5);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   font-size: var(--font-size-xs);
   max-width: 240px;
+  /* Bound to the chart container so an expanded list doesn't push past
+     the viewport. The remaining height becomes scrollable. */
+  max-height: calc(100% - var(--space-5) * 2);
+  overflow-y: auto;
+  /* Background so legend rows remain readable when scroll content sits
+     on top of arcs. */
+  background: color-mix(in srgb, var(--bg-panel) 80%, transparent);
+  backdrop-filter: blur(4px);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
   background: color-mix(in srgb, var(--bg-panel) 85%, transparent);
   backdrop-filter: blur(4px);
   border: 1px solid var(--border);
@@ -306,6 +316,24 @@
 
 .legendRowDrillable:hover .legendName {
   color: var(--accent);
+}
+
+.legendMore {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  padding: 2px var(--space-1);
+  font-style: italic;
+  border-radius: var(--radius-xs);
+  transition: color var(--transition), background var(--transition);
+}
+
+.legendMore:hover {
+  color: var(--accent);
+  background: var(--bg-hover);
 }
 
 .legendSwatch {

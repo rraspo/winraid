@@ -16,6 +16,7 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
   const [elapsed,    setElapsed]    = useState(0)
   const [scanError,  setScanError]  = useState(null)
   const [chartSize,  setChartSize]  = useState(300)
+  const [legendExpanded, setLegendExpanded] = useState(false)
   const treeRef            = useRef(null)
   const timerRef           = useRef(null)
   const progressDeadlineRef = useRef(null)
@@ -154,8 +155,19 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
   }
 
   function handleArcClick(nodeData) {
-    if (!nodeData.children?.length) return
-    setFocused(nodeData.path === focused ? null : nodeData.path)
+    // If children are already loaded, just focus.
+    if (nodeData.children?.length) {
+      setFocused(nodeData.path === focused ? null : nodeData.path)
+      return
+    }
+    // Drill on demand — the initial scan only walks MAX_DEPTH levels;
+    // beyond that, leaves have no children scanned. Kick off a subtree
+    // scan and focus pre-emptively so the user sees the new arcs appear
+    // as size:level events arrive.
+    if (nodeData.path && window.winraid?.remote.sizeScanSubtree) {
+      window.winraid.remote.sizeScanSubtree(connectionId, nodeData.path)
+      setFocused(nodeData.path)
+    }
   }
 
   function handleCenterClick() {
@@ -293,30 +305,49 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
                 </div>
               )
             })()}
-            {(legendNode?.children ?? []).slice(0, 8).map((child, i) => {
-              const drillable = (child.children?.length ?? 0) > 0
+            {(() => {
+              // Sort the legend by size descending so the biggest items
+              // are shown first — matches the sunburst's own sort order
+              // (SizeSunburst calls .sort((a,b) => b.value - a.value)).
+              const all = (legendNode?.children ?? []).slice().sort((a, b) => b.sizeKb - a.sizeKb)
+              const TRUNCATE = 8
+              const visible = legendExpanded ? all : all.slice(0, TRUNCATE)
+              const remaining = all.length - TRUNCATE
               return (
-                <div
-                  key={child.path}
-                  className={[styles.legendRow, drillable ? styles.legendRowDrillable : ''].filter(Boolean).join(' ')}
-                  onClick={() => drillable && setFocused(child.path)}
-                >
-                  <span className={styles.legendSwatch} style={{ background: PALETTE[i % PALETTE.length] }} />
-                  <span className={styles.legendName}>{child.name}</span>
-                  {onBrowsePath && (
-                    <Tooltip tip="Browse folder" side="top">
-                      <button
-                        className={styles.browseBtn}
-                        onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
-                      >
-                        <FolderOpen size={11} />
-                      </button>
-                    </Tooltip>
+                <>
+                  {visible.map((child, i) => (
+                    <div
+                      key={child.path}
+                      className={[styles.legendRow, styles.legendRowDrillable].join(' ')}
+                      onClick={() => handleArcClick(child)}
+                    >
+                      <span className={styles.legendSwatch} style={{ background: PALETTE[i % PALETTE.length] }} />
+                      <span className={styles.legendName}>{child.name}</span>
+                      {onBrowsePath && (
+                        <Tooltip tip="Browse folder" side="top">
+                          <button
+                            className={styles.browseBtn}
+                            onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
+                          >
+                            <FolderOpen size={11} />
+                          </button>
+                        </Tooltip>
+                      )}
+                      <span className={styles.legendSize}>{formatSize(child.sizeKb * 1024)}</span>
+                    </div>
+                  ))}
+                  {remaining > 0 && (
+                    <button
+                      type="button"
+                      className={styles.legendMore}
+                      onClick={() => setLegendExpanded((v) => !v)}
+                    >
+                      {legendExpanded ? 'Show less' : `+${remaining} more`}
+                    </button>
                   )}
-                  <span className={styles.legendSize}>{formatSize(child.sizeKb * 1024)}</span>
-                </div>
+                </>
               )
-            })}
+            })()}
           </div>
         )}
       </div>

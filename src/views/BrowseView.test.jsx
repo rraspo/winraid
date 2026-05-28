@@ -192,10 +192,12 @@ describe('BrowseView', () => {
     const fileRow = screen.getByText('readme.txt').closest('.row')
     fireEvent.dragStart(fileRow, { dataTransfer: { effectAllowed: '', setData: vi.fn(), setDragImage: vi.fn() } })
 
-    // Drop on Documents folder
+    // Drop on Documents folder — pass dataTransfer.types so the row-level
+    // onDrop recognises this as an internal drag and handles it (otherwise
+    // it bubbles to the BrowseView container's external-drop handler).
     const dirRow = screen.getByText('Documents').closest('.row')
     fireEvent.dragOver(dirRow)
-    fireEvent.drop(dirRow)
+    fireEvent.drop(dirRow, { dataTransfer: { types: ['application/x-winraid-internal'] } })
 
     // Move overlay should be visible while the operation is pending
     expect(await screen.findByText(/Moving readme\.txt/)).toBeInTheDocument()
@@ -227,7 +229,7 @@ describe('BrowseView', () => {
 
     const dirRow = screen.getByText('Documents').closest('.row')
     fireEvent.dragOver(dirRow)
-    fireEvent.drop(dirRow)
+    fireEvent.drop(dirRow, { dataTransfer: { types: ['application/x-winraid-internal'] } })
 
     // Wait for error status and refetch
     await waitFor(() => {

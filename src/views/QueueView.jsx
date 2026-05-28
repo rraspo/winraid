@@ -22,6 +22,23 @@ function relativeTime(ts) {
   return `${Math.floor(s / 3600)}h ago`
 }
 
+// The directory shown next to a job's filename in the queue view.
+// For drop-uploads the queue records relPath including any folder
+// hierarchy the user dragged in (e.g. "myFolder/sub/photo.jpg"); the
+// display must include that prefix so a file dropped inside a folder
+// doesn't look like it landed flat in remoteDest. For watcher-driven
+// uploads remoteDest isn't set and we fall back to the source dir.
+function jobDisplayDir(job) {
+  const relDir = job.relPath?.replace(/[/\\][^/\\]+$/, '')
+  const relDirPart = relDir && relDir !== job.relPath ? relDir : null
+  if (job.remoteDest) {
+    return relDirPart
+      ? `${job.remoteDest}/${relDirPart}`.replace(/\/+/g, '/')
+      : job.remoteDest
+  }
+  return job.srcPath ? job.srcPath.replace(/[/\\][^/\\]+$/, '') : ''
+}
+
 function getFileIcon(filename) {
   const ext = filename?.split('.').pop()?.toLowerCase() ?? ''
   if (['mp4', 'mkv', 'avi', 'mov', 'wmv', 'webm', 'm4v'].includes(ext))
@@ -164,8 +181,8 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
       enableResizing: true,
       sortingFn: 'alphanumeric',
       cell: ({ row }) => {
-        const { filename, srcPath, remoteDest, errorMsg, status, progress } = row.original
-        const dir = remoteDest ?? (srcPath ? srcPath.replace(/[/\\][^/\\]+$/, '') : '')
+        const { filename, errorMsg, status, progress } = row.original
+        const dir = jobDisplayDir(row.original)
         const isActive = status === 'TRANSFERRING'
         const percent = Math.round((progress ?? 0) * 100)
         return (
@@ -270,12 +287,12 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
             {status === 'ERROR' && (
               <>
                 <Tooltip tip="Retry" side="bottom">
-                  <button className={styles.retryBtn} onClick={() => window.winraid?.queue.retry(id)}>
+                  <button className={styles.retryBtn} onClick={(e) => { e.stopPropagation(); window.winraid?.queue.retry(id) }}>
                     <RotateCcw size={13} />
                   </button>
                 </Tooltip>
                 <Tooltip tip="Remove" side="bottom">
-                  <button className={styles.removeBtn} onClick={() => window.winraid?.queue.remove(id)}>
+                  <button className={styles.removeBtn} onClick={(e) => { e.stopPropagation(); window.winraid?.queue.remove(id) }}>
                     <X size={13} />
                   </button>
                 </Tooltip>
@@ -283,7 +300,7 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
             )}
             {(status === 'PENDING' || status === 'TRANSFERRING') && (
               <Tooltip tip="Cancel" side="bottom">
-                <button className={styles.cancelBtn} onClick={() => window.winraid?.queue.cancel(id)}>
+                <button className={styles.cancelBtn} onClick={(e) => { e.stopPropagation(); window.winraid?.queue.cancel(id) }}>
                   <X size={13} />
                 </button>
               </Tooltip>

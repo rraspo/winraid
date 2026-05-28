@@ -7,7 +7,8 @@ import styles from './BrowseGrid.module.css'
 const BrowseGrid = memo(function BrowseGrid({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
   path, selectedId, busy, selected, dragSourcePaths, lastVisitedDir,
-  highlightFile, highlightRef,
+  highlightFile, highlightRef, cursorEntry,
+  scrollAnchor, setScrollAnchor,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, handleItemPointer, toggleSelectAll,
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd,
@@ -18,15 +19,54 @@ const BrowseGrid = memo(function BrowseGrid({
   const [gridScrollEl, setGridScrollEl] = useState(null)
   const { gridVirtualizer, gridCols } = useGridVirtualizer(entries, gridScrollEl)
 
+  // On unmount, snapshot the entry name at the top of the visible window
+  // so a re-mount (via list/grid toggle) can restore the same scroll
+  // position. The grid virtualizer paginates by rows, so virtualItems[0]
+  // is the top row; the first entry in that row is the anchor.
+  const entriesRef        = useRef(entries)
+  const gridVirtualizerRef = useRef(gridVirtualizer)
+  const gridColsRef        = useRef(gridCols)
+  entriesRef.current         = entries
+  gridVirtualizerRef.current = gridVirtualizer
+  gridColsRef.current        = gridCols
+
+  useEffect(() => {
+    return () => {
+      const items = gridVirtualizerRef.current?.getVirtualItems?.() ?? []
+      if (items.length === 0) return
+      const cols = gridColsRef.current || 1
+      const firstIdx = items[0].index * cols
+      const entry = entriesRef.current[firstIdx]
+      if (entry && setScrollAnchor) setScrollAnchor(entry.name)
+    }
+  }, [setScrollAnchor])
+
+  // Restore to scrollAnchor once on mount, after entries arrive. Skipped
+  // if highlightFile or lastVisitedDir wins.
+  const restoredAnchor = useRef(false)
+  useEffect(() => {
+    if (restoredAnchor.current) return
+    if (entries.length === 0 || gridCols === 0) return
+    if (highlightFile || lastVisitedDir) { restoredAnchor.current = true; return }
+    if (!scrollAnchor) return
+    const idx = entries.findIndex((e) => e.name === scrollAnchor)
+    restoredAnchor.current = true
+    if (idx >= 0) gridVirtualizer.scrollToIndex(Math.floor(idx / gridCols), { align: 'start' })
+  }, [scrollAnchor, entries, gridCols, highlightFile, lastVisitedDir]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Scroll either the highlighted file (e.g. just-uploaded), the type-
+  // ahead cursor target, or the subfolder we just came back up from
+  // into view. Priority: highlightFile > cursorEntry > lastVisitedDir.
   const lastScrolled = useRef(null)
   useEffect(() => {
-    if (!highlightFile || entries.length === 0 || gridCols === 0) return
-    if (highlightFile === lastScrolled.current) return
-    const idx = entries.findIndex((e) => e.name === highlightFile)
+    if (entries.length === 0 || gridCols === 0) return
+    const target = highlightFile || cursorEntry || lastVisitedDir
+    if (!target || target === lastScrolled.current) return
+    const idx = entries.findIndex((e) => e.name === target)
     if (idx < 0) return
-    lastScrolled.current = highlightFile
+    lastScrolled.current = target
     gridVirtualizer.scrollToIndex(Math.floor(idx / gridCols), { align: 'center' })
-  }, [highlightFile, entries, gridCols]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [highlightFile, cursorEntry, lastVisitedDir, entries, gridCols]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const isLassoing  = useRef(false)
   const lassoMods   = useRef({ ctrl: false, shift: false })
@@ -175,6 +215,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       isDragSource={dragSourcePaths.has(entryPath)}
                       isLastVisited={isDir && lastVisitedDir === entry.name}
                       isHighlighted={highlightFile === entry.name}
+                      isCursor={cursorEntry === entry.name}
                       highlightRef={highlightRef}
                       onItemPointer={handleItemPointer}
                       onNavigate={navigate}

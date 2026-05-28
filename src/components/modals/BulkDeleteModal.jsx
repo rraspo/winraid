@@ -14,10 +14,15 @@ export default function BulkDeleteModal({ count, names, onConfirm, onCancel }) {
               Delete {count} item{count !== 1 ? 's' : ''}?
             </h2>
             <p className={styles.modalSubtitle}>
-              {names.join(', ')} will be permanently deleted. This cannot be undone.
+              The following will be permanently deleted. This cannot be undone.
             </p>
           </div>
         </div>
+        <ul className={styles.modalFileList}>
+          {names.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
         <div className={styles.modalActions}>
           <button className={styles.modalCancel} onClick={onCancel}>Cancel</button>
           <button className={styles.modalConfirm} onClick={onConfirm}>

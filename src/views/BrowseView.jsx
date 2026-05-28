@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, AlertTriangle, Loader, FolderPlus, List, LayoutGrid,
-  Trash2, FolderInput, X as XIcon, Play,
+  Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown,
 } from 'lucide-react'
 import styles from './BrowseView.module.css'
 import { formatSize } from '../utils/format'
@@ -19,6 +19,7 @@ import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
 import { useBrowse } from '../hooks/useBrowse'
 import PlayOverlay from '../components/PlayOverlay'
+import DragGhost from '../components/browse/DragGhost'
 
 export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
@@ -26,11 +27,14 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     connections, selectedId, path, entries, loading, error, status,
     confirmTarget, editingFile, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
-    dragSource, dragSourcePaths, moveInFlight, downloadProgress,
+    dragSource, dragPos, dragSourcePaths, moveInFlight, downloadProgress,
     selected, bulkAction, bulkMoveDest,
+    searchQuery, setSearchQuery,
+    cursorEntry, setCursorEntry,
+    sortMode, setSortMode,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
-    setSelectedFile, setShowQuickLook,
+    setSelectedFile, setShowQuickLook, setHighlightFile,
     cfgRemotePath, localFolder, crumbs,
     fileEntries, selectedEntries, dirCount, fileCount, busy, noConfig,
     fetchDir, navigate,
@@ -52,8 +56,12 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
 
   const sftpCfg = (connections ?? []).find((c) => c.id === selectedId)?.sftp ?? null
 
-  const [diskUsage, setDiskUsage] = useState(null)
-  const [showPlay, setShowPlay] = useState(false)
+  const [diskUsage, setDiskUsage]             = useState(null)
+  const [showPlay, setShowPlay]               = useState(false)
+  const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
+  const [sortDropOpen, setSortDropOpen]       = useState(false)
+  const breadcrumbRef = useRef(null)
+  const sortDropRef   = useRef(null)
 
   useEffect(() => {
     if (!selectedId) return
@@ -64,6 +72,29 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       ?.catch(() => {})
     return () => { cancelled = true }
   }, [selectedId])
+
+  useEffect(() => {
+    const el = breadcrumbRef.current
+    if (!el) return
+    el.scrollLeft = el.scrollWidth
+    setBreadcrumbOverflow(el.scrollWidth > el.clientWidth)
+  }, [path])
+
+  useEffect(() => {
+    if (!sortDropOpen) return
+    function onDown(e) {
+      if (!sortDropRef.current?.contains(e.target)) setSortDropOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [sortDropOpen])
+
+  const SORT_OPTIONS = [
+    { value: 'nameAsc',  label: 'Name A-Z' },
+    { value: 'nameDesc', label: 'Name Z-A' },
+    { value: 'recent',   label: 'Recent' },
+    { value: 'oldest',   label: 'Oldest' },
+  ]
 
   // Ctrl+V / Cmd+V to paste clipboard content into the current directory.
   // Image bytes go through handlePasteImage; a URL string triggers an
@@ -95,6 +126,50 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     document.addEventListener('paste', onPaste)
     return () => document.removeEventListener('paste', onPaste)
   }, [handlePasteImage, handlePasteUrl])
+
+  // ── Type-to-jump (Explorer-style) ─────────────────────────────────────────
+  // While focus is in the browse view (no input/textarea focused, no modal
+  // open), typing letters builds a buffer and moves the cursor to the
+  // first entry whose name starts with it. Buffer resets after a short
+  // pause; the visible cursor lingers a bit longer so the user can see
+  // where they landed.
+  const typeAheadBufRef     = useRef('')
+  const bufResetTimerRef    = useRef(null)
+  const cursorClearTimerRef = useRef(null)
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return
+      // Ignore non-printable keys (Arrow, Escape, F-keys, etc.). Single
+      // character `key` values cover letters/digits/punctuation.
+      if (e.key.length !== 1) return
+      const active = document.activeElement
+      const tag = active?.tagName
+      // Don't steal keys from the search input, modals, editors, etc.
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return
+      // Bail if any modal is open — those should own keyboard input.
+      if (editingFile || showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste) return
+      if (entries.length === 0) return
+
+      typeAheadBufRef.current += e.key.toLowerCase()
+      clearTimeout(bufResetTimerRef.current)
+      bufResetTimerRef.current = setTimeout(() => { typeAheadBufRef.current = '' }, 700)
+
+      const buf = typeAheadBufRef.current
+      const match = entries.find((entry) => entry.name.toLowerCase().startsWith(buf))
+      if (match) {
+        e.preventDefault()
+        setCursorEntry(match.name)
+        clearTimeout(cursorClearTimerRef.current)
+        cursorClearTimerRef.current = setTimeout(() => setCursorEntry(null), 1500)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      clearTimeout(bufResetTimerRef.current)
+      clearTimeout(cursorClearTimerRef.current)
+    }
+  }, [entries, setCursorEntry, editingFile, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
 
   return (
     <div
@@ -141,6 +216,13 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           onClose={() => setShowPlay(false)}
         />
       )}
+      <DragGhost
+        dragSource={dragSource}
+        dragPos={dragPos}
+        connectionId={selectedId}
+        viewMode={viewMode}
+      />
+
       {confirmTarget && (
         <ConfirmModal
           remotePath={confirmTarget}
@@ -249,6 +331,34 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               <Play size={14} />
             </button>
           </Tooltip>
+          <div className={styles.sortWrap} ref={sortDropRef}>
+            <Tooltip tip="Sort order" side="bottom">
+              <button
+                className={styles.sortBtn}
+                onClick={() => setSortDropOpen((v) => !v)}
+                aria-label="Sort order"
+              >
+                <ArrowUpDown size={13} />
+                <span className={styles.sortLabel}>
+                  {SORT_OPTIONS.find((o) => o.value === sortMode)?.label ?? 'Sort'}
+                </span>
+              </button>
+            </Tooltip>
+            {sortDropOpen && (
+              <div className={styles.sortDrop}>
+                {SORT_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    className={[styles.sortOption, sortMode === opt.value ? styles.sortOptionActive : ''].join(' ')}
+                    onClick={() => { setSortMode(opt.value); setSortDropOpen(false) }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <SearchInput value={searchQuery} onChange={setSearchQuery} />
         </div>
 
         <div className={styles.headerRight}>
@@ -295,7 +405,8 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       ) : (
         <>
           {/* Breadcrumb */}
-          <div className={styles.breadcrumb}>
+          <div className={styles.breadcrumb} ref={breadcrumbRef}>
+            {breadcrumbOverflow && <span className={styles.crumbEllipsis}>...</span>}
             {crumbs.map((c, i) => (
               <span key={c.path} className={styles.crumbGroup}>
                 {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
@@ -363,6 +474,9 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
               highlightRef={browse.highlightRef}
+              cursorEntry={cursorEntry}
+              scrollAnchor={browse.scrollAnchor}
+              setScrollAnchor={browse.setScrollAnchor}
               handleDragStart={browse.handleDragStart}
               handleDragEnd={browse.handleDragEnd}
               handleDragOverFolder={browse.handleDragOverFolder}
@@ -372,6 +486,10 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               openQuickLook={browse.openQuickLook}
               handleItemPointer={handleItemPointer}
               toggleSelectAll={toggleSelectAll}
+              handleRubberBandStart={handleRubberBandStart}
+              handleRubberBandMove={handleRubberBandMove}
+              handleRubberBandEnd={handleRubberBandEnd}
+              rubberBand={rubberBand}
               handleDownload={handleDownload}
               setEditingFile={browse.setEditingFile}
               setMoveTarget={browse.setMoveTarget}
@@ -394,6 +512,9 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
               highlightRef={browse.highlightRef}
+              cursorEntry={cursorEntry}
+              scrollAnchor={browse.scrollAnchor}
+              setScrollAnchor={browse.setScrollAnchor}
               handleDragStart={browse.handleDragStart}
               handleDragEnd={browse.handleDragEnd}
               handleDragOverFolder={browse.handleDragOverFolder}
@@ -477,6 +598,55 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
             </div>
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// Compact search box for filtering the current directory's entries.
+// Ctrl/Cmd+F focuses the input; ESC clears the query (and blurs).
+function SearchInput({ value, onChange }) {
+  const inputRef = useRef(null)
+
+  useEffect(() => {
+    function onKey(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+        e.preventDefault()
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
+
+  return (
+    <div className={styles.searchWrap}>
+      <Search size={12} className={styles.searchIcon} />
+      <input
+        ref={inputRef}
+        className={styles.searchInput}
+        type="text"
+        placeholder="Search this folder"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            onChange('')
+            inputRef.current?.blur()
+          }
+        }}
+      />
+      {value && (
+        <button
+          type="button"
+          className={styles.searchClear}
+          onClick={() => { onChange(''); inputRef.current?.focus() }}
+          aria-label="Clear search"
+        >
+          <XIcon size={11} />
+        </button>
       )}
     </div>
   )

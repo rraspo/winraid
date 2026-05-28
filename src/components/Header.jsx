@@ -14,7 +14,9 @@ function relativeTime(ts) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-export default function Header({ watcherStatus, activeTransfers, queuePaused, onGlobalToggle, connections = [], onNavigate }) {
+const EMPTY_CONN_SET = new Set()
+
+export default function Header({ watcherStatus, activeTransfers, queueDepth = 0, batchTotal = 0, batchConnections = EMPTY_CONN_SET, queuePaused, onGlobalToggle, connections = [], onNavigate }) {
   const entries      = Object.values(watcherStatus ?? {})
   const anyWatching  = entries.some((s) => s.watching)
   const enqueueing   = entries.find((s) => s.state === 'enqueueing')
@@ -23,17 +25,25 @@ export default function Header({ watcherStatus, activeTransfers, queuePaused, on
   const allStopped = !anyWatching && queuePaused
 
   const transferCount = activeTransfers.size
+  const progressed    = Math.max(0, batchTotal - queueDepth) + transferCount
 
   const transferLabel = useMemo(() => {
-    if (transferCount === 0) return null
+    // Stay mounted while the queue has any work, not just while a file
+    // is in flight \u2014 otherwise the pill blinks off and back on between
+    // every transfer in a batch.
+    if (transferCount === 0 && queueDepth === 0) return null
     const connMap = {}
     for (const c of connections) connMap[c.id] = c.name
-    const connIds = new Set(activeTransfers.values())
-    const names = [...connIds].map((id) => connMap[id]).filter(Boolean)
-    if (names.length === 0) return transferCount === 1 ? 'Transferring' : `${transferCount} transferring`
-    if (names.length === 1) return `${transferCount === 1 ? 'Transferring' : `${transferCount} transferring`} \u00b7 ${names[0]}`
-    return `${transferCount} transferring \u00b7 ${names.join(', ')}`
-  }, [transferCount, activeTransfers, connections])
+    // batchConnections accumulates across the whole batch so the suffix
+    // doesn't shimmer in and out between files.
+    const names = [...batchConnections].map((id) => connMap[id]).filter(Boolean)
+    const prefix = batchTotal > 1
+      ? `${progressed}/${batchTotal} transferring`
+      : (transferCount === 1 ? 'Transferring' : `${transferCount} transferring`)
+    if (names.length === 0) return prefix
+    if (names.length === 1) return `${prefix} \u00b7 ${names[0]}`
+    return `${prefix} \u00b7 ${names.join(', ')}`
+  }, [transferCount, queueDepth, batchTotal, progressed, batchConnections, connections])
 
   let statusLabel
   if (!anyWatching) {
@@ -73,7 +83,7 @@ export default function Header({ watcherStatus, activeTransfers, queuePaused, on
             <span className={[styles.dot, styles[dotState]].join(' ')} />
             <span className={styles.statusLabel}>{statusLabel}</span>
           </div>
-          {transferCount > 0 && (
+          {transferLabel && (
             <div className={styles.transferPill}>
               <span className={styles.spinner} />
               <span>{transferLabel}</span>

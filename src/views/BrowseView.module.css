@@ -120,25 +120,150 @@
 
 .playBtn:hover { color: var(--text); }
 
+/* ── Sort dropdown ────────────────────────────────────────────────────────── */
+.sortWrap {
+  position: relative;
+}
+
+.sortBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--space-2);
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: var(--font-size-xs);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.sortBtn:hover { color: var(--text); background-color: var(--bg-hover); }
+
+.sortLabel { white-space: nowrap; }
+
+.sortDrop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: var(--space-1);
+}
+
+.sortOption {
+  display: flex;
+  align-items: center;
+  padding: 6px var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.sortOption:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.sortOptionActive {
+  color: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+/* ── Search input (toolbar) ──────────────────────────────────────────────── */
+.searchWrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px 0 8px;
+  height: 26px;
+  width: 200px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  transition: border-color var(--transition);
+}
+
+.searchWrap:focus-within {
+  border-color: var(--accent);
+}
+
+.searchIcon {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: var(--font-size-xs);
+}
+
+.searchInput::placeholder {
+  color: var(--text-faint);
+}
+
+.searchClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  color: var(--text-faint);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition), background var(--transition);
+}
+
+.searchClear:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
 .breadcrumb {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 2px;
   padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   font-size: var(--font-size-xs);
+  overflow: hidden;
 }
 
 .crumbGroup {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex-shrink: 0;
 }
 
 .crumbSep { color: var(--text-faint); flex-shrink: 0; }
+
+.crumbEllipsis {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding: 2px 4px 2px 0;
+  color: var(--text-faint);
+  flex-shrink: 0;
+  background: var(--bg);
+}
 
 .crumb {
   display: flex;
@@ -148,10 +273,8 @@
   border-radius: var(--radius-sm);
   color: var(--text-muted);
   transition: color var(--transition), background-color var(--transition);
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .crumb:hover:not(:disabled) { color: var(--text); background-color: var(--bg-hover); }

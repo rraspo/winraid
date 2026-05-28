@@ -2,12 +2,14 @@ import styles from './ProgressRing.module.css'
 
 /**
  * SVG arc progress ring. progress is 0–1; the arc fills clockwise.
- * Designed to overlay a media element while it streams in.
+ * Default size is tuned for media overlays; `size` lets callers (status
+ * bar, badges, etc.) render a smaller ring inline. `inline` skips the
+ * absolute-centering class so the ring participates in normal flex flow.
  */
-export default function ProgressRing({ progress }) {
-  const r          = 16
-  const stroke     = 3
-  const svgSize    = (r + stroke) * 2
+export default function ProgressRing({ progress, size = 38, inline = false }) {
+  const stroke     = size <= 16 ? 2 : 3
+  const r          = (size - stroke * 2) / 2
+  const svgSize    = size
   const cx         = svgSize / 2
   const cy         = svgSize / 2
   const circ       = 2 * Math.PI * r
@@ -15,7 +17,7 @@ export default function ProgressRing({ progress }) {
 
   return (
     <svg
-      className={styles.progressRing}
+      className={inline ? styles.progressRingInline : styles.progressRing}
       width={svgSize}
       height={svgSize}
       viewBox={`0 0 ${svgSize} ${svgSize}`}

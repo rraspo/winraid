@@ -33,6 +33,25 @@ export default function App() {
   const [watcherStatus, setWatcherStatus] = useState({})
   // Map<jobId, connectionId> of currently transferring jobs
   const [activeTransfers, setActiveTransfers] = useState(new Map())
+  // Number of jobs currently in PENDING or TRANSFERRING status — finished
+  // (DONE) or failed (ERROR) jobs are excluded.
+  const [queueDepth, setQueueDepth] = useState(0)
+  // Total jobs entered into the *current* batch. Set when the queue is
+  // empty and a new active job arrives; grows as additional jobs land in
+  // the same batch; stays put while the batch drains, so the status bar
+  // can show "n/total" with a stable denominator. The next new job after
+  // queueDepth hits 0 starts a fresh batch.
+  const [batchTotal, setBatchTotal] = useState(0)
+  // Set of connectionIds that have had a TRANSFERRING job during the
+  // current batch. Accumulates across files so the status bar's
+  // "· ConnectionName" suffix doesn't blink in/out between transfers.
+  // Cleared alongside batchTotal when the batch drains.
+  const [batchConnections, setBatchConnections] = useState(() => new Set())
+  // Progress (0–1) of the file currently being transferred. Resets to 0
+  // when a new file enters TRANSFERRING, climbs as bytes arrive, and
+  // hits 1 just before the file transitions to DONE. Held at the last
+  // value between files (worker is serial; brief gap reads as "done").
+  const [currentFileProgress, setCurrentFileProgress] = useState(0)
   const [backupRun, setBackupRun] = useState({
     runStatus:   'idle',
     stats:       null,
@@ -94,9 +113,61 @@ export default function App() {
   // Track the last known status per job so we can detect transitions into and
   // out of TRANSFERRING without relying on a prevStatus field in the payload.
   const jobStatusMapRef = useRef(new Map())
+  // Synchronous mirror of queueDepth — needed inside the event handler to
+  // detect "was queue drained?" before a new active job is counted.
+  const queueDepthRef   = useRef(0)
 
   useEffect(() => {
     if (!window.winraid) return
+
+    const isActive = (s) => s === 'PENDING' || s === 'TRANSFERRING'
+
+    // Update queueDepth state AND ref together. Returns the new depth so
+    // the caller can react to drained state in the same tick.
+    function bumpDepth(delta) {
+      const next = Math.max(0, queueDepthRef.current + delta)
+      queueDepthRef.current = next
+      setQueueDepth(next)
+      return next
+    }
+
+    // A new job has entered the active set. Either we're starting a fresh
+    // batch (queue was drained → set total to 1) or growing an in-progress
+    // batch (total++).
+    function recordNewActive() {
+      if (queueDepthRef.current === 0) {
+        setBatchTotal(1)
+      } else {
+        setBatchTotal((t) => t + 1)
+      }
+      bumpDepth(+1)
+    }
+
+    function recordExitActive() {
+      bumpDepth(-1)
+    }
+
+    // Seed counters on mount so the status bar shows real numbers even
+    // before any 'updated' events arrive (app restart with pending jobs).
+    window.winraid.queue.list?.().then?.((jobs) => {
+      if (!Array.isArray(jobs)) return
+      let depth = 0
+      const seedConns = new Set()
+      for (const job of jobs) {
+        jobStatusMapRef.current.set(job.id, job.status)
+        if (isActive(job.status)) depth++
+        if (job.status === 'TRANSFERRING') {
+          setActiveTransfers((prev) => new Map(prev).set(job.id, job.connectionId ?? null))
+          if (job.connectionId) seedConns.add(job.connectionId)
+        }
+      }
+      queueDepthRef.current = depth
+      setQueueDepth(depth)
+      // Treat anything already pending/transferring on startup as one batch
+      // in progress — the user can read "n/depth" while it drains.
+      setBatchTotal(depth)
+      if (seedConns.size > 0) setBatchConnections(seedConns)
+    }).catch?.(() => {})
 
     const unsubUpdated = window.winraid.queue.onUpdated((payload) => {
       if (payload?.type === 'updated' && payload.job) {
@@ -106,25 +177,80 @@ export default function App() {
 
         if (prevStatus !== nextStatus) {
           jobStatusMapRef.current.set(job.id, nextStatus)
+          const wasActive = isActive(prevStatus)
+          const nowActive = isActive(nextStatus)
+          if (nowActive && !wasActive)      recordNewActive()
+          else if (wasActive && !nowActive) recordExitActive()
+
           if (nextStatus === 'TRANSFERRING') {
             setActiveTransfers((prev) => new Map(prev).set(job.id, job.connectionId ?? null))
+            // A new file is starting — reset the per-file ring to empty.
+            setCurrentFileProgress(0)
+            // Accumulate the connection into the batch-level set so the
+            // status bar suffix stays put between files.
+            if (job.connectionId) {
+              setBatchConnections((prev) => {
+                if (prev.has(job.connectionId)) return prev
+                const next = new Set(prev)
+                next.add(job.connectionId)
+                return next
+              })
+            }
           } else if (prevStatus === 'TRANSFERRING') {
             setActiveTransfers((prev) => { const m = new Map(prev); m.delete(job.id); return m })
           }
         }
+      } else if (payload?.type === 'added' && payload.jobId) {
+        const prevStatus = jobStatusMapRef.current.get(payload.jobId)
+        if (!isActive(prevStatus)) {
+          jobStatusMapRef.current.set(payload.jobId, 'PENDING')
+          recordNewActive()
+        }
+      } else if (payload?.type === 'retry' && payload.jobId) {
+        const prevStatus = jobStatusMapRef.current.get(payload.jobId)
+        if (!isActive(prevStatus)) {
+          jobStatusMapRef.current.set(payload.jobId, 'PENDING')
+          recordNewActive()
+        }
       } else if (payload?.type === 'cleared') {
-        // All DONE jobs removed — no active transfers affected, but reset map entries
         jobStatusMapRef.current.forEach((status, id) => {
           if (status === 'DONE') jobStatusMapRef.current.delete(id)
         })
       } else if (payload?.type === 'removed' && payload.jobId) {
+        const prevStatus = jobStatusMapRef.current.get(payload.jobId)
         jobStatusMapRef.current.delete(payload.jobId)
+        if (isActive(prevStatus)) recordExitActive()
       }
     })
 
     return () => {
       unsubUpdated()
     }
+  }, [])
+
+  // When the queue drains, also clear any stale activeTransfers entries,
+  // the batch counter, and the batch connection set. Without this, a
+  // missed TRANSFERRING→DONE event could leave the status bar stuck
+  // showing "Transferring" forever, and stale conn names could carry
+  // into the next batch.
+  useEffect(() => {
+    if (queueDepth === 0) {
+      setActiveTransfers((prev) => (prev.size > 0 ? new Map() : prev))
+      setBatchTotal((t) => (t > 0 ? 0 : t))
+      setBatchConnections((s) => (s.size > 0 ? new Set() : s))
+      setCurrentFileProgress(0)
+    }
+  }, [queueDepth])
+
+  // Live byte-level progress for the file currently being transferred.
+  // Worker is serial so only one file is in flight at a time.
+  useEffect(() => {
+    if (!window.winraid) return
+    return window.winraid.queue.onProgress((payload) => {
+      if (typeof payload?.percent === 'number') {
+        setCurrentFileProgress(payload.percent / 100)
+      }
+    })
   }, [])
 
   // --- Connection state (shared between sidebar + dashboard) ----------------
@@ -312,6 +438,9 @@ export default function App() {
           <Header
             watcherStatus={watcherStatus}
             activeTransfers={activeTransfers}
+            queueDepth={queueDepth}
+            batchTotal={batchTotal}
+            batchConnections={batchConnections}
             queuePaused={queuePaused}
             onGlobalToggle={handleGlobalToggle}
             connections={connections}
@@ -384,6 +513,10 @@ export default function App() {
           <StatusBar
             watcherStatus={watcherStatus}
             activeTransfers={activeTransfers}
+            queueDepth={queueDepth}
+            batchTotal={batchTotal}
+            batchConnections={batchConnections}
+            currentFileProgress={currentFileProgress}
             connections={connections}
             onNavigate={navigateView}
           />

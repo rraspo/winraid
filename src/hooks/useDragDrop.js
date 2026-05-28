@@ -1,60 +1,15 @@
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 
-// Build a stacked ghost DOM node for setDragImage.
-// Uses inlined styles — CSS Modules are not available outside the React tree.
-function buildGhostNode(draggingEntries, viewMode) {
-  const MAX_COPIES = 3
-  const copies = draggingEntries.slice(0, MAX_COPIES)
-  const extra  = draggingEntries.length - MAX_COPIES
-
-  const wrapper = document.createElement('div')
-  wrapper.style.cssText = viewMode === 'grid'
-    ? 'position:absolute;left:-9999px;top:-9999px;pointer-events:none;width:136px;height:56px'
-    : 'position:absolute;left:-9999px;top:-9999px;pointer-events:none;width:216px;height:48px'
-
-  const OPACITIES = [1, 0.7, 0.45]
-
-  copies.forEach((item, i) => {
-    const el = document.createElement('div')
-    const offset = i * 4
-    if (viewMode === 'grid') {
-      el.style.cssText = [
-        `position:absolute;top:${offset}px;left:${offset}px`,
-        'width:120px;background:#1C2733;border-radius:8px;padding:10px',
-        `border:1.5px solid ${i === 0 ? '#5BA4F5' : 'rgba(255,255,255,0.08)'}`,
-        `opacity:${OPACITIES[i]};box-sizing:border-box`,
-      ].join(';')
-      el.innerHTML = `<div style="font-size:11px;color:#E6EDF3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(item.name)}</div>`
-    } else {
-      el.style.cssText = [
-        `position:absolute;top:${offset}px;left:${offset}px`,
-        'width:200px;height:32px;background:#1C2733;border-radius:4px',
-        'display:flex;align-items:center;padding:0 10px;gap:8px',
-        `border:1px solid ${i === 0 ? '#5BA4F5' : 'rgba(255,255,255,0.08)'}`,
-        `opacity:${OPACITIES[i]};box-sizing:border-box`,
-      ].join(';')
-      el.innerHTML = `<span style="font-size:12px;color:#E6EDF3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(item.name)}</span>`
-    }
-    wrapper.appendChild(el)
-  })
-
-  if (extra > 0) {
-    const badge = document.createElement('div')
-    badge.style.cssText = [
-      'position:absolute;top:-6px;right:-10px',
-      'background:#5BA4F5;color:#fff;border-radius:10px',
-      'font-size:10px;font-weight:700;padding:1px 6px;border:2px solid #1C2733',
-    ].join(';')
-    badge.textContent = `+${extra}`
-    wrapper.appendChild(badge)
-  }
-
-  return wrapper
-}
-
-function escapeHtml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-}
+// Suppress the browser's native drag image — we render our own React
+// overlay (DragGhost) tracking the cursor instead. A 1×1 transparent GIF
+// works on every browser; cached at module scope so we only create it
+// once across the lifetime of the app.
+const TRANSPARENT_DRAG_IMAGE = (() => {
+  if (typeof Image === 'undefined') return null
+  const img = new Image(1, 1)
+  img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+  return img
+})()
 
 function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
@@ -62,9 +17,12 @@ function joinRemote(base, name) {
 
 export function useDragDrop({ selected, entries, selectedId, path, viewMode, fetchDir, navigate = () => {}, setStatus, clearSelection = () => {} }) {
   const [dragSource,   setDragSource]   = useState(null)
+  const [dragPos,      setDragPos]      = useState(null)
   const [moveInFlight, setMoveInFlight] = useState(null)
 
   const dragSourceRef     = useRef(null)
+  const dragPosRef        = useRef(null)
+  const dragRafRef        = useRef(null)
   const dropTargetPathRef = useRef(null)
   const dwellTimer        = useRef(null)
   const pathRef           = useRef(path)
@@ -76,6 +34,28 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     [dragSource],
   )
 
+  // Track cursor during drag to position the React-rendered ghost overlay.
+  // dragover fires very frequently on mouse movement; rAF coalesces multiple
+  // events into one state update per frame. The listener is registered for
+  // the lifetime of the hook and gates on dragSourceRef so it only emits
+  // updates while a drag is in progress.
+  useEffect(() => {
+    function onDocDragOver(e) {
+      if (!dragSourceRef.current) return
+      dragPosRef.current = { x: e.clientX, y: e.clientY }
+      if (dragRafRef.current) return
+      dragRafRef.current = requestAnimationFrame(() => {
+        dragRafRef.current = null
+        setDragPos(dragPosRef.current)
+      })
+    }
+    document.addEventListener('dragover', onDocDragOver)
+    return () => {
+      document.removeEventListener('dragover', onDocDragOver)
+      if (dragRafRef.current) cancelAnimationFrame(dragRafRef.current)
+    }
+  }, [])
+
   const handleDragStart = useCallback((e, entry, entryPath) => {
     const isSelectedEntry = selected.has(entry.name)
     const draggingEntries = isSelectedEntry
@@ -84,23 +64,36 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
           .map((en) => ({ ...en, entryPath: en.entryPath ?? joinRemote(path, en.name) }))
       : [{ ...entry, entryPath }]
 
-    const src = { entry, entryPath, entries: draggingEntries }
+    // Capture the card geometry + click offset so the ghost lines up with
+    // the card the user actually grabbed. Falls back to defaults when the
+    // event lacks currentTarget (notably in unit tests with mock events).
+    const rect = e.currentTarget?.getBoundingClientRect?.() ?? null
+    const cardSize    = rect ? { width: rect.width, height: rect.height } : null
+    const clickOffset = rect ? { x: e.clientX - rect.left, y: e.clientY - rect.top } : null
+
+    const src = { entry, entryPath, entries: draggingEntries, cardSize, clickOffset }
     dragSourceRef.current = src
     setDragSource(src)
+    if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+      dragPosRef.current = { x: e.clientX, y: e.clientY }
+      setDragPos(dragPosRef.current)
+    }
 
     e.dataTransfer.effectAllowed = 'move'
     e.dataTransfer.setData('application/x-winraid-internal', '1')
     e.dataTransfer.setData('text/plain', entryPath)
 
-    const ghost = buildGhostNode(draggingEntries, viewMode)
-    document.body.appendChild(ghost)
-    e.dataTransfer.setDragImage(ghost, 16, 16)
-    requestAnimationFrame(() => document.body.removeChild(ghost))
-  }, [selected, entries, path, viewMode])
+    // Suppress the native drag image — DragGhost renders our overlay.
+    if (TRANSPARENT_DRAG_IMAGE) {
+      e.dataTransfer.setDragImage(TRANSPARENT_DRAG_IMAGE, 0, 0)
+    }
+  }, [selected, entries, path])
 
   const handleDragEnd = useCallback(() => {
     dragSourceRef.current = null
+    dragPosRef.current = null
     setDragSource(null)
+    setDragPos(null)
     if (dropTargetPathRef.current !== null) {
       const el = document.querySelector(`[data-entry-path="${CSS.escape(dropTargetPathRef.current)}"]`)
       if (el) el.removeAttribute('data-drop-target')
@@ -154,19 +147,28 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     )
     if (isInvalidTarget) return
 
+    // Filter to items whose destination differs from their current path —
+    // dropping a file back onto its existing parent is a no-op and should
+    // not surface a "Moved X" status or trigger a directory refresh.
+    const itemsToMove = src.entries.filter(
+      (item) => joinRemote(targetDirPath, item.name) !== item.entryPath
+    )
+    if (itemsToMove.length === 0) return
+
     dragSourceRef.current = null
+    dragPosRef.current = null
     setDragSource(null)
+    setDragPos(null)
     clearSelection()
 
-    const firstName = src.entries[0]?.name ?? ''
-    const label = src.entries.length > 1 ? `${src.entries.length} items` : firstName
+    const firstName = itemsToMove[0].name
+    const label = itemsToMove.length > 1 ? `${itemsToMove.length} items` : firstName
     setMoveInFlight(firstName)
 
     let failMsg = null
     try {
-      for (const item of src.entries) {
+      for (const item of itemsToMove) {
         const dstPath = joinRemote(targetDirPath, item.name)
-        if (item.entryPath === dstPath) continue
         const res = await window.winraid?.remote.move(selectedId, item.entryPath, dstPath)
         if (!res?.ok && failMsg === null) failMsg = res?.error || 'Move failed'
       }
@@ -183,6 +185,7 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
 
   return {
     dragSource,
+    dragPos,
     dragSourcePaths,
     moveInFlight,
     handleDragStart,

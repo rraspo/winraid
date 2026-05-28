@@ -7,6 +7,22 @@
   opacity: 0.9;
 }
 
+/* Inline variant — sits in normal flex/inline flow (e.g. status bar).
+   Inherits color from the enclosing element so it tints with the
+   surrounding text (the status-bar pill uses --accent, for example). */
+.progressRingInline {
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.progressRingInline .progressRingTrack {
+  stroke: color-mix(in srgb, currentColor 20%, transparent);
+}
+
+.progressRingInline .progressRingArc {
+  stroke: currentColor;
+}
+
 .progressRingTrack {
   stroke: rgba(255, 255, 255, 0.15);
 }

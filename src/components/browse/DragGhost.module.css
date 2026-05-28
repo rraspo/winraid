@@ -1,0 +1,146 @@
+.wrapper {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  user-select: none;
+}
+
+/* ── Background stubs (no content) ───────────────────────────────────────── */
+.stub {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-card, var(--bg-panel));
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+}
+
+/* Fan outward from cursor on mount */
+.stub1 { animation: fanOut1 160ms cubic-bezier(0.2, 0, 0.3, 1) forwards; }
+.stub2 { animation: fanOut2 200ms cubic-bezier(0.2, 0, 0.3, 1) forwards; }
+
+@keyframes fanOut1 {
+  from { transform: translate(0, 0);     opacity: 0; }
+  to   { transform: translate(6px, 6px); opacity: 0.65; }
+}
+@keyframes fanOut2 {
+  from { transform: translate(0, 0);       opacity: 0; }
+  to   { transform: translate(12px, 12px); opacity: 0.4; }
+}
+
+/* ── Top card ─────────────────────────────────────────────────────────────── */
+.card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--accent);
+  background: var(--bg-card, var(--bg-panel));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.25);
+  /* intentionally no overflow:hidden so the badge can poke outside */
+}
+
+/* Grid layout */
+.cardGrid {
+  display: flex;
+  flex-direction: column;
+}
+
+.gridThumb {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-base);
+  overflow: hidden;
+  border-radius: calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px) 0 0;
+}
+
+.thumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.gridMeta {
+  flex-shrink: 0;
+  padding: 5px 8px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+}
+
+.gridName {
+  font-size: var(--font-size-xs);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gridSize {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* List layout */
+.cardList {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  overflow: hidden;
+}
+
+.listThumb {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+}
+
+.listThumbImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.listName {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-size-sm);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Icons ────────────────────────────────────────────────────────────────── */
+.iconDir  { color: var(--accent); }
+.iconFile { color: var(--text-faint); }
+
+/* ── Count badge ──────────────────────────────────────────────────────────── */
+.badge {
+  position: absolute;
+  top: -8px;
+  right: -10px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border: 2px solid var(--bg-panel);
+  white-space: nowrap;
+}

@@ -9,7 +9,7 @@ import styles from './GridCard.module.css'
 
 const GridCard = memo(function GridCard({
   entry, entryPath, connectionId, isDir, busy, index,
-  isSelected, isDragSource, isLastVisited, isHighlighted,
+  isSelected, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
 }) {
@@ -52,6 +52,7 @@ const GridCard = memo(function GridCard({
         isSelected ? styles.gridCardSelected : '',
         isDragSource ? styles.dragging : '',
         isLastVisited ? styles.lastVisited : '',
+        isCursor ? styles.cursor : '',
         isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
       ].join(' ')}
       draggable={!busy}
@@ -59,7 +60,15 @@ const GridCard = memo(function GridCard({
       onDragEnd={onDragEnd}
       onDragOver={isDir ? (e) => onDragOver(e, entryPath) : undefined}
       onDragLeave={isDir ? onDragLeave : undefined}
-      onDrop={isDir ? (e) => { e.stopPropagation(); onDrop(e, entryPath) } : undefined}
+      onDrop={isDir ? (e) => {
+        // Only handle internal moves at the card level; external drags
+        // (Windows / browser files) must bubble up to the BrowseView
+        // container's external-drop handler so the "drop overlay = current
+        // directory" contract holds.
+        if (!e.dataTransfer?.types?.includes('application/x-winraid-internal')) return
+        e.stopPropagation()
+        onDrop(e, entryPath)
+      } : undefined}
       onClick={handleCardClick}
     >
       <div className={styles.gridThumb}>

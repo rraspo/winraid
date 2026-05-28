@@ -27,6 +27,10 @@ export default function SettingsView() {
   const [playRecursive, setPlayRecursive] = useState(true)
   const [playShuffle,   setPlayShuffle]   = useState(true)
   const [snapshotFormat, setSnapshotFormat] = useState('jpeg')
+  const [thumbSeekMode,  setThumbSeekMode]  = useState('seconds')
+  const [thumbSeekValue, setThumbSeekValue] = useState(2)
+  const [dirsFirst,       setDirsFirst]       = useState(true)
+  const [sortPersistence, setSortPersistence] = useState('default')
   const [advancedOpen, setAdvancedOpen] = useState(
     () => localStorage.getItem('settings-advanced-open') === 'true'
   )
@@ -49,8 +53,10 @@ export default function SettingsView() {
 
   useEffect(() => {
     window.winraid?.config.get('browse').then((browse) => {
-      if (browse?.cacheMode)     setCacheMode(browse.cacheMode)
-      if (browse?.cacheMutation) setCacheMutation(browse.cacheMutation)
+      if (browse?.cacheMode)        setCacheMode(browse.cacheMode)
+      if (browse?.cacheMutation)    setCacheMutation(browse.cacheMutation)
+      if (browse?.dirsFirst != null) setDirsFirst(browse.dirsFirst)
+      if (browse?.sortPersistence)  setSortPersistence(browse.sortPersistence)
     }).catch(() => {})
   }, [])
 
@@ -64,6 +70,13 @@ export default function SettingsView() {
   useEffect(() => {
     window.winraid?.config.get('snapshot.format').then((fmt) => {
       if (typeof fmt === 'string' && fmt in SNAPSHOT_FORMATS) setSnapshotFormat(fmt)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('thumbSeek').then((cfg) => {
+      if (cfg?.mode)  setThumbSeekMode(cfg.mode)
+      if (cfg?.value != null) setThumbSeekValue(cfg.value)
     }).catch(() => {})
   }, [])
 
@@ -135,6 +148,23 @@ export default function SettingsView() {
   async function handleSnapshotFormatChange(value) {
     setSnapshotFormat(value)
     await window.winraid?.config.set('snapshot.format', value)
+  }
+
+  async function handleDirsFirstChange() {
+    const next = !dirsFirst
+    setDirsFirst(next)
+    await window.winraid?.config.set('browse.dirsFirst', next)
+  }
+
+  async function handleSortPersistenceChange(value) {
+    setSortPersistence(value)
+    await window.winraid?.config.set('browse.sortPersistence', value)
+  }
+
+  async function handleThumbSeekChange(mode, value) {
+    setThumbSeekMode(mode)
+    setThumbSeekValue(value)
+    await window.winraid?.config.set('thumbSeek', { mode, value })
   }
 
   function toggleAdvanced() {
@@ -262,6 +292,55 @@ export default function SettingsView() {
                     options={[
                       { value: 'update',  label: 'Update in place', desc: 'Directly splice entries on create, delete, and move — no re-fetch.' },
                       { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
+                    ]}
+                  />
+                  <div className={styles.field}>
+                    <span className={styles.label}>Video thumbnail position</span>
+                    <div className={styles.thumbSeekRow}>
+                      <input
+                        type="number"
+                        min={0}
+                        step={thumbSeekMode === 'percent' ? 1 : 0.5}
+                        max={thumbSeekMode === 'percent' ? 100 : undefined}
+                        className={styles.thumbSeekInput}
+                        value={thumbSeekValue}
+                        onChange={(e) => {
+                          const v = parseFloat(e.target.value)
+                          if (!isNaN(v) && v >= 0) handleThumbSeekChange(thumbSeekMode, v)
+                        }}
+                      />
+                      <div className={styles.thumbSeekToggle}>
+                        <button
+                          type="button"
+                          className={[styles.thumbSeekBtn, thumbSeekMode === 'seconds' ? styles.thumbSeekBtnActive : ''].join(' ')}
+                          onClick={() => handleThumbSeekChange('seconds', thumbSeekValue)}
+                        >s</button>
+                        <button
+                          type="button"
+                          className={[styles.thumbSeekBtn, thumbSeekMode === 'percent' ? styles.thumbSeekBtnActive : ''].join(' ')}
+                          onClick={() => handleThumbSeekChange('percent', thumbSeekValue)}
+                        >%</button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className={styles.field}>
+                    <span className={styles.label}>Directories first</span>
+                    <div
+                      role="switch"
+                      aria-checked={dirsFirst}
+                      aria-label="Directories first"
+                      className={[styles.switch, dirsFirst ? styles.switchOn : ''].filter(Boolean).join(' ')}
+                      onClick={handleDirsFirstChange}
+                    />
+                  </div>
+                  <SegmentedControl
+                    label="Sort persistence"
+                    value={sortPersistence}
+                    onChange={handleSortPersistenceChange}
+                    options={[
+                      { value: 'default',  label: 'Default only', desc: 'All folders use the same sort. Changing sort applies everywhere.' },
+                      { value: 'folder',   label: 'Per folder',   desc: 'Each folder remembers its own sort independently.' },
+                      { value: 'siblings', label: 'Per siblings', desc: 'Changing sort in a folder applies to all siblings under the same parent.' },
                     ]}
                   />
                 </div>

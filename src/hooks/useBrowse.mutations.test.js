@@ -40,10 +40,12 @@ beforeEach(() => {
       move: vi.fn().mockResolvedValue({ ok: true }),
       mkdir: vi.fn().mockResolvedValue({ ok: true }),
       checkout: vi.fn().mockResolvedValue({ ok: true, created: [] }),
+      download: vi.fn().mockResolvedValue({ ok: true, count: 1 }),
       readFile: vi.fn().mockResolvedValue({ ok: false, content: '' }),
       onDownloadProgress: vi.fn().mockReturnValue(() => {}),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, clean: true }),
     },
+    selectDownloadPath: vi.fn().mockResolvedValue('C:\\Users\\test\\Downloads'),
     watcher: { list: vi.fn().mockResolvedValue({}) },
     queue: {
       list: vi.fn().mockResolvedValue([]),
@@ -210,7 +212,7 @@ describe('selection clearing after bulk operations', () => {
     expect(result.current.selected.size).toBe(0)
   })
 
-  it('handleBulkCheckout clears selection after running', async () => {
+  it('handleBulkCheckout opens a folder picker and downloads each selected item to the chosen folder', async () => {
     remoteFS.list.mockResolvedValue([
       { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
       { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
@@ -226,7 +228,46 @@ describe('selection clearing after bulk operations', () => {
     await act(async () => result.current.toggleSelectAll())
     await waitFor(() => expect(result.current.selected.size).toBe(2))
     await act(() => result.current.handleBulkCheckout())
+    // Folder picker invoked with isDir=true.
+    expect(window.winraid.selectDownloadPath).toHaveBeenCalledWith('', true)
+    // One download call per selected file, destination joined under chosen folder.
+    expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/a.jpg', 'C:\\Users\\test\\Downloads\\a.jpg', false)
+    expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/b.jpg', 'C:\\Users\\test\\Downloads\\b.jpg', false)
+    // Selection cleared after running.
     expect(result.current.selected.size).toBe(0)
+  })
+
+  it('handleBulkCheckout does nothing if the user cancels the folder picker', async () => {
+    window.winraid.selectDownloadPath.mockResolvedValue(null)
+    remoteFS.list.mockResolvedValue([
+      { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.entries.length).toBe(1))
+    await act(async () => result.current.toggleSelectAll())
+    await waitFor(() => expect(result.current.selected.size).toBe(1))
+    await act(() => result.current.handleBulkCheckout())
+    // No download attempted, selection preserved so the user can retry.
+    expect(window.winraid.remote.download).not.toHaveBeenCalled()
+    expect(result.current.selected.size).toBe(1)
+  })
+
+  it('handleBulkCheckout passes the chosen folder as-is for directory entries (backend appends basename internally)', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'subdir', type: 'dir', size: 0, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.entries.length).toBe(1))
+    await act(async () => result.current.toggleSelectAll())
+    await waitFor(() => expect(result.current.selected.size).toBe(1))
+    await act(() => result.current.handleBulkCheckout())
+    expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/subdir', 'C:\\Users\\test\\Downloads', true)
   })
 })
 
