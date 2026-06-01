@@ -16,7 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src electron",
-    "clean:gyp": "node -e \"require('fs').rmSync('node_modules/ssh2/lib/protocol/crypto/build/node_gyp_bins', {recursive: true, force: true})\"",
+    "clean:gyp": "node scripts/clean-native.js",
     "dist": "npm run build && npm run clean:gyp && electron-builder",
     "dist:win": "npm run build && npm run clean:gyp && electron-builder --win",
     "dist:dir": "npm run build && npm run clean:gyp && electron-builder --dir",

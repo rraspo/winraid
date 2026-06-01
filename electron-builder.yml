@@ -13,6 +13,9 @@ files:
   - assets/**
   - package.json
   - "!**/node_gyp_bins/**"
+  # cpu-features is an optional ssh2 native dep we strip before packaging
+  # (see scripts/clean-native.js) so no C++ toolchain is needed to build.
+  - "!**/cpu-features/**"
 
 # Tell Electron where the bundled main entry is.
 extraMetadata:
