@@ -262,7 +262,19 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           onCancel={() => setBulkAction(null)}
         />
       )}
-      {bulkAction === 'move' && (
+      {bulkAction === 'move' && selectedEntries.length === 1 && (
+        <MoveModal
+          target={{
+            name:  selectedEntries[0].name,
+            path:  path === '/' ? `/${selectedEntries[0].name}` : `${path}/${selectedEntries[0].name}`,
+            isDir: selectedEntries[0].type === 'dir',
+          }}
+          sftpCfg={sftpCfg}
+          onConfirm={(src, dst) => { handleMove(src, dst); setBulkAction(null); clearSelection() }}
+          onCancel={() => setBulkAction(null)}
+        />
+      )}
+      {bulkAction === 'move' && selectedEntries.length !== 1 && (
         <BulkMoveModal
           count={selected.size}
           names={selectedEntries.map((e) => e.name)}

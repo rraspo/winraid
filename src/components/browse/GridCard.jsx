@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useRef } from 'react'
 import { Folder } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
@@ -13,6 +13,7 @@ const GridCard = memo(function GridCard({
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
 }) {
+  const menuRef = useRef(null)
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
     : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" modified={entry.modified} />
@@ -70,6 +71,11 @@ const GridCard = memo(function GridCard({
         onDrop(e, entryPath)
       } : undefined}
       onClick={handleCardClick}
+      onContextMenu={(e) => {
+        if (busy) return
+        e.preventDefault()
+        menuRef.current?.openAt(e.clientX, e.clientY)
+      }}
     >
       <div className={styles.gridThumb}>
         {icon}
@@ -87,12 +93,13 @@ const GridCard = memo(function GridCard({
             </Tooltip>
           </div>
           <EntryMenu
+            ref={menuRef}
             isDir={isDir}
             isEditable={!isDir && isEditableFile(entry.name)}
             busy={busy}
             onDownload={() => onDownload(entryPath, entry.name, isDir)}
             onEdit={() => onEdit(entryPath)}
-            onMove={() => onMove({ name: entry.name, path: entryPath })}
+            onMove={() => onMove({ name: entry.name, path: entryPath, isDir })}
             onDelete={() => onDelete({ name: entry.name, path: entryPath, isDir })}
           />
         </div>

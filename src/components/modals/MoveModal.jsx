@@ -8,16 +8,34 @@ function dirOf(fullPath) {
   return idx <= 0 ? '/' : fullPath.slice(0, idx)
 }
 
+// Only files with a single, non-leading dot get the stem + extension split
+// (e.g. photo.jpg). Dotfiles (.htaccess) and multi-dot names (archive.tar.gz)
+// are renamed through a single field so the extension boundary stays clear.
+function shouldSplit(name) {
+  if (name.startsWith('.')) return false
+  const first = name.indexOf('.')
+  return first > 0 && first === name.lastIndexOf('.')
+}
+
+function splitName(name) {
+  const idx = name.lastIndexOf('.')
+  return { stem: name.slice(0, idx), ext: name.slice(idx) }
+}
+
 export default function MoveModal({ target, sftpCfg, onConfirm, onCancel }) {
-  const [name, setName]       = useState(target.name)
+  const isDir = target.isDir
+  const useSplit = !isDir && shouldSplit(target.name)
+  const initial = useSplit ? splitName(target.name) : { stem: target.name, ext: '' }
+  const [stem, setStem]       = useState(initial.stem)
+  const [ext, setExt]         = useState(initial.ext)
   const [folder, setFolder]   = useState(dirOf(target.path))
   const [browsing, setBrowsing] = useState(false)
 
-  const trimmedName   = name.trim()
+  const trimmedName   = `${stem.trim()}${ext.trim()}`
   const trimmedFolder = folder.trim().replace(/\/+$/, '') || '/'
   const assembled     = trimmedFolder === '/' ? `/${trimmedName}` : `${trimmedFolder}/${trimmedName}`
   const unchanged     = assembled === target.path
-  const invalid       = !trimmedName || unchanged
+  const invalid       = !stem.trim() || unchanged
 
   function handleSelect(pathOrPaths) {
     const picked = Array.isArray(pathOrPaths) ? pathOrPaths[0] : pathOrPaths
@@ -44,13 +62,25 @@ export default function MoveModal({ target, sftpCfg, onConfirm, onCancel }) {
           <div className={styles.modalFields}>
             <div className={styles.fieldRow}>
               <label className={styles.fieldLabel}>Name</label>
-              <input
-                className={styles.fieldInput}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                spellCheck={false}
-                autoFocus
-              />
+              <div className={styles.fieldInputRow}>
+                <input
+                  className={styles.fieldInput}
+                  aria-label="Name"
+                  value={stem}
+                  onChange={(e) => setStem(e.target.value)}
+                  spellCheck={false}
+                  autoFocus
+                />
+                {useSplit && (
+                  <input
+                    className={styles.extField}
+                    aria-label="Extension"
+                    value={ext}
+                    onChange={(e) => setExt(e.target.value)}
+                    spellCheck={false}
+                  />
+                )}
+              </div>
             </div>
 
             <div className={styles.fieldRow}>

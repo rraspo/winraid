@@ -475,16 +475,28 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         const dstName    = dstPath.split('/').at(-1)
         const dstDir     = dstPath.split('/').slice(0, -1).join('/') || '/'
         const movedEntry = entriesRef.current.find((e) => e.name === srcName)
-        remoteFS.update(selectedId, path, (entries) => entries.filter((e) => e.name !== srcName))
-        setEntries((prev) => prev.filter((e) => e.name !== srcName))
-        if (movedEntry) {
-          remoteFS.update(selectedId, dstDir, (entries) => {
-            const updated = [...entries, { ...movedEntry, name: dstName }]
-            return updated.sort((a, b) => {
-              if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-              return a.name.localeCompare(b.name)
-            })
-          })
+        const sortFn = (a, b) => {
+          if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        }
+        if (dstDir === path) {
+          // Same-dir rename: replace the entry in place in both the cache AND
+          // the live entries state. Updating only the cache (as the cross-dir
+          // branch does for the destination) would drop it from the current view.
+          const renameInPlace = (entries) => {
+            const rest = entries.filter((e) => e.name !== srcName)
+            if (movedEntry) rest.push({ ...movedEntry, name: dstName })
+            return rest.sort(sortFn)
+          }
+          remoteFS.update(selectedId, path, renameInPlace)
+          setEntries((prev) => renameInPlace(prev))
+        } else {
+          remoteFS.update(selectedId, path, (entries) => entries.filter((e) => e.name !== srcName))
+          setEntries((prev) => prev.filter((e) => e.name !== srcName))
+          if (movedEntry) {
+            remoteFS.update(selectedId, dstDir, (entries) =>
+              [...entries, { ...movedEntry, name: dstName }].sort(sortFn))
+          }
         }
         setStatus({ ok: true, msg: `Moved to ${dstPath}` })
       } else {

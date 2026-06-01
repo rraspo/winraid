@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useRef } from 'react'
 import { Folder, File } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
@@ -14,6 +14,7 @@ const BrowseListRow = memo(function BrowseListRow({
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
 }) {
   const isDir = entry.type === 'dir'
+  const menuRef = useRef(null)
   const icon = isDir
     ? <Folder size={14} className={styles.iconDir} />
     : (isImageFile(entry.name) || isVideoFile(entry.name))
@@ -80,6 +81,11 @@ const BrowseListRow = memo(function BrowseListRow({
         handleDrop(e, entryPath)
       } : undefined}
       onClick={handleRowClick}
+      onContextMenu={(e) => {
+        if (busy) return
+        e.preventDefault()
+        menuRef.current?.openAt(e.clientX, e.clientY)
+      }}
     >
       <label className={styles.checkbox} onClick={handleCheckboxClick}>
         <input type="checkbox" checked={isSelected} onChange={() => {}} />
@@ -99,12 +105,13 @@ const BrowseListRow = memo(function BrowseListRow({
       <span className={styles.rowDate}>{formatDate(entry.modified)}</span>
       <div className={styles.rowActions}>
         <EntryMenu
+          ref={menuRef}
           isDir={isDir}
           isEditable={!isDir && isEditableFile(entry.name)}
           busy={busy}
           onDownload={() => handleDownload(entryPath, entry.name, isDir)}
           onEdit={() => setEditingFile(entryPath)}
-          onMove={() => setMoveTarget({ name: entry.name, path: entryPath })}
+          onMove={() => setMoveTarget({ name: entry.name, path: entryPath, isDir })}
           onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
         />
       </div>

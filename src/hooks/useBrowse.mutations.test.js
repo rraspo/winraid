@@ -111,6 +111,21 @@ describe('handleMove', () => {
     await act(() => result.current.handleMove('/media/photo.jpg', '/media/archive/photo.jpg'))
     expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', expect.any(String))
   })
+
+  it('keeps the renamed entry visible after a same-directory rename', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'photo.jpg', type: 'file', size: 100, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.entries.map((e) => e.name)).toEqual(['photo.jpg']))
+    // Flush pending effects so entriesRef.current is in sync with entries state
+    await act(async () => {})
+    await act(() => result.current.handleMove('/media/photo.jpg', '/media/renamed.jpg'))
+    expect(result.current.entries.map((e) => e.name)).toEqual(['renamed.jpg'])
+  })
 })
 
 describe('handleCreateFolder', () => {

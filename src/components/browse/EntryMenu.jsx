@@ -1,13 +1,25 @@
-import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { createPortal } from 'react-dom'
 import { MoreHorizontal } from 'lucide-react'
 import styles from './EntryMenu.module.css'
 
-export default function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete }) {
+const EntryMenu = forwardRef(function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete }, ref) {
   const [open, setOpen] = useState(false)
   const [pos,  setPos]  = useState({ top: 0, left: 0 })
   const wrapRef    = useRef(null)
   const dropdownRef = useRef(null)
+  // Tracks whether the menu was opened at a cursor position (right-click) vs
+  // anchored to the dot button, which changes how overflow is corrected.
+  const cursorModeRef = useRef(false)
+
+  // Open the menu at arbitrary viewport coordinates (used for right-click).
+  useImperativeHandle(ref, () => ({
+    openAt(x, y) {
+      cursorModeRef.current = true
+      setPos({ top: y, left: x, right: undefined })
+      setOpen(true)
+    },
+  }))
 
   function toggle(e) {
     e.stopPropagation()
@@ -15,15 +27,26 @@ export default function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit,
       setOpen(false)
       return
     }
+    cursorModeRef.current = false
     const rect = e.currentTarget.getBoundingClientRect()
     setPos({ top: rect.bottom + 4, left: rect.left, right: undefined })
     setOpen(true)
   }
 
-  // Flip left or up if the dropdown overflows the viewport
+  // Correct for viewport overflow once the dropdown has measured itself.
   useLayoutEffect(() => {
-    if (!open || !dropdownRef.current || !wrapRef.current) return
+    if (!open || !dropdownRef.current) return
     const dropRect = dropdownRef.current.getBoundingClientRect()
+    if (cursorModeRef.current) {
+      // Cursor-anchored: clamp the menu inside the viewport.
+      const next = {}
+      if (dropRect.right > window.innerWidth)  next.left = window.innerWidth - dropRect.width - 8
+      if (dropRect.bottom > window.innerHeight) next.top  = window.innerHeight - dropRect.height - 8
+      if (Object.keys(next).length > 0) setPos((prev) => ({ ...prev, ...next }))
+      return
+    }
+    // Button-anchored: flip left/up off the button.
+    if (!wrapRef.current) return
     const btnRect  = wrapRef.current.getBoundingClientRect()
     const next = {}
     if (dropRect.right > window.innerWidth) {
@@ -96,4 +119,6 @@ export default function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit,
       )}
     </div>
   )
-}
+})
+
+export default EntryMenu
