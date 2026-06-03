@@ -3,6 +3,7 @@ import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { log } from './logger.js'
+import { normalizeQueueData } from './queue-data.js'
 
 // ---------------------------------------------------------------------------
 // Status constants — single source of truth, imported by renderer via IPC
@@ -19,6 +20,9 @@ export const STATUS = {
 // ---------------------------------------------------------------------------
 let _jobs = null
 let _path = null
+// Monotonic lifetime count of transfers that have reached DONE. Persisted in
+// queue.json alongside the jobs; survives clearDone and restarts.
+let _lifetimeCompleted = 0
 
 function queuePath() {
   if (_path) return _path
@@ -31,12 +35,16 @@ function queuePath() {
 function jobs() {
   if (_jobs !== null) return _jobs
   const p = queuePath()
+  let raw = null
   try {
-    _jobs = JSON.parse(readFileSync(p, 'utf8'))
+    raw = JSON.parse(readFileSync(p, 'utf8'))
   } catch {
     // File doesn't exist yet or is corrupt — start fresh
-    _jobs = []
+    raw = null
   }
+  const data = normalizeQueueData(raw)
+  _jobs = data.jobs
+  _lifetimeCompleted = data.lifetimeCompleted
 
   // Any job left in TRANSFERRING means the process died mid-transfer.
   // Reset them to PENDING so the worker picks them up again on this run.
@@ -57,7 +65,8 @@ function _persistNow() {
   if (_jobs === null) return
   const p   = queuePath()
   const tmp = p + '.tmp'
-  writeFileSync(tmp, JSON.stringify(_jobs, null, 2), 'utf8')
+  const data = { jobs: _jobs, lifetimeCompleted: _lifetimeCompleted }
+  writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
   renameSync(tmp, p)
 }
 
@@ -154,10 +163,37 @@ export function getNextPending() {
 export function updateJob(id, fields) {
   const job = jobs().find((j) => j.id === id)
   if (!job) return
+  // Count the transition into DONE exactly once (guard against re-setting DONE
+  // on an already-completed job).
+  if (fields.status === STATUS.DONE && job.status !== STATUS.DONE) {
+    _lifetimeCompleted += 1
+  }
   for (const key of ['status', 'progress', 'errorMsg', 'errorAt', 'retries']) {
     if (fields[key] !== undefined) job[key] = fields[key]
   }
   persist()
+}
+
+/** Lifetime count of transfers that have ever completed (survives clearDone). */
+export function getLifetimeCompleted() {
+  jobs() // ensure loaded
+  return _lifetimeCompleted
+}
+
+/**
+ * Reduce the lifetime-completed counter (e.g. after Verify & Clean removes
+ * confirmed local copies). Clamped at zero.
+ * @param {number} n
+ * @returns {number} the new counter value
+ */
+export function reduceLifetimeCompleted(n) {
+  jobs() // ensure loaded
+  const dec = Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0
+  if (dec > 0) {
+    _lifetimeCompleted = Math.max(0, _lifetimeCompleted - dec)
+    persist()
+  }
+  return _lifetimeCompleted
 }
 
 /**

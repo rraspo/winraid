@@ -97,6 +97,26 @@
   font-weight: var(--font-weight-medium);
 }
 
+/* Highlighted Verify & clean action on the Completed stat */
+.verifyLink {
+  margin-top: var(--space-2);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.verifyLink:hover {
+  background: var(--accent);
+  color: var(--text-on-accent, #fff);
+}
+
 /* Decorative rings */
 .heroDeco {
   position: absolute;

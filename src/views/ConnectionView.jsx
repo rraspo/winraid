@@ -820,10 +820,12 @@ function VerifyConfirmDialog({ localFolder, onConfirm, onClose }) {
 // ---------------------------------------------------------------------------
 // VerifyResultDialog — shows check results with per-group action buttons
 // ---------------------------------------------------------------------------
-function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
+export function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
   const [enqueueing,   setEnqueueing]   = useState(false)
   const [enqueued,     setEnqueued]     = useState(false)
   const [notFoundDone, setNotFoundDone] = useState(false)
+  const [notFoundDeleting, setNotFoundDeleting] = useState(false)
+  const [notFoundDeleted,  setNotFoundDeleted]  = useState(null)  // { count, errors[] }
   const [deleting,     setDeleting]     = useState(false)
   const [deleted,      setDeleted]      = useState(null)   // { count, errors[] } once done
   const [confirmedDone, setConfirmedDone] = useState(false)
@@ -835,14 +837,27 @@ function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
     setEnqueued(true)
   }
 
+  // Delete the not-on-NAS files. These are NOT backed up, so this is purely
+  // destructive — it does not touch the completed counter.
+  async function handleDeleteNotFound() {
+    setNotFoundDeleting(true)
+    const res = await onDelete(result.notFound)
+    setNotFoundDeleting(false)
+    setNotFoundDeleted({ count: res?.deleted ?? 0, errors: res?.errors ?? [] })
+  }
+
   async function handleDelete() {
     setDeleting(true)
     const res = await onDelete(result.confirmed)
     setDeleting(false)
-    setDeleted({ count: res?.deleted ?? 0, errors: res?.errors ?? [] })
+    const count = res?.deleted ?? 0
+    setDeleted({ count, errors: res?.errors ?? [] })
+    // Cleaning confirmed local copies removes already-transferred files, so
+    // bring the lifetime "Completed" counter down accordingly.
+    if (count > 0) window.winraid?.queue?.reduceCompleted?.(count)
   }
 
-  const showNotFound  = result.notFound.length  > 0 && !notFoundDone
+  const showNotFound  = result.notFound.length  > 0 && !notFoundDone && notFoundDeleted === null
   const showConfirmed = result.confirmed.length > 0 && !confirmedDone
 
   return createPortal(
@@ -878,20 +893,25 @@ function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
                 )}
               </div>
               <div className={styles.verifySectionActions}>
-                <Button variant="secondary" size="sm" onClick={() => setNotFoundDone(true)} disabled={enqueueing || enqueued}>
+                <Button variant="secondary" size="sm" onClick={() => setNotFoundDone(true)} disabled={enqueueing || enqueued || notFoundDeleting}>
                   Ignore
                 </Button>
-                <Button variant="primary" size="sm" onClick={handleEnqueue} disabled={enqueueing || enqueued}>
+                <Button variant="primary" size="sm" onClick={handleEnqueue} disabled={enqueueing || enqueued || notFoundDeleting}>
                   {enqueued ? 'Enqueued' : enqueueing ? 'Enqueueing…' : `Enqueue ${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''}`}
+                </Button>
+                <Button variant="danger" size="sm" className={styles.verifyActionDanger} onClick={handleDeleteNotFound} disabled={enqueueing || enqueued || notFoundDeleting}>
+                  {notFoundDeleting ? 'Deleting…' : `Delete ${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''}`}
                 </Button>
               </div>
             </div>
           )}
           {!showNotFound && result.notFound.length > 0 && (
             <div className={styles.verifySectionDone}>
-              {enqueued
-                ? `${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''} enqueued for upload.`
-                : `${result.notFound.length} missing file${result.notFound.length !== 1 ? 's' : ''} ignored.`}
+              {notFoundDeleted !== null
+                ? `${notFoundDeleted.count} local file${notFoundDeleted.count !== 1 ? 's' : ''} deleted.${notFoundDeleted.errors.length ? ` ${notFoundDeleted.errors.length} error(s).` : ''}`
+                : enqueued
+                  ? `${result.notFound.length} file${result.notFound.length !== 1 ? 's' : ''} enqueued for upload.`
+                  : `${result.notFound.length} missing file${result.notFound.length !== 1 ? 's' : ''} ignored.`}
             </div>
           )}
 
@@ -912,7 +932,7 @@ function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
                 <Button variant="secondary" size="sm" onClick={() => setConfirmedDone(true)} disabled={deleting || deleted !== null}>
                   Ignore
                 </Button>
-                <Button variant="danger" size="sm" onClick={handleDelete} disabled={deleting || deleted !== null}>
+                <Button variant="danger" size="sm" className={styles.verifyActionDanger} onClick={handleDelete} disabled={deleting || deleted !== null}>
                   {deleted !== null ? `Deleted ${deleted.count}` : deleting ? 'Deleting…' : `Delete ${result.confirmed.length} local file${result.confirmed.length !== 1 ? 's' : ''}`}
                 </Button>
               </div>

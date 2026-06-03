@@ -333,6 +333,47 @@ function createWindow() {
 }
 
 // ---------------------------------------------------------------------------
+// What's New — a standalone window (not a modal) shown after an update.
+// Loads the same renderer bundle with a #whatsnew hash so it renders only
+// the WhatsNew view. Idempotency (show once per version) is handled by the
+// caller; this just opens/closes the window.
+// ---------------------------------------------------------------------------
+let whatsNewWindow = null
+
+function createWhatsNewWindow() {
+  if (whatsNewWindow && !whatsNewWindow.isDestroyed()) {
+    whatsNewWindow.focus()
+    return
+  }
+  whatsNewWindow = new BrowserWindow({
+    width: 560,
+    height: 680,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    backgroundColor: '#0F1419',
+    title: 'What’s New',
+    icon: join(__dirname, '../../assets/winraid_icon.ico'),
+    autoHideMenuBar: true,
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  whatsNewWindow.setMenuBarVisibility(false)
+  whatsNewWindow.on('closed', () => { whatsNewWindow = null })
+
+  if (!app.isPackaged) {
+    whatsNewWindow.loadURL('http://localhost:5173/#whatsnew')
+  } else {
+    whatsNewWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'whatsnew' })
+  }
+}
+
+// ---------------------------------------------------------------------------
 // System tray — optional; skipped gracefully if no icon asset is found
 // ---------------------------------------------------------------------------
 function createTray() {
@@ -514,10 +555,21 @@ function registerIPC() {
     return key != null ? getConfig(key) : getConfig()
   })
 
+  ipcMain.handle('whatsnew:open', () => {
+    createWhatsNewWindow()
+    return { ok: true }
+  })
+
+  ipcMain.handle('whatsnew:close', () => {
+    if (whatsNewWindow && !whatsNewWindow.isDestroyed()) whatsNewWindow.close()
+    return { ok: true }
+  })
+
   const CONFIG_SET_ALLOWLIST = [
     'localFolder', 'operation', 'folderMode', 'extensions', 'ignoredExtensions',
     'backup', 'connections', 'backupByConnection',
     'browse', 'playDefaults', 'snapshot', 'thumbSeek', 'activeConnectionId',
+    'favoritesByConnection',
   ]
 
   ipcMain.handle('config:set', async (_e, key, value) => {
@@ -639,6 +691,18 @@ function registerIPC() {
   ipcMain.handle('queue:list', async () => {
     const q = await getQueue()
     return q.listJobs()
+  })
+
+  ipcMain.handle('queue:stats', async () => {
+    const q = await getQueue()
+    return { lifetimeCompleted: q.getLifetimeCompleted() }
+  })
+
+  ipcMain.handle('queue:reduce-completed', async (_e, n) => {
+    const q = await getQueue()
+    const lifetimeCompleted = q.reduceLifetimeCompleted(Number(n) || 0)
+    sendToRenderer('queue:updated', { type: 'stats' })
+    return { lifetimeCompleted }
   })
 
   ipcMain.handle('queue:retry', async (_e, jobId) => {

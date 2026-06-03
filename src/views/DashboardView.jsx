@@ -25,8 +25,9 @@ function getFileIcon(filename) {
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function DashboardView({ watcherStatus, onNavigate, connections, onOpenTab }) {
+export default function DashboardView({ watcherStatus, onNavigate, connections, onOpenTab, onEditConnection }) {
   const [jobs, setJobs] = useState([])
+  const [completedTotal, setCompletedTotal] = useState(0)
 
   // watcherStatus is now a Map<connectionId, { watching, state, file }>
   const watcherEntries = Object.values(watcherStatus ?? {})
@@ -36,6 +37,8 @@ export default function DashboardView({ watcherStatus, onNavigate, connections, 
   const refreshJobs = useCallback(async () => {
     const list = await window.winraid?.queue.list()
     if (list) setJobs(list)
+    const stats = await window.winraid?.queue.stats?.()
+    if (stats && typeof stats.lifetimeCompleted === 'number') setCompletedTotal(stats.lifetimeCompleted)
   }, [])
 
   useEffect(() => {
@@ -119,6 +122,18 @@ export default function DashboardView({ watcherStatus, onNavigate, connections, 
           </div>
 
           <div className={styles.heroStats}>
+            <div className={styles.heroStat}>
+              <span className={styles.heroStatValue}>{completedTotal}</span>
+              <span className={styles.heroStatLabel}>Completed</span>
+              {displayConns.length > 0 && (
+                <button
+                  className={styles.verifyLink}
+                  onClick={() => onEditConnection?.(displayConns[0])}
+                >
+                  Verify &amp; clean
+                </button>
+              )}
+            </div>
             <div className={styles.heroStat}>
               <span className={styles.heroStatValue}>{activeJobs.length + pendingJobs.length}</span>
               <span className={styles.heroStatLabel}>In queue</span>

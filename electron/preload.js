@@ -82,6 +82,10 @@ contextBridge.exposeInMainWorld('winraid', {
   queue: {
     /** Returns the full job list, optionally filtered by connectionId. */
     list:      (connectionId) => ipcRenderer.invoke('queue:list', connectionId),
+    /** Returns persistent queue stats: { lifetimeCompleted }. */
+    stats:     () => ipcRenderer.invoke('queue:stats'),
+    /** Reduce the lifetime-completed counter by n (e.g. after Verify & Clean deletes confirmed copies). */
+    reduceCompleted: (n) => ipcRenderer.invoke('queue:reduce-completed', n),
     /** Re-queues a job that is in ERROR state. */
     retry:     (jobId)   => ipcRenderer.invoke('queue:retry', jobId),
     /** Removes a single ERROR job permanently. */
@@ -165,6 +169,14 @@ contextBridge.exposeInMainWorld('winraid', {
      *  Payload: { status: 'checking'|'available'|'downloading'|'ready'|'up-to-date'|'error', version?, percent?, error? }
      *  @returns {() => void} unsubscribe */
     onStatus: (cb) => on('update:status', cb),
+  },
+
+  // -- What's New window ----------------------------------------------------
+  whatsNew: {
+    /** Open the standalone What's New window. */
+    open:  () => ipcRenderer.invoke('whatsnew:open'),
+    /** Close the What's New window (called from within it). */
+    close: () => ipcRenderer.invoke('whatsnew:close'),
   },
 
   // -- Local filesystem ----------------------------------------------------

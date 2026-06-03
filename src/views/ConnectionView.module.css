@@ -623,19 +623,35 @@
   margin: 0 0 var(--space-2);
 }
 
-.verifyListItems { max-height: 110px; overflow-y: auto; }
+.verifyListItems {
+  max-height: 130px;
+  overflow-y: auto;
+  /* Inset panel so the rows sit on a surface distinct from the dialog and
+     read clearly in both themes (tokens adapt per [data-theme]). Kept as a
+     plain block container — a flex column collapses the ellipsis rows. */
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1);
+}
 
 .verifyListItem {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  padding: 2px 0;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.verifyListItemWarn { color: var(--warning); }
+/* Not-on-NAS rows: readable filename text on a soft warning tint that keeps
+   comfortable contrast in light and dark, rather than hard orange-on-panel. */
+.verifyListItemWarn {
+  color: var(--text);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
 
 .verifyListMore {
   font-size: 12px;
@@ -674,8 +690,15 @@
 
 .verifySectionActions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   margin-top: var(--space-3);
+}
+
+/* Push the destructive action to the far-right edge so it reads as separate
+   and deliberate, away from the safe (ignore/enqueue) actions. */
+.verifyActionDanger {
+  margin-left: auto;
 }
 
 .verifySectionDone {
