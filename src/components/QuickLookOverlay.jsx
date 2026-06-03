@@ -803,6 +803,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     <div
       ref={overlayRef}
       className={styles.overlay}
+      data-theme="dark"
       tabIndex={-1}
       onClick={(e) => { if (e.target === e.currentTarget && !cropping) onClose() }}
       onPointerUp={() => overlayRef.current?.focus()}

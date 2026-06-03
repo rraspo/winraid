@@ -185,7 +185,7 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
   }
 
   return (
-    <div ref={overlayRef} className={styles.overlay} role="dialog" aria-modal="true" aria-label="Play" tabIndex={-1}>
+    <div ref={overlayRef} className={styles.overlay} data-theme="dark" role="dialog" aria-modal="true" aria-label="Play" tabIndex={-1}>
       <div className={styles.topBar}>
         <div className={styles.topBarLeft}>
           {currentFile && (
