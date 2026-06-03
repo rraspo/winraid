@@ -72,6 +72,48 @@ describe('useBrowse fetchDir — mode stale', () => {
   })
 })
 
+describe('useBrowse fetchDir — out-of-order responses', () => {
+  it('ignores a stale listing that resolves after the user has navigated away', async () => {
+    // remoteFS.list returns a separately-controllable promise per path so we
+    // can resolve them out of order (slow folder lands after a newer one).
+    const deferred = {}
+    function defer(path) {
+      if (!deferred[path]) {
+        let resolve
+        const p = new Promise((r) => { resolve = r })
+        deferred[path] = { p, resolve }
+      }
+      return deferred[path]
+    }
+    remoteFS.getSnapshot.mockReturnValue(null) // force the network path
+    remoteFS.list.mockImplementation((_conn, path) => defer(path).p)
+
+    const { result } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+
+    // Initial load settles on the connection's remote root.
+    await waitFor(() => expect(result.current.path).toBe('/media'))
+    await act(async () => { defer('/media').resolve([{ name: 'root', type: 'dir', size: 0, modified: 0 }]) })
+
+    // Navigate into A, then immediately into B. Both lists are now in flight.
+    act(() => { result.current.navigate('/media/A') })
+    act(() => { result.current.navigate('/media/B') })
+    await waitFor(() => expect(result.current.path).toBe('/media/B'))
+
+    const aData = [{ name: 'fileA', type: 'file', size: 0, modified: 0 }]
+    const bData = [{ name: 'fileB', type: 'file', size: 0, modified: 0 }]
+
+    // The current folder (B) resolves first, then the stale folder (A) resolves
+    // late — exactly the race that swaps contents "a few seconds later".
+    await act(async () => { defer('/media/B').resolve(bData) })
+    await act(async () => { defer('/media/A').resolve(aData) })
+
+    // The stale A response must NOT clobber the current B listing.
+    expect(result.current.entries).toEqual(bData)
+  })
+})
+
 describe('useBrowse fetchDir — mode tree', () => {
   it('returns cached snapshot and does NOT call remoteFS.list when hit', async () => {
     const cached = [{ name: 'cached.jpg', type: 'file', size: 0, modified: 0 }]

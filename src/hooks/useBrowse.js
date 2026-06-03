@@ -79,6 +79,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const initialPushed     = useRef(false)
   const pathRef           = useRef(path)
   const entriesRef   = useRef([])
+  const fetchEpochRef = useRef(0)
   const cacheModeRef = useRef('stale')
   const cacheMutRef  = useRef('update')
 
@@ -273,6 +274,12 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // ── Handlers ───────────────────────────────────────────────────────────────
   const fetchDir = useCallback(async (targetPath) => {
     if (!selectedId) return
+    // Each call claims a fresh epoch; only the latest request may write
+    // entries. Without this, a slow listing for a folder the user has already
+    // left resolves late and clobbers the current view (breadcrumb stays put,
+    // contents silently swap a few seconds later).
+    const epoch = ++fetchEpochRef.current
+    const isCurrent = () => fetchEpochRef.current === epoch
     const mode = cacheModeRef.current
 
     if (mode === 'stale') {
@@ -283,7 +290,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         setLoading(false)
         remoteFS.invalidate(selectedId, targetPath)
         remoteFS.list(selectedId, targetPath).then((entries) => {
-          setEntries(entries)
+          if (isCurrent()) setEntries(entries)
         }).catch(() => {})
         return
       }
@@ -303,9 +310,11 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setStatus(null)
     try {
       const entries = await remoteFS.list(selectedId, targetPath)
+      if (!isCurrent()) return
       setLoading(false)
       setEntries(entries)
     } catch (err) {
+      if (!isCurrent()) return
       setLoading(false)
       setError(err.message || 'Failed to list directory')
       setEntries([])
