@@ -120,6 +120,22 @@
 
 .playBtn:hover { color: var(--text); }
 
+.favBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  transition: color var(--transition);
+}
+
+.favBtn:hover:not(:disabled) { color: var(--text); }
+.favBtn:disabled { opacity: 0.35; cursor: default; }
+.favBtnActive { color: var(--accent); }
+.favBtnActive:hover:not(:disabled) { color: var(--accent); }
+
 /* ── Sort dropdown ────────────────────────────────────────────────────────── */
 .sortWrap {
   position: relative;

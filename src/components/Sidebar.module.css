@@ -274,6 +274,100 @@
   color: var(--accent);
 }
 
+/* ---- Favorites (hover flyout off the Browse sub-item) ---- */
+/* The Browse row carries a chevron hinting at the flyout. */
+.subItemBrowse .favChevron {
+  margin-left: auto;
+  color: var(--text-faint);
+  opacity: 0;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.subItemBrowse:hover .favChevron { opacity: 1; color: var(--text); }
+
+/* Flyout panel — portaled to <body> with position:fixed so it escapes the
+   sidebar's overflow:hidden ancestors. Coordinates are set inline in JS. */
+.favFlyout {
+  position: fixed;
+  z-index: 1100;
+  min-width: 200px;
+  max-width: 280px;
+  padding: var(--space-2);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.favFlyoutHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  padding: 2px var(--space-1) var(--space-2);
+}
+
+.favEmpty {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.5;
+  padding: 2px var(--space-1) var(--space-1);
+}
+
+.favRow {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.favRow:hover {
+  background-color: var(--bg-hover);
+}
+
+.favItem {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  text-align: left;
+  transition: color var(--transition);
+}
+
+.favRow:hover .favItem { color: var(--text); }
+
+.favItemName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.favRemove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  opacity: 0;
+  transition: color var(--transition), opacity var(--transition);
+}
+
+.favRow:hover .favRemove { opacity: 1; }
+.favRemove:hover { color: var(--error); }
+
 /* ---- Footer ---- */
 .footer {
   padding: var(--space-3) var(--space-4);

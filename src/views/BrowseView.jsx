@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
   AlertCircle, AlertTriangle, Loader, FolderPlus, List, LayoutGrid,
-  Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown,
+  Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
 } from 'lucide-react'
+import { isFavorite } from '../utils/favorites'
 import styles from './BrowseView.module.css'
 import { formatSize } from '../utils/format'
 import EditorModal from '../components/EditorModal'
@@ -21,7 +22,7 @@ import { useBrowse } from '../hooks/useBrowse'
 import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
 
-export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style }) {
+export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style, favorites = [], onToggleFavorite }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
     connections, selectedId, path, entries, loading, error, status,
@@ -288,14 +289,14 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       )}
 
       {moveInFlight && (
-        <div className={styles.moveOverlay}>
+        <div className={styles.moveOverlay} data-theme="dark">
           <Loader size={24} className={styles.spinning} />
           <span className={styles.moveOverlayText}>Moving {moveInFlight}</span>
         </div>
       )}
 
       {downloadProgress && (
-        <div className={styles.moveOverlay}>
+        <div className={styles.moveOverlay} data-theme="dark">
           <Loader size={24} className={styles.spinning} />
           <span className={styles.moveOverlayText}>
             {downloadProgress.totalFiles > 1
@@ -343,6 +344,22 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               <Play size={14} />
             </button>
           </Tooltip>
+          {(() => {
+            const faved = isFavorite(favorites, path)
+            return (
+              <Tooltip tip={faved ? 'Remove from favorites' : 'Add folder to favorites'} side="bottom">
+                <button
+                  className={[styles.favBtn, faved ? styles.favBtnActive : ''].filter(Boolean).join(' ')}
+                  onClick={() => onToggleFavorite?.(path)}
+                  disabled={noConfig}
+                  aria-label={faved ? 'Remove from favorites' : 'Add folder to favorites'}
+                  aria-pressed={faved}
+                >
+                  <Star size={14} fill={faved ? 'currentColor' : 'none'} />
+                </button>
+              </Tooltip>
+            )
+          })()}
           <div className={styles.sortWrap} ref={sortDropRef}>
             <Tooltip tip="Sort order" side="bottom">
               <button

@@ -25,36 +25,34 @@ describe('SettingsView — Play section', () => {
     expect(screen.getByText('Play')).toBeTruthy()
   })
 
-  it('reads recursive default from config and shows it checked', async () => {
+  it('reads recursive default from config and shows it selected', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    const toggle = screen.getByRole('switch', { name: 'Default to recursive scan' })
-    expect(toggle.getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: 'Recursive' }).getAttribute('aria-checked')).toBe('true')
+    expect(screen.getByRole('radio', { name: 'Top level' }).getAttribute('aria-checked')).toBe('false')
   })
 
-  it('reads shuffle default from config and shows it unchecked', async () => {
+  it('reads shuffle default from config and shows it not selected', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    const toggle = screen.getByRole('switch', { name: 'Default to shuffle' })
-    expect(toggle.getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('radio', { name: 'Shuffle' }).getAttribute('aria-checked')).toBe('false')
+    expect(screen.getByRole('radio', { name: 'In order' }).getAttribute('aria-checked')).toBe('true')
   })
 
-  it('clicking the recursive toggle writes the new value via config.set', async () => {
+  it('choosing "Top level" writes recursive=false via config.set', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    const toggle = screen.getByRole('switch', { name: 'Default to recursive scan' })
-    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('radio', { name: 'Top level' }))
     expect(window.winraid.config.set).toHaveBeenCalledWith(
       'playDefaults',
       expect.objectContaining({ recursive: false })
     )
   })
 
-  it('clicking the shuffle toggle writes the new value via config.set', async () => {
+  it('choosing "Shuffle" writes shuffle=true via config.set', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    const toggle = screen.getByRole('switch', { name: 'Default to shuffle' })
-    fireEvent.click(toggle)
+    fireEvent.click(screen.getByRole('radio', { name: 'Shuffle' }))
     expect(window.winraid.config.set).toHaveBeenCalledWith(
       'playDefaults',
       expect.objectContaining({ shuffle: true })
@@ -225,7 +223,7 @@ describe('SettingsView — structure', () => {
     await act(async () => {})
     // Open Advanced so its inner subsections are present in the DOM.
     fireEvent.click(screen.getByRole('button', { name: /Advanced settings/i }))
-    const headings = Array.from(document.querySelectorAll('[class*="sectionHeader"]')).map((el) => el.textContent)
+    const headings = Array.from(document.querySelectorAll('[class*="sectionHeader"], [class*="subGroupHeader"]')).map((el) => el.textContent)
     const known = ['Interface', 'Appearance', 'Play', 'Snapshot', 'Browse', 'Storage', 'About']
     const ordered = headings.filter((h) => known.includes(h))
     expect(ordered[1]).toBe('Play')

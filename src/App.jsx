@@ -256,6 +256,8 @@ export default function App() {
   // --- Connection state (shared between sidebar + dashboard) ----------------
   const [connEdit,    setConnEdit]    = useState(null)  // null | { conn }
   const [connections, setConnections] = useState([])
+  // Per-connection favorite directory paths: { [connId]: string[] }
+  const [favorites,   setFavorites]   = useState({})
 
   // --- Tab state ------------------------------------------------------------
   const [openTabs,    setOpenTabs]    = useState([])   // [{ id, connId, type }]
@@ -268,6 +270,7 @@ export default function App() {
     window.winraid?.config.get().then((cfg) => {
       if (!cfg) return
       setConnections(cfg.connections ?? [])
+      setFavorites(cfg.favoritesByConnection ?? {})
     })
   }, [])
 
@@ -352,6 +355,21 @@ export default function App() {
     setConnections(cfg?.connections ?? [])
   }
 
+  // --- Favorites ------------------------------------------------------------
+  async function toggleFavoriteDir(connId, path) {
+    const { toggleFavorite } = await import('./utils/favorites')
+    setFavorites((prev) => {
+      const next = { ...prev, [connId]: toggleFavorite(prev[connId], path) }
+      window.winraid?.config.set('favoritesByConnection', next)
+      return next
+    })
+  }
+
+  function navigateFavorite(connId, path) {
+    openTab(connId, 'browse')
+    setBrowseRestore({ path, quickLookFile: null, connectionId: connId, highlightFile: null, token: Date.now() })
+  }
+
   // --- Tab helpers ----------------------------------------------------------
   function openTab(connId, type) {
     const id = `${connId}:${type}`
@@ -433,6 +451,9 @@ export default function App() {
           onOpenTab={openTab}
           editingConnId={connEdit !== null ? (connEdit.conn?.id ?? null) : null}
           watcherStatuses={watcherStatus}
+          favorites={favorites}
+          onNavigateFavorite={navigateFavorite}
+          onRemoveFavorite={toggleFavoriteDir}
         />
         <div className={styles.main}>
           <Header
@@ -476,6 +497,8 @@ export default function App() {
                 onHistoryPush={onHistoryPush}
                 connections={connections}
                 connectionId={tab.connId}
+                favorites={favorites[tab.connId] ?? []}
+                onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
               />
             ))}
 

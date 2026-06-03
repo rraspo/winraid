@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { LayoutList, Settings, ScrollText, LayoutDashboard, Plus, ChevronRight, Folder, Download, Pencil, Sun, Moon, BarChart2 } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import { LayoutList, Settings, ScrollText, LayoutDashboard, Plus, ChevronRight, Folder, Download, Pencil, Sun, Moon, BarChart2, Star, X } from 'lucide-react'
+import { favName } from '../utils/favorites'
 import iconSrc from '../../assets/winraid_icon_64x64.png'
 import ConnectionIcon from './ConnectionIcon'
 import Tooltip from './ui/Tooltip'
+import { readAccordionMode, readExpandedConns, writeExpandedConns, initialExpanded } from '../utils/accordionMode'
 import styles from './Sidebar.module.css'
 
 const NAV_TOP = [
@@ -19,21 +22,38 @@ export default function Sidebar({
   activeView, onNavigate, theme, onThemeToggle,
   onEditConnection, connections, openTabs, activeTabId,
   onOpenTab = () => {}, editingConnId, watcherStatuses,
+  favorites = {}, onNavigateFavorite = () => {}, onRemoveFavorite = () => {},
 }) {
   const [version,       setVersion]       = useState('')
   // openTabs is accepted for future use (e.g., auto-expand accordion when a tab is open)
   // activeTabId drives the current sub-item highlight via isTabActive()
   const [expandedConns, setExpandedConns] = useState(new Set())
   const initializedRef = useRef(false)
+  // Favorites hover flyout: which connection's panel is open + where to anchor
+  // it. position:fixed so it escapes the sidebar's overflow:hidden ancestors.
+  const [favFlyout, setFavFlyout] = useState(null)  // null | { connId, top, left }
+  const favCloseTimer = useRef(null)
 
-  // Expand all accordions on first load if the preference is set (default: true).
-  // Runs once when connections first become available (they load async from config).
+  function openFavFlyout(connId, e) {
+    clearTimeout(favCloseTimer.current)
+    const r = e.currentTarget.getBoundingClientRect()
+    setFavFlyout({ connId, top: r.top, left: r.right + 2 })
+  }
+  function scheduleCloseFavFlyout() {
+    clearTimeout(favCloseTimer.current)
+    favCloseTimer.current = setTimeout(() => setFavFlyout(null), 120)
+  }
+  function cancelCloseFavFlyout() {
+    clearTimeout(favCloseTimer.current)
+  }
+
+  // Resolve initial accordion state from the configured mode (expanded /
+  // collapsed / remember). Runs once when connections first load (async).
   useEffect(() => {
     if (connections.length === 0 || initializedRef.current) return
     initializedRef.current = true
-    if (localStorage.getItem('sidebar-accordions-default-open') !== 'false') {
-      setExpandedConns(new Set(connections.map((c) => c.id)))
-    }
+    const mode = readAccordionMode()
+    setExpandedConns(initialExpanded(mode, connections.map((c) => c.id), readExpandedConns()))
   }, [connections])
 
   useEffect(() => {
@@ -45,6 +65,8 @@ export default function Sidebar({
       const next = new Set(prev)
       if (next.has(connId)) next.delete(connId)
       else next.add(connId)
+      // In "remember" mode, persist each connection's open/closed state.
+      if (readAccordionMode() === 'remember') writeExpandedConns(next)
       return next
     })
   }
@@ -129,11 +151,14 @@ export default function Sidebar({
                     <div className={styles.accordionBody}>
                       <button
                         data-testid={`sub-browse-${conn.id}`}
-                        className={[styles.subItem, isTabActive(conn.id, 'browse') ? styles.subItemActive : ''].filter(Boolean).join(' ')}
+                        className={[styles.subItem, styles.subItemBrowse, isTabActive(conn.id, 'browse') ? styles.subItemActive : ''].filter(Boolean).join(' ')}
                         onClick={() => onOpenTab(conn.id, 'browse')}
+                        onMouseEnter={(e) => openFavFlyout(conn.id, e)}
+                        onMouseLeave={scheduleCloseFavFlyout}
                       >
                         <Folder size={12} strokeWidth={1.75} />
                         Browse
+                        <ChevronRight size={11} strokeWidth={2} className={styles.favChevron} />
                       </button>
                       <button
                         data-testid={`sub-backup-${conn.id}`}
@@ -191,6 +216,48 @@ export default function Sidebar({
         </Tooltip>
         {version && <span className={styles.version}>v{version}</span>}
       </div>
+
+      {favFlyout && createPortal(
+        <div
+          className={styles.favFlyout}
+          role="menu"
+          style={{ top: favFlyout.top, left: favFlyout.left }}
+          onMouseEnter={cancelCloseFavFlyout}
+          onMouseLeave={scheduleCloseFavFlyout}
+        >
+          <div className={styles.favFlyoutHeader}>
+            <Star size={11} strokeWidth={1.75} />
+            Favorites
+          </div>
+          {(favorites[favFlyout.connId] ?? []).length === 0 ? (
+            <div className={styles.favEmpty}>
+              No favorites yet. Click the star in Browse to save a folder here.
+            </div>
+          ) : (
+            (favorites[favFlyout.connId] ?? []).map((path) => (
+              <div key={path} className={styles.favRow}>
+                <button
+                  className={styles.favItem}
+                  title={path}
+                  onClick={() => { onNavigateFavorite(favFlyout.connId, path); setFavFlyout(null) }}
+                >
+                  <Folder size={12} strokeWidth={1.75} />
+                  <span className={styles.favItemName}>{favName(path)}</span>
+                </button>
+                <button
+                  className={styles.favRemove}
+                  title="Remove from favorites"
+                  aria-label="Remove from favorites"
+                  onClick={() => onRemoveFavorite(favFlyout.connId, path)}
+                >
+                  <X size={11} strokeWidth={2} />
+                </button>
+              </div>
+            ))
+          )}
+        </div>,
+        document.body
+      )}
     </aside>
   )
 }

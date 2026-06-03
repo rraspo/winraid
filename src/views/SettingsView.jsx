@@ -6,6 +6,7 @@ import Button from '../components/ui/Button'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import { formatSize } from '../utils/format'
 import { SNAPSHOT_FORMATS } from '../utils/snapshotFormats'
+import { readAccordionMode, setAccordionMode } from '../utils/accordionMode'
 import styles from './SettingsView.module.css'
 
 const HINTS = {
@@ -16,9 +17,7 @@ const HINTS = {
 export default function SettingsView() {
   const [watching, setWatching] = useState(false)
   const [version, setVersion] = useState('')
-  const [accordionsOpen, setAccordionsOpen] = useState(
-    () => localStorage.getItem('sidebar-accordions-default-open') !== 'false'
-  )
+  const [accordionsMode, setAccordionsMode] = useState(() => readAccordionMode())
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
   const [cacheBytes, setCacheBytes] = useState(0)
   const [clearing, setClearing] = useState(false)
@@ -133,14 +132,12 @@ export default function SettingsView() {
     await window.winraid?.config.set('browse.cacheMutation', value)
   }
 
-  async function handlePlayRecursiveChange() {
-    const next = !playRecursive
+  async function handlePlayRecursiveChange(next) {
     setPlayRecursive(next)
     await window.winraid?.config.set('playDefaults', { recursive: next, shuffle: playShuffle })
   }
 
-  async function handlePlayShuffleChange() {
-    const next = !playShuffle
+  async function handlePlayShuffleChange(next) {
     setPlayShuffle(next)
     await window.winraid?.config.set('playDefaults', { recursive: playRecursive, shuffle: next })
   }
@@ -150,10 +147,14 @@ export default function SettingsView() {
     await window.winraid?.config.set('snapshot.format', value)
   }
 
-  async function handleDirsFirstChange() {
-    const next = !dirsFirst
+  async function handleDirsFirstChange(next) {
     setDirsFirst(next)
     await window.winraid?.config.set('browse.dirsFirst', next)
+  }
+
+  function handleAccordionsChange(next) {
+    setAccordionsMode(next)
+    setAccordionMode(next)
   }
 
   async function handleSortPersistenceChange(value) {
@@ -199,45 +200,40 @@ export default function SettingsView() {
         <section className={styles.section}>
           <div className={styles.sectionHeader}>Interface</div>
           <div className={styles.sectionBody}>
-            <div className={styles.field}>
-              <span className={styles.label}>Expand connections by default</span>
-              <div
-                role="switch"
-                aria-checked={accordionsOpen}
-                className={[styles.switch, accordionsOpen ? styles.switchOn : ''].filter(Boolean).join(' ')}
-                onClick={() => {
-                  const next = !accordionsOpen
-                  setAccordionsOpen(next)
-                  localStorage.setItem('sidebar-accordions-default-open', String(next))
-                }}
-              />
-            </div>
+            <SegmentedControl
+              label="Connections on startup"
+              value={accordionsMode}
+              onChange={handleAccordionsChange}
+              options={[
+                { value: 'expanded',  label: 'Expanded',  desc: 'Open every connection on launch.' },
+                { value: 'collapsed', label: 'Collapsed', desc: 'Start with every connection closed.' },
+                { value: 'remember',  label: 'Remember',  desc: 'Restore each connection’s last open or closed state.' },
+              ]}
+            />
           </div>
         </section>
 
         <section className={styles.section}>
           <div className={styles.sectionHeader}>Play</div>
           <div className={styles.sectionBody}>
-            <div className={styles.field}>
-              <span className={styles.label}>Default to recursive scan</span>
-              <div
-                role="switch"
-                aria-checked={playRecursive}
-                aria-label="Default to recursive scan"
-                className={[styles.switch, playRecursive ? styles.switchOn : ''].filter(Boolean).join(' ')}
-                onClick={handlePlayRecursiveChange}
-              />
-            </div>
-            <div className={styles.field}>
-              <span className={styles.label}>Default to shuffle</span>
-              <div
-                role="switch"
-                aria-checked={playShuffle}
-                aria-label="Default to shuffle"
-                className={[styles.switch, playShuffle ? styles.switchOn : ''].filter(Boolean).join(' ')}
-                onClick={handlePlayShuffleChange}
-              />
-            </div>
+            <SegmentedControl
+              label="Default scan depth"
+              value={playRecursive}
+              onChange={handlePlayRecursiveChange}
+              options={[
+                { value: true,  label: 'Recursive' },
+                { value: false, label: 'Top level' },
+              ]}
+            />
+            <SegmentedControl
+              label="Default order"
+              value={playShuffle}
+              onChange={handlePlayShuffleChange}
+              options={[
+                { value: true,  label: 'Shuffle' },
+                { value: false, label: 'In order' },
+              ]}
+            />
           </div>
         </section>
 
@@ -272,9 +268,9 @@ export default function SettingsView() {
           </button>
           {advancedOpen && (
             <div className={styles.advancedBody}>
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>Browse</div>
-                <div className={styles.sectionBody}>
+              <div className={styles.subGroup}>
+                <div className={styles.subGroupHeader}>Browse</div>
+                <div className={styles.subGroupBody}>
                   <SegmentedControl
                     label="Directory cache"
                     value={cacheMode}
@@ -294,8 +290,8 @@ export default function SettingsView() {
                       { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
                     ]}
                   />
-                  <div className={styles.field}>
-                    <span className={styles.label}>Video thumbnail position</span>
+                  <div className={styles.stackedField}>
+                    <span className={styles.stackedLabel}>Video thumbnail position</span>
                     <div className={styles.thumbSeekRow}>
                       <input
                         type="number"
@@ -323,16 +319,15 @@ export default function SettingsView() {
                       </div>
                     </div>
                   </div>
-                  <div className={styles.field}>
-                    <span className={styles.label}>Directories first</span>
-                    <div
-                      role="switch"
-                      aria-checked={dirsFirst}
-                      aria-label="Directories first"
-                      className={[styles.switch, dirsFirst ? styles.switchOn : ''].filter(Boolean).join(' ')}
-                      onClick={handleDirsFirstChange}
-                    />
-                  </div>
+                  <SegmentedControl
+                    label="Folder order"
+                    value={dirsFirst}
+                    onChange={handleDirsFirstChange}
+                    options={[
+                      { value: true,  label: 'Dirs first' },
+                      { value: false, label: 'Files first' },
+                    ]}
+                  />
                   <SegmentedControl
                     label="Sort persistence"
                     value={sortPersistence}
@@ -344,11 +339,11 @@ export default function SettingsView() {
                     ]}
                   />
                 </div>
-              </section>
+              </div>
 
-              <section className={styles.section}>
-                <div className={styles.sectionHeader}>Storage</div>
-                <div className={styles.sectionBody}>
+              <div className={styles.subGroup}>
+                <div className={styles.subGroupHeader}>Storage</div>
+                <div className={styles.subGroupBody}>
                   <div className={styles.cacheRow}>
                     <span className={styles.cacheSize}>{formatSize(cacheBytes)}</span>
                     <Button size="sm" variant="ghost" onClick={handleClearCache} disabled={clearing}>
@@ -356,7 +351,7 @@ export default function SettingsView() {
                     </Button>
                   </div>
                 </div>
-              </section>
+              </div>
             </div>
           )}
         </section>
@@ -370,6 +365,9 @@ export default function SettingsView() {
                 {version && <span className={styles.aboutTag}>v{version}</span>}
               </div>
               <div className={styles.aboutActions}>
+                <Button size="sm" variant="ghost" onClick={() => window.winraid?.whatsNew?.open()}>
+                  What’s new
+                </Button>
                 {isReady ? (
                   <Button size="sm" onClick={handleInstall}>
                     <Download size={14} strokeWidth={1.75} />
