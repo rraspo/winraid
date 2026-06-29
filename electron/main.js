@@ -20,9 +20,13 @@ import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeF
 import { createHash } from 'crypto'
 import { homedir, userInfo } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
+import { initActivity, pushActivity, tailActivity } from './activity.js'
+import { describeActivity, failureTitle } from './activity-format.js'
+import { listCommand, parseListOutput } from './remote-list.js'
 import { validateRemotePath } from './validation.js'
 import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
 import { execWithTimeout } from './exec-helpers.js'
+import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -89,35 +93,121 @@ const _sizeScans = new Map()
 /** Active media scans: connectionId → AbortController */
 const _mediaScans = new Map()
 
-/**
- * Run `du -sk <path>/*` via SSH exec on an already-pooled client.
- * Returns array of { path: string, sizeKb: number } for direct children.
- * Ignores permission errors (2>/dev/null). Returns [] on exec failure.
- */
-function _runDuLevel(client, dirPath) {
-  const quoted = `'${dirPath.replace(/'/g, "'\\''")}'`
-  const cmd = `du -sk ${quoted}/* 2>/dev/null | grep -v '@eaDir\\|#recycle\\|\\.@__thumb'`
-  log('info', `[size-scan] du level: ${dirPath}`)
-  return execWithTimeout(client, cmd, 300_000)
-    .then(({ stdout, code }) => {
-      const entries = []
-      for (const line of stdout.trim().split('\n')) {
-        if (!line.trim()) continue
-        const tab = line.indexOf('\t')
-        if (tab < 0) continue
-        const sizeKb = parseInt(line.slice(0, tab), 10)
-        const entryPath = line.slice(tab + 1).trim()
-        if (!isNaN(sizeKb) && entryPath && entryPath !== `${dirPath}/*`) {
-          entries.push({ path: entryPath, sizeKb })
-        }
+// Names skipped during size scans (NAS metadata that inflates/clutters sizes).
+const _SIZE_IGNORE = new Set(['@eaDir', '#recycle', '.@__thumb'])
+
+// Detected sizing tool per connection (diskus if present, else du). Cached so
+// detection runs once per connection rather than per scan.
+const _sizeToolCache = new Map()
+
+async function _detectSizeTool(connId, client) {
+  if (_sizeToolCache.has(connId)) return _sizeToolCache.get(connId)
+  let tool = 'du'
+  try {
+    const { stdout } = await execWithTimeout(client, probeCommand(), 15_000)
+    tool = pickSizeTool(parseProbe(stdout))
+  } catch {
+    // probe failed — du is the safe default
+  }
+  _sizeToolCache.set(connId, tool)
+  log('info', `[size-scan] sizing tool for ${connId}: ${tool}`)
+  return tool
+}
+
+// List immediate children of dirPath with type + (file) size, via SFTP readdir.
+function _readChildren(sftp, dirPath) {
+  return new Promise((resolve, reject) => {
+    sftp.readdir(dirPath, (err, list) => {
+      if (err) return reject(err)
+      const base = dirPath.replace(/\/+$/, '')
+      const out = []
+      for (const e of list ?? []) {
+        const name = e.filename
+        if (!name || name.startsWith('.') || _SIZE_IGNORE.has(name)) continue
+        const mode = e.attrs?.mode ?? 0
+        const isDir = (mode & 0o170000) === 0o040000
+        out.push({
+          name,
+          path: `${base}/${name}`,
+          type: isDir ? 'dir' : 'file',
+          sizeBytes: e.attrs?.size ?? 0,
+        })
       }
-      log('info', `[size-scan] du level done: ${dirPath} → ${entries.length} entries (exit ${code}, stdout ${stdout.length} chars)`)
-      return entries
+      resolve(out)
     })
-    .catch((err) => {
-      log('warn', `[size-scan] du level failed: ${dirPath} — ${err?.message ?? err}`)
-      return []
+  })
+}
+
+// Recursive size (KB) of a single path using the detected tool. If a fast
+// tool's output does not parse, fall back to du so results stay correct.
+async function _sizeOne(client, tool, path) {
+  try {
+    const { stdout } = await execWithTimeout(client, sizeCommand(tool, path), 300_000)
+    let kb = parseSizeKb(tool, stdout)
+    if (kb == null && tool !== 'du') {
+      const du = await execWithTimeout(client, sizeCommand('du', path), 300_000)
+      kb = parseSizeKb('du', du.stdout)
+    }
+    return kb ?? 0
+  } catch (err) {
+    log('warn', `[size-scan] size failed: ${path} — ${err?.message ?? err}`)
+    return 0
+  }
+}
+
+/**
+ * Scan ONE directory level and stream results: list children immediately
+ * (files sized from the listing, directories pending at 0), then size each
+ * subdirectory concurrently with the detected tool, emitting each as it
+ * resolves. The renderer upserts by path so sizes fill in live. Returns the
+ * child count for this level.
+ */
+async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, concurrency, isCancelled, isActive, onProgress }) {
+  const children = await _readChildren(sftp, dirPath)
+  if (isCancelled?.()) return 0
+
+  if (isActive?.() !== false) {
+    sendToRenderer('size:level', {
+      connectionId,
+      parentPath: dirPath,
+      entries: children.map((c) => ({
+        name: c.name,
+        path: c.path,
+        sizeKb: c.type === 'dir' ? 0 : Math.round((c.sizeBytes || 0) / 1024),
+      })),
     })
+  }
+  onProgress?.(dirPath, children.length)
+
+  const dirs = children.filter((c) => c.type === 'dir')
+  let idx = 0
+  await new Promise((resolve) => {
+    let active = 0
+    function pump() {
+      if (isCancelled?.()) { if (active === 0) resolve(); return }
+      while (active < concurrency && idx < dirs.length) {
+        const dir = dirs[idx++]
+        active++
+        ;(async () => {
+          _poolTouch(connectionId)
+          const sizeKb = await _sizeOne(client, tool, dir.path)
+          if (isCancelled?.()) return
+          if (isActive?.() !== false) {
+            sendToRenderer('size:level', {
+              connectionId,
+              parentPath: dirPath,
+              entries: [{ name: dir.name, path: dir.path, sizeKb }],
+            })
+          }
+          onProgress?.(dir.path, children.length)
+        })().finally(() => { active--; pump() })
+      }
+      if (active === 0 && idx >= dirs.length) resolve()
+    }
+    pump()
+  })
+
+  return children.length
 }
 
 async function getWatcher() {
@@ -244,10 +334,15 @@ function createWindow() {
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
+      // Enables Chromium's built-in PDF viewer so QuickLook can render PDFs in
+      // an <iframe>. Safe alongside sandbox + contextIsolation (NPAPI is long
+      // gone; this only turns on the bundled PDFium viewer).
+      plugins: true,
     },
   })
 
   initLogger(sendToRenderer)
+  initActivity(sendToRenderer)
 
   // Minimize to tray on close
   mainWindow.on('close', (e) => {
@@ -865,6 +960,15 @@ function registerIPC() {
     return { ok: true, count }
   })
 
+  // -- Activity feed ---------------------------------------------------------
+  ipcMain.handle('activity:tail', (_e, n = 50) => tailActivity(Number(n) || 50))
+
+  ipcMain.handle('activity:reveal', (_e, localPath) => {
+    if (typeof localPath !== 'string' || !localPath.trim()) return { ok: false }
+    shell.showItemInFolder(localPath)
+    return { ok: true }
+  })
+
   // -- Logs ------------------------------------------------------------------
   ipcMain.handle('log:get-path', () => getLogPath())
 
@@ -900,6 +1004,22 @@ function registerIPC() {
     } catch (err) {
       return { ok: false, error: err.message }
     }
+  })
+
+  // Whether a local path currently exists — used to gate the browse view's
+  // "Reveal in Explorer" action so it only shows when a mirrored copy is present.
+  ipcMain.handle('local:exists', (_e, p) => {
+    if (typeof p !== 'string' || !p.trim()) return false
+    try { return existsSync(resolve(p)) } catch { return false }
+  })
+
+  // Reveal a local folder/file in the OS file manager (no-op if it's gone).
+  ipcMain.handle('local:reveal', (_e, p) => {
+    if (typeof p !== 'string' || !p.trim()) return { ok: false }
+    const resolved = resolve(p)
+    if (!existsSync(resolved)) return { ok: false, error: 'Local path no longer exists.' }
+    shell.showItemInFolder(resolved)
+    return { ok: true }
   })
 
   ipcMain.handle('log:reveal', () => {
@@ -1088,46 +1208,38 @@ function registerIPC() {
           return a.name.localeCompare(b.name)
         })
 
-      // Try SSH exec find — single round-trip regardless of directory size
+      // Try a single `find -printf` — one process for the whole directory,
+      // regardless of size. Falls through to sftp.readdir if find/-printf is
+      // unavailable (busybox / restricted shells → non-zero exit).
+      // [perf] timing logs are temporary diagnostics for the large-folder probe.
       if (client) {
+        const t0 = Date.now()
         try {
-          const safePath = remotePath.replace(/'/g, "'\\''")
-          const cmd = `find '${safePath}' -mindepth 1 -maxdepth 1 -not -name '.*' -not -name '@eaDir' -not -name '#recycle' -not -name '.@__thumb'`
-          const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); n=$(basename "$p"); printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$n"; done`
-          const { code, stdout } = await execWithTimeout(client, pipeline, 60_000)
+          const { code, stdout } = await execWithTimeout(client, listCommand(remotePath), 60_000)
           if (code === 0 && stdout.trim()) {
-            const entries = []
-            for (const line of stdout.split('\n')) {
-              if (!line) continue
-              const parts = line.split('\t')
-              if (parts.length < 4) continue
-              const [type, sizeStr, mtStr, name] = parts
-              if (!name || name === '.') continue
-              entries.push({
-                name,
-                type:     type === 'd' ? 'dir' : 'file',
-                size:     parseInt(sizeStr, 10) || 0,
-                modified: parseInt(mtStr, 10) * 1000,
-              })
-            }
-            return { ok: true, entries: sortEntries(entries) }
+            const entries = sortEntries(parseListOutput(stdout))
+            log('info', `[perf] list via find: ${entries.length} entries in ${Date.now() - t0}ms — ${remotePath}`)
+            return { ok: true, entries }
           }
-        } catch (_) {
-          // fall through to sftp.readdir
+          log('warn', `[perf] list find unusable (exit ${code}) after ${Date.now() - t0}ms, falling back to readdir — ${remotePath}`)
+        } catch (e) {
+          log('warn', `[perf] list find errored after ${Date.now() - t0}ms (${e.message}), falling back to readdir — ${remotePath}`)
         }
       }
 
       // Fallback: sftp.readdir (compatible with restricted shells / busybox)
+      const tReaddir = Date.now()
       return new Promise((resolve) => {
         sftp.readdir(remotePath, (err, list) => {
           if (err) return resolve({ ok: false, error: err.message })
-          const entries = list.map((e) => ({
+          const entries = sortEntries(list.map((e) => ({
             name:     e.filename,
             type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
             size:     e.attrs.size ?? 0,
             modified: (e.attrs.mtime ?? 0) * 1000,
-          }))
-          resolve({ ok: true, entries: sortEntries(entries) })
+          })))
+          log('info', `[perf] list via readdir: ${entries.length} entries in ${Date.now() - tReaddir}ms — ${remotePath}`)
+          resolve({ ok: true, entries })
         })
       })
     } catch (err) {
@@ -1216,9 +1328,11 @@ function registerIPC() {
       const created = []
       await remoteWalkCreate(sftp, remotePath, localTarget, created)
       log('info', `Remote checkout [${await _connLabel(connectionId)}]: ${remotePath} -> ${localTarget} (${created.length} files)`)
+      emitActivity({ type: 'checkout', connectionId, payload: { count: created.length, localDir: localTarget } })
       return { ok: true, created }
     } catch (err) {
       log('error', `Remote checkout failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
+      emitActivity({ type: 'checkout', connectionId, level: 'error', error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -1241,6 +1355,7 @@ function registerIPC() {
           await backupDownloadFile(sftp, rp, join(localPath, relPath))
         }
         log('info', `Download [${await _connLabel(connectionId)}]: ${remotePath} -> ${localPath} (${files.length} files)`)
+        emitActivity({ type: 'download', connectionId, payload: { name: basename(remotePath), localDir: join(localPath, basename(remotePath)) } })
         return { ok: true, count: files.length }
       } else {
         const name = basename(remotePath)
@@ -1255,10 +1370,12 @@ function registerIPC() {
           }, (err) => err ? reject(err) : resolve())
         })
         log('info', `Download [${await _connLabel(connectionId)}]: ${remotePath} -> ${localPath}`)
+        emitActivity({ type: 'download', connectionId, payload: { name, localDir: localPath } })
         return { ok: true, count: 1 }
       }
     } catch (err) {
       log('error', `Download failed [${await _connLabel(connectionId)}]: ${err.message}`)
+      emitActivity({ type: 'download', connectionId, level: 'error', error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -1303,9 +1420,14 @@ function registerIPC() {
         )
       }
       log('info', `Remote ${isDir ? 'directory' : 'file'} deleted [${await _connLabel(connectionId)}]: ${remotePath}`)
+      emitActivity({
+        type: 'delete', connectionId,
+        payload: { name: remotePath.split('/').pop(), parentDir: remotePath.slice(0, remotePath.lastIndexOf('/')) || '/' },
+      })
       return { ok: true }
     } catch (err) {
       log('error', `Remote delete failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
+      emitActivity({ type: 'delete', connectionId, level: 'error', error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -1363,15 +1485,27 @@ function registerIPC() {
       }
       if (result.ok) {
         log('info', `Remote move [${label}] (${usedFallback ? 'sftp rename' : 'ssh mv'}): ${srcPath} -> ${dstPath}`)
+        const name   = dstPath.split('/').pop()
+        const dstDir = dstPath.slice(0, dstPath.lastIndexOf('/')) || '/'
+        const srcDir = srcPath.slice(0, srcPath.lastIndexOf('/')) || '/'
+        if (srcDir === dstDir) {
+          emitActivity({ type: 'rename', connectionId, payload: { oldName: srcPath.split('/').pop(), newName: name, dir: dstDir } })
+        } else {
+          let isDir = false
+          try { isDir = await new Promise((res) => sftp.stat(dstPath, (e, st) => res(!e && st.isDirectory()))) } catch { /* default file */ }
+          emitActivity({ type: 'move', connectionId, payload: { name, srcDir, dstDir, isDir } })
+        }
       } else {
         log('error', `Remote move failed [${label}] from: ${srcPath}`)
         log('error', `Remote move failed [${label}]   to: ${dstPath} — ${result.error}`)
+        emitActivity({ type: 'move', connectionId, level: 'error', error: result.error })
       }
       return result
     } catch (err) {
       const label = await _connLabel(connectionId)
       log('error', `Remote move/rename failed [${label}] from: ${srcPath}`)
       log('error', `Remote move/rename failed [${label}]   to: ${dstPath} — ${err.message}`)
+      emitActivity({ type: 'move', connectionId, level: 'error', error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -1390,12 +1524,18 @@ function registerIPC() {
       })
       if (result.ok) {
         log('info', `Remote directory created [${await _connLabel(connectionId)}]: ${remotePath}`)
+        emitActivity({
+          type: 'mkdir', connectionId,
+          payload: { name: remotePath.split('/').pop(), parentDir: remotePath.slice(0, remotePath.lastIndexOf('/')) || '/' },
+        })
       } else {
         log('error', `Remote mkdir failed [${await _connLabel(connectionId)}]: ${remotePath} — ${result.error}`)
+        emitActivity({ type: 'mkdir', connectionId, level: 'error', error: result.error })
       }
       return result
     } catch (err) {
       log('error', `Remote mkdir failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
+      emitActivity({ type: 'mkdir', connectionId, level: 'error', error: err.message })
       return { ok: false, error: err.message }
     }
   })
@@ -1615,50 +1755,11 @@ function registerIPC() {
   })
 
   // ---------------------------------------------------------------------------
-  // Remote: folder size scan via `du -sk path/*` streamed level by level
+  // Remote: folder size scan — shallow (top level), parallel, streaming.
+  // Children appear immediately; each subfolder's recursive size streams in as
+  // the detected sizing tool (diskus if present, else du) returns. Deeper
+  // levels load on demand via remote:size-scan-subtree.
   // ---------------------------------------------------------------------------
-
-  // BFS du-walker with bounded concurrency. Used by both the full scan
-  // and the on-demand subtree scan. `client` is an ssh2 Client; the
-  // callbacks let each caller decide what events to emit and when to
-  // bail. Returns the total folder count seen.
-  async function _runSizeBFS({ client, connectionId, rootPath, maxDepth, concurrency, isCancelled, isActive, onLevel, onProgress }) {
-    const queue = [{ path: rootPath, depth: 0 }]
-    let totalFolders = 0
-    let inFlight = 0
-
-    await new Promise((resolveDone) => {
-      function tick() {
-        if (isCancelled()) {
-          if (inFlight === 0) resolveDone()
-          return
-        }
-        while (inFlight < concurrency && queue.length > 0) {
-          const { path, depth } = queue.shift()
-          if (depth >= maxDepth) continue
-          inFlight++
-          ;(async () => {
-            _poolTouch(connectionId)
-            const entries = await _runDuLevel(client, path)
-            if (isCancelled()) return
-            totalFolders += entries.length
-            if (isActive?.() !== false) {
-              onLevel?.(path, entries)
-              onProgress?.(path, totalFolders)
-            }
-            for (const entry of entries) queue.push({ path: entry.path, depth: depth + 1 })
-          })().finally(() => {
-            inFlight--
-            tick()
-          })
-        }
-        if (inFlight === 0 && queue.length === 0) resolveDone()
-      }
-      tick()
-    })
-
-    return totalFolders
-  }
 
   ipcMain.handle('remote:size-scan', async (_e, connectionId) => {
     try {
@@ -1669,56 +1770,50 @@ function registerIPC() {
       if (!conn) return { ok: false, error: 'Connection not found' }
       if (conn.type !== 'sftp') return { ok: false, error: 'Size scan only available for SFTP connections' }
 
-      await _poolGet(connectionId)
+      const sftp = await _poolGet(connectionId)
       _poolTouch(connectionId)
       const poolEntry = _sftpPool.get(connectionId)
-      if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
+      if (!poolEntry || !sftp) return { ok: false, error: 'Connection unavailable' }
 
       const scanState = { cancelled: false }
       _sizeScans.set(connectionId, scanState)
       const isActive = () => _sizeScans.get(connectionId) === scanState
       const isCancelled = () => scanState.cancelled
 
-      const keepAlive = setInterval(() => _poolTouch(connectionId), 10_000)
       const rootPath  = (conn.sftp?.remotePath || '/').replace(/\/+$/, '') || '/'
       const startTime = Date.now()
+      const tool = await _detectSizeTool(connectionId, poolEntry.client)
+
+      // Liveness heartbeat so the renderer's no-progress watchdog measures
+      // "still working" rather than "level completed".
+      let lastCount = 0
+      let lastPath  = rootPath
+      const keepAlive = setInterval(() => {
+        _poolTouch(connectionId)
+        if (isActive() && !isCancelled()) {
+          sendToRenderer('size:progress', { connectionId, path: lastPath, count: lastCount, elapsedMs: Date.now() - startTime })
+        }
+      }, 10_000)
 
       try {
-        const totalFolders = await _runSizeBFS({
+        const totalFolders = await _scanSizeLevel({
           client: poolEntry.client,
+          sftp,
           connectionId,
-          rootPath,
-          maxDepth: 3,
-          concurrency: 4,
+          dirPath: rootPath,
+          tool,
+          concurrency: 6,
           isCancelled,
           isActive,
-          onLevel: (path, entries) => {
-            sendToRenderer('size:level', {
-              connectionId,
-              parentPath: path,
-              entries: entries.map((e) => ({
-                name: e.path.split('/').pop() || e.path,
-                path: e.path,
-                sizeKb: e.sizeKb,
-              })),
-            })
-          },
           onProgress: (path, count) => {
-            sendToRenderer('size:progress', {
-              connectionId,
-              path,
-              count,
-              elapsedMs: Date.now() - startTime,
-            })
+            lastCount = count
+            lastPath  = path
+            sendToRenderer('size:progress', { connectionId, path, count, elapsedMs: Date.now() - startTime })
           },
         })
 
         if (!scanState.cancelled && isActive()) {
-          sendToRenderer('size:done', {
-            connectionId,
-            totalFolders,
-            elapsedMs: Date.now() - startTime,
-          })
+          sendToRenderer('size:done', { connectionId, totalFolders, elapsedMs: Date.now() - startTime })
         }
       } finally {
         clearInterval(keepAlive)
@@ -1748,31 +1843,22 @@ function registerIPC() {
       if (!conn) return { ok: false, error: 'Connection not found' }
       if (conn.type !== 'sftp') return { ok: false, error: 'Only SFTP supported' }
 
-      await _poolGet(connectionId)
+      const sftp = await _poolGet(connectionId)
       _poolTouch(connectionId)
       const poolEntry = _sftpPool.get(connectionId)
-      if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
+      if (!poolEntry || !sftp) return { ok: false, error: 'Connection unavailable' }
 
+      const tool = await _detectSizeTool(connectionId, poolEntry.client)
       const keepAlive = setInterval(() => _poolTouch(connectionId), 10_000)
       try {
-        await _runSizeBFS({
+        await _scanSizeLevel({
           client: poolEntry.client,
+          sftp,
           connectionId,
-          rootPath: subRoot.replace(/\/+$/, '') || '/',
-          maxDepth: 3,
-          concurrency: 4,
+          dirPath: subRoot.replace(/\/+$/, '') || '/',
+          tool,
+          concurrency: 6,
           isCancelled: () => false,
-          onLevel: (path, entries) => {
-            sendToRenderer('size:level', {
-              connectionId,
-              parentPath: path,
-              entries: entries.map((e) => ({
-                name: e.path.split('/').pop() || e.path,
-                path: e.path,
-                sizeKb: e.sizeKb,
-              })),
-            })
-          },
         })
       } finally {
         clearInterval(keepAlive)
@@ -2401,6 +2487,8 @@ const MIME_BY_EXT = {
   ogg:  'audio/ogg',
   m4a:  'audio/mp4',
   opus: 'audio/ogg; codecs=opus',
+  // Documents
+  pdf:  'application/pdf',
   // Text / code
   txt:  'text/plain; charset=utf-8',
   json: 'application/json',
@@ -2535,6 +2623,19 @@ async function _connLabel(connId) {
   }
 }
 
+// Push a structured activity entry for a user-facing op. Success uses the
+// describeActivity mapping; failure uses a short failure title + the error text
+// and is never clickable. connectionId travels raw — the renderer resolves the
+// connection name/icon for the pill.
+function emitActivity({ type, connectionId, payload = {}, level = 'info', error }) {
+  if (level === 'error') {
+    pushActivity({ type, level, connectionId, title: failureTitle(type), detail: error, nav: null })
+  } else {
+    const { title, detail, nav } = describeActivity(type, payload)
+    pushActivity({ type, level, connectionId, title, detail, nav })
+  }
+}
+
 // Parse a Range header value like "bytes=0-1023".
 // Returns { start, end } or null if the header is absent or unparseable.
 function parseRange(rangeHeader, fileSize) {
@@ -2637,8 +2738,12 @@ function _nativeImageToJpeg(buf) {
         const img = nativeImage.createFromBuffer(buf)
         if (img.isEmpty()) return resolve(null)
         resolve(img.resize({ width: 240 }).toJPEG(80))
-      } catch (err) {
-        reject(err)
+      } catch {
+        // Undecodable by nativeImage (e.g. webp/svg on platforms it can't
+        // rasterize, which can throw rather than return empty). Signal "no
+        // thumbnail" so the caller serves the original bytes — the renderer's
+        // <img> handles webp/gif/svg natively — instead of failing with a 500.
+        resolve(null)
       }
     })
   })
@@ -2657,6 +2762,10 @@ function registerNasStreamProtocol() {
       if (!connId || !validateRemotePath(remotePath)) {
         return new Response('Bad Request', { status: 400 })
       }
+
+      // Renderer cancelled (e.g. the row scrolled out of the virtualized grid).
+      // Bail before doing any SFTP work so we don't waste a thumbnail slot.
+      if (request.signal?.aborted) return new Response(null, { status: 499 })
 
       const sftp = await _poolGet(connId)
       if (!sftp) {
@@ -2724,12 +2833,19 @@ function registerNasStreamProtocol() {
         await _thumbSem.acquire()
         let buf
         try {
+          // If the request was cancelled while queued (fast scroll), skip the
+          // download so the freed slot goes to a thumbnail that's still on screen.
+          if (request.signal?.aborted) return new Response(null, { status: 499 })
+
           const stream = sftp.createReadStream(remotePath)
           const chunks = []
           await new Promise((resolve, reject) => {
+            const onAbort = () => { stream.destroy(); reject(new Error('aborted')) }
+            request.signal?.addEventListener('abort', onAbort, { once: true })
+            const cleanup = () => request.signal?.removeEventListener('abort', onAbort)
             stream.on('data',  (chunk) => chunks.push(chunk))
-            stream.on('end',   resolve)
-            stream.on('error', reject)
+            stream.on('end',   () => { cleanup(); resolve() })
+            stream.on('error', (e) => { cleanup(); reject(e) })
           })
           buf = Buffer.concat(chunks)
         } finally {
@@ -2746,7 +2862,9 @@ function registerNasStreamProtocol() {
         // and other work can interleave between thumbnail processing steps.
         const jpegBuf = await _nativeImageToJpeg(buf)
         if (!jpegBuf) {
-          // nativeImage could not decode the format — serve original bytes as-is
+          // nativeImage could not rasterize this format (e.g. webp/svg) — serve
+          // the original bytes as-is; the renderer's <img> handles them natively.
+          log('info', `[thumb] nativeImage could not rasterize ${mime}, serving original — ${remotePath}`)
           return new Response(buf, {
             status: 200,
             headers: {
@@ -2824,6 +2942,10 @@ function registerNasStreamProtocol() {
         },
       })
     } catch (err) {
+      // Cancelled requests (scrolled-past thumbnails) are expected — not errors.
+      if (request.signal?.aborted || err?.message === 'aborted') {
+        return new Response(null, { status: 499 })
+      }
       const url2 = new URL(request.url)
       log('error', `nas-stream error [${url2.hostname}] ${decodeURIComponent(url2.pathname)} — ${err.message}`)
       return new Response('Internal Server Error', { status: 500 })
@@ -2843,10 +2965,18 @@ app.whenReady().then(async () => {
       "style-src 'self' 'unsafe-inline'; " +
       "img-src 'self' data: blob: nas-stream: https://cdn.jsdelivr.net; " +
       "media-src 'self' nas-stream:; " +
+      // frame-src/object-src don't inherit reliably for the PDF viewer iframe,
+      // so allow nas-stream: explicitly (QuickLook PDF preview).
+      "frame-src 'self' nas-stream:; " +
+      "object-src 'self' nas-stream:; " +
+      "worker-src 'self' blob:; " +
       "connect-src 'self' nas-stream: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
     : "default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: nas-stream:; " +
       "img-src 'self' data: blob: nas-stream:; " +
       "media-src 'self' blob: nas-stream:; " +
+      "frame-src 'self' nas-stream:; " +
+      "object-src 'self' nas-stream:; " +
+      "worker-src 'self' blob:; " +
       "connect-src 'self' nas-stream: ws: wss: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

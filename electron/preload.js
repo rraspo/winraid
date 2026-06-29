@@ -133,6 +133,16 @@ contextBridge.exposeInMainWorld('winraid', {
     onEntry: (cb)     => on('log:entry', cb),
   },
 
+  // -- Activity feed -------------------------------------------------------
+  activity: {
+    /** Most-recent-first list of up to n structured activity entries. */
+    tail:    (n)      => ipcRenderer.invoke('activity:tail', n),
+    /** Subscribe to live activity entries pushed from the main process. */
+    onEntry: (cb)     => on('activity:entry', cb),
+    /** Reveal a local folder/file in the OS file manager. */
+    reveal:  (path)   => ipcRenderer.invoke('activity:reveal', path),
+  },
+
   // -- SSH utilities -------------------------------------------------------
   ssh: {
     /** Test an SFTP connection. Returns { ok: true } or { ok: false, error: string }. */
@@ -183,6 +193,10 @@ contextBridge.exposeInMainWorld('winraid', {
   local: {
     /** Wipes all contents of a folder then recreates it empty. */
     clearFolder: (path) => ipcRenderer.invoke('local:clear-folder', path),
+    /** Returns true if the given local path currently exists. */
+    exists: (path) => ipcRenderer.invoke('local:exists', path),
+    /** Reveal a local folder/file in the OS file manager. */
+    reveal: (path) => ipcRenderer.invoke('local:reveal', path),
   },
 
   // -- Remote browser ------------------------------------------------------
