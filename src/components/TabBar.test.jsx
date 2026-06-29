@@ -72,3 +72,24 @@ describe('TabBar', () => {
     expect(onClose).toHaveBeenCalledWith('conn-1:browse')
   })
 })
+
+describe('TabBar — editor tabs', () => {
+  const EDITOR_TABS = [{ id: 'conn-1:editor:/a/notes.txt', connId: 'conn-1', type: 'editor', filePath: '/a/notes.txt', name: 'notes.txt' }]
+
+  it('renders the filename and a dirty dot for a dirty editor tab', () => {
+    render(
+      <TabBar openTabs={EDITOR_TABS} activeTabId={EDITOR_TABS[0].id} connections={CONNECTIONS}
+        dirtyTabs={new Set([EDITOR_TABS[0].id])} onActivate={vi.fn()} onClose={vi.fn()} />
+    )
+    expect(screen.getByText('notes.txt')).toBeInTheDocument()
+    expect(screen.getByTitle('Unsaved changes')).toBeInTheDocument()
+  })
+
+  it('omits the dirty dot when the editor tab is clean', () => {
+    render(
+      <TabBar openTabs={EDITOR_TABS} activeTabId={EDITOR_TABS[0].id} connections={CONNECTIONS}
+        dirtyTabs={new Set()} onActivate={vi.fn()} onClose={vi.fn()} />
+    )
+    expect(screen.queryByTitle('Unsaved changes')).toBeNull()
+  })
+})

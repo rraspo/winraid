@@ -73,3 +73,24 @@
 .shimmer-once.shimmer-border {
   animation: shimmerBorderColor var(--shimmer-speed) ease-in-out forwards;
 }
+
+/* ---- Block skeleton — animated placeholder for loading thumbnails / cells ----
+   Opaque base (never shows black behind a transparent gradient) with a visible
+   sweeping sheen. Works in both themes via tokens. */
+@keyframes skeletonSweep {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+.skeleton-box {
+  background-color: var(--bg-card);
+  background-image: linear-gradient(
+    90deg,
+    transparent 20%,
+    var(--border-strong) 50%,
+    transparent 80%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeletonSweep 1.4s linear infinite;
+}

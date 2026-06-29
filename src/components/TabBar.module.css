@@ -84,6 +84,13 @@
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
+.dirtyDot {
+  color: var(--warning);
+  font-size: 9px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .closeBtn {
   display: flex;
   align-items: center;

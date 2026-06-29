@@ -1,18 +1,39 @@
-.thumbGrid {
+/* Sized wrappers — the virtualizer mounts these only when near the viewport, so
+   the image/video inside loads immediately (no native lazy attr). */
+.thumbWrapGrid {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+.thumbWrapList {
+  position: relative;
+  display: block;
+  width: 54px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-card);
+}
+
+/* Image/video fill the wrapper; fade in once loaded so the skeleton swap is smooth. */
+.thumbImg {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  transition: opacity 150ms ease;
 }
 
-.thumbList {
-  width: 54px;
-  height: 36px;
-  object-fit: cover;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-  display: block;
-  background: var(--bg-input);
+.skeletonFill {
+  position: absolute;
+  inset: 0;
 }
 
 /* Fallback icons when image/video fails to load or isn't yet active */

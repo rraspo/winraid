@@ -24,9 +24,10 @@ function loadSeekConfig() {
   }).catch(() => {})
 }
 
-const VideoThumb = memo(function VideoThumb({ url, className, onError }) {
+const VideoThumb = memo(function VideoThumb({ url, onError }) {
   const wrapRef  = useRef(null)
   const [active, setActive] = useState(false)
+  const [ready,  setReady]  = useState(false)
 
   useEffect(() => {
     loadSeekConfig()
@@ -50,7 +51,7 @@ const VideoThumb = memo(function VideoThumb({ url, className, onError }) {
   }
 
   return (
-    <div ref={wrapRef} className={className}>
+    <span ref={wrapRef} className={styles.wrap}>
       {active && (
         <video
           src={url}
@@ -58,10 +59,14 @@ const VideoThumb = memo(function VideoThumb({ url, className, onError }) {
           muted
           className={styles.thumbFill}
           onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={() => setReady(true)}
           onError={onError}
         />
       )}
-    </div>
+      {/* Skeleton sits ON TOP — a <video> paints black before its first frame,
+          so we cover it until onLoadedData rather than show through. */}
+      {!ready && <span data-skeleton aria-hidden="true" className={`${styles.skeletonFill} skeleton-box`} />}
+    </span>
   )
 })
 

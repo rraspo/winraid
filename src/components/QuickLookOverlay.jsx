@@ -4,6 +4,7 @@ import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
 import ProgressRing from './ui/ProgressRing'
+import PdfPreview from './PdfPreview'
 import styles from './QuickLookOverlay.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt } from '../utils/fileTypes'
@@ -294,17 +295,6 @@ function TextPreview({ connectionId, remotePath }) {
   )
 }
 
-function PdfPreview({ src }) {
-  return (
-    <div className={styles.pdfWrap}>
-      <iframe
-        className={styles.previewPdf}
-        src={src}
-        title="PDF Preview"
-      />
-    </div>
-  )
-}
 
 function UnknownPreview({ file }) {
   const ext = getExt(file.name)
@@ -474,7 +464,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const mediaRef          = useRef(null)
   const panRef            = useRef({ x: 0, y: 0 })
   const latestRef         = useRef({})
-  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping }
+  const type = file ? fileType(file.name) : 'unknown'
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, type }
 
 
   function handleLoopChange(v) {
@@ -683,6 +674,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     function onWheel(e) {
       // While cropping, no wheel-based navigation or zoom
       if (latestRef.current.cropping) return
+      // PDFs scroll their own page list — don't hijack the wheel for zoom/nav.
+      if (latestRef.current.type === 'pdf') return
       // Horizontal tilt wheel → navigate files (always, regardless of wheel mode)
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && e.deltaX !== 0) {
         e.preventDefault()
@@ -751,7 +744,6 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setTimeout(() => setCopied(false), 2000)
   }
 
-  const type = fileType(file.name)
   const rawSrc = (type === 'image' || type === 'video' || type === 'audio' || type === 'pdf')
     ? nasStreamUrl(connectionId, file.path)
     : null

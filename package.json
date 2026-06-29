@@ -30,6 +30,7 @@
     "@visx/shape": "^3.12.0",
     "chokidar": "^4.0.3",
     "electron-updater": "^6.3.9",
+    "pdfjs-dist": "^6.0.227",
     "react-image-crop": "^11.0.10",
     "ssh2": "^1.16.0"
   },
