@@ -12,6 +12,7 @@ const BrowseListRow = memo(function BrowseListRow({
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
+  localCandidate, checkLocalExists, onRevealLocal,
 }) {
   const isDir = entry.type === 'dir'
   const menuRef = useRef(null)
@@ -113,6 +114,9 @@ const BrowseListRow = memo(function BrowseListRow({
           onEdit={() => setEditingFile(entryPath)}
           onMove={() => setMoveTarget({ name: entry.name, path: entryPath, isDir })}
           onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
+          localCandidate={localCandidate}
+          checkLocalExists={checkLocalExists}
+          onRevealLocal={onRevealLocal}
         />
       </div>
     </div>

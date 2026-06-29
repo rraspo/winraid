@@ -3,6 +3,7 @@ import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
 import Tooltip from '../components/ui/Tooltip'
 import { formatSize } from '../utils/format'
+import { findNodeByPath, upsertLevel } from '../utils/sizeTree'
 import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
@@ -87,17 +88,7 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
             children: [],
           }
         }
-        const parent = findNodeByPath(treeRef.current, payload.parentPath)
-        if (parent) {
-          for (const entry of payload.entries) {
-            if (!parent.children.find((c) => c.path === entry.path)) {
-              parent.children.push({ ...entry, children: [] })
-            }
-          }
-          const childSum = parent.children.reduce((s, c) => s + c.sizeKb, 0)
-          if (childSum > parent.sizeKb) parent.sizeKb = childSum
-          if (parent === treeRef.current) treeRef.current.sizeKb = childSum
-        }
+        upsertLevel(treeRef.current, payload.parentPath, payload.entries)
         setTree({ ...treeRef.current })
       }),
 
@@ -364,15 +355,6 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function findNodeByPath(node, path) {
-  if (node.path === path) return node
-  for (const c of node.children ?? []) {
-    const found = findNodeByPath(c, path)
-    if (found) return found
-  }
-  return null
-}
 
 function buildBreadcrumb(rootPath, focusedPath) {
   if (!focusedPath || !rootPath || focusedPath === rootPath) return []

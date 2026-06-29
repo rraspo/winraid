@@ -61,7 +61,7 @@ describe('handleDelete', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1')
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
     await act(async () => result.current.setDeleteTarget({ name: 'photo.jpg', path: '/media/photo.jpg', isDir: false }))
     await act(() => result.current.handleDelete({ name: 'photo.jpg', path: '/media/photo.jpg', isDir: false }))
     expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
@@ -73,7 +73,7 @@ describe('handleDelete', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1')
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
     await act(() => result.current.handleDelete({ name: 'photo.jpg', path: '/media/photo.jpg', isDir: false }))
     expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', expect.any(String))
   })
@@ -88,7 +88,10 @@ describe('handleMove', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1' && result.current.entries.length === 1)
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries).toHaveLength(1)
+    })
     // Flush pending effects so entriesRef.current is in sync with entries state
     await act(async () => {})
     await act(() =>
@@ -107,7 +110,7 @@ describe('handleMove', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1')
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
     await act(() => result.current.handleMove('/media/photo.jpg', '/media/archive/photo.jpg'))
     expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', expect.any(String))
   })
@@ -134,7 +137,7 @@ describe('handleCreateFolder', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1')
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
     await act(async () => result.current.setNewFolderName('NewAlbum'))
     await act(() => result.current.handleCreateFolder())
     expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
@@ -146,7 +149,7 @@ describe('handleCreateFolder', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1')
+    await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
     await act(async () => result.current.setNewFolderName('BadFolder'))
     await act(() => result.current.handleCreateFolder())
     expect(remoteFS.invalidate).not.toHaveBeenCalled()
@@ -163,7 +166,10 @@ describe('handleBulkDelete', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1' && result.current.entries.length === 2)
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries).toHaveLength(2)
+    })
     await act(async () => result.current.selectAll?.())
     await act(() => result.current.handleBulkDelete())
     expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
@@ -179,7 +185,10 @@ describe('handleBulkMove', () => {
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
     cleanup = unmount
-    await waitFor(() => result.current.selectedId === 'conn1' && result.current.entries.length === 1)
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries).toHaveLength(1)
+    })
     await act(async () => result.current.selectAll?.())
     await act(async () => result.current.setBulkMoveDest('/media/archive'))
     await act(() => result.current.handleBulkMove())

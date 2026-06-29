@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSelection } from './useSelection'
 import { useDragDrop } from './useDragDrop'
 import * as remoteFS from '../services/remoteFS'
+import * as toast from '../services/toast'
 import { extractDragUrls } from '../utils/dragUrl'
 import { sortEntries } from '../utils/sortEntries'
 import { resolveSortMode, saveSortMode } from '../utils/sortPersistence'
@@ -11,6 +12,15 @@ import { resolveSortMode, saveSortMode } from '../utils/sortPersistence'
 // ---------------------------------------------------------------------------
 function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
+}
+
+// Operation results surface as transient toasts instead of an inline banner
+// below the breadcrumb (which shifted the layout). Module-scoped so it keeps a
+// stable identity (no hook-dep churn) while preserving the old { ok, msg } |
+// null shape — every existing call site, and useDragDrop, works unchanged;
+// null is a no-op since toasts auto-dismiss.
+function setStatus(s) {
+  if (s?.msg) toast.show({ msg: s.msg, type: s.ok ? 'success' : 'error' })
 }
 
 // Append a filename to a local-OS directory path, picking the separator
@@ -38,7 +48,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [entries,         setEntries]         = useState([])
   const [loading,         setLoading]         = useState(false)
   const [error,           setError]           = useState('')
-  const [status,          setStatus]          = useState(null)
   const [opInFlight,      setOpInFlight]      = useState(false)
   const [confirmTarget,   setConfirmTarget]   = useState(null)
   const [editingFile,     setEditingFile]     = useState(null)
@@ -364,6 +373,16 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setSelectedFile(null)
     onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null, connectionId })
   }, [onHistoryPush])
+
+  // Copy a remote path to the clipboard (used by the current-dir breadcrumb).
+  const copyPath = useCallback(async (p = pathRef.current) => {
+    try {
+      await navigator.clipboard.writeText(p)
+      setStatus({ ok: true, msg: `Copied path: ${p}` })
+    } catch {
+      setStatus({ ok: false, msg: 'Failed to copy path' })
+    }
+  }, [])
 
   const openQuickLook = useCallback((entry, entryPath) => {
     setSelectedFile({ ...entry, path: entryPath })
@@ -818,26 +837,36 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // because fetchDir changed — avoids missing the DONE event during re-renders.
   const fetchDirRef = useRef(fetchDir)
   fetchDirRef.current = fetchDir
+  const refreshTimerRef = useRef(null)
 
-  // Refresh the directory listing when a drop-upload job completes.
-  // For drop-uploads: also highlight the file if the user is still in the same dir.
+  // Refresh the directory listing when an upload completes — but two ways:
+  //  - Skip entirely when the job's known destination folder isn't the one in
+  //    view (drop-uploads carry remoteDest; watcher jobs don't, so they refresh).
+  //  - Debounce, so a burst of completions collapses into ONE re-list instead of
+  //    re-listing the (possibly huge) folder once per file.
   useEffect(() => {
     if (!selectedId) return
-    return window.winraid?.queue.onUpdated((payload) => {
+    const unsub = window.winraid?.queue.onUpdated((payload) => {
       const { type, job } = payload
       if (type !== 'updated' || job?.status !== 'DONE' || job?.connectionId !== selectedId) return
+
+      const cur = pathRef.current.replace(/\/+$/, '')
+      let fileDir = null
       if (job.remoteDest) {
-        const relPath  = job.relPath ?? ''
+        const relPath   = job.relPath ?? ''
         const lastSlash = relPath.lastIndexOf('/')
-        const fileDir  = lastSlash === -1
+        fileDir = lastSlash === -1
           ? job.remoteDest.replace(/\/+$/, '')
           : `${job.remoteDest.replace(/\/+$/, '')}/${relPath.slice(0, lastSlash)}`
-        if (fileDir === pathRef.current.replace(/\/+$/, '')) {
-          setHighlightFile(job.filename)
-        }
       }
-      fetchDirRef.current(pathRef.current)
+      // Known to be a different folder → nothing to refresh here.
+      if (fileDir !== null && fileDir !== cur) return
+      if (fileDir === cur) setHighlightFile(job.filename)
+
+      clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(() => fetchDirRef.current(pathRef.current), 400)
     })
+    return () => { unsub?.(); clearTimeout(refreshTimerRef.current) }
   }, [selectedId])
 
   // ── mergerfs root detection ─────────────────────────────────────────────────
@@ -1005,7 +1034,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
 
   return {
     // useBrowse own state/handlers
-    connections, selectedId, path, entries, loading, error, status,
+    connections, selectedId, path, entries, loading, error,
     opInFlight, downloadProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
     lastVisitedDir, highlightFile,
@@ -1020,7 +1049,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     selectedConn, cfgRemotePath, localFolder, crumbs,
     fileEntries, entriesWithPaths, dirCount, fileCount, busy, noConfig, selectedEntries,
     highlightRef,
-    fetchDir, navigate, openQuickLook,
+    fetchDir, navigate, copyPath, openQuickLook,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,

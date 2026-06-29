@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
 import * as remoteFS from '../services/remoteFS'
+import * as toast from '../services/toast'
 
 vi.mock('../components/PlayOverlay', () => ({
   default: ({ onClose }) => (
@@ -63,6 +64,7 @@ beforeEach(() => {
 
 afterEach(() => {
   remoteFS.clearAll()
+  toast.clearAll()
   delete window.winraid
   vi.restoreAllMocks()
 })
@@ -119,7 +121,9 @@ describe('BrowseView', () => {
     })
 
     render(<BrowseView onHistoryPush={() => {}} />)
-    expect(await screen.findByText('Connection refused')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(toast.getSnapshot().some((t) => t.msg === 'Connection refused')).toBe(true)
+    )
   })
 
   it('grid mode renders card elements with names', async () => {
@@ -143,6 +147,40 @@ describe('BrowseView', () => {
     // Each card should have a menu button (the 3-dot MoreHorizontal icon)
     const menuButtons = container.querySelectorAll('.menuDotBtn')
     expect(menuButtons.length).toBe(SAMPLE_ENTRIES.length)
+  })
+
+  it('does not crash opening a folder menu when the local.exists IPC is missing', async () => {
+    // Reproduces the dev/version-skew case where the running preload predates the
+    // local.exists/local.reveal surface. The reveal item must degrade gracefully,
+    // never throw an uncaught TypeError that takes down the browse view.
+    const mirrorConn = [{
+      id: 'conn-1', name: 'Kepler', folderMode: 'mirror',
+      localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' },
+    }]
+    window.winraid = createWinraidMock({
+      config: {
+        get: vi.fn().mockImplementation((key) => {
+          if (key === 'connections') return Promise.resolve(mirrorConn)
+          if (key === 'activeConnectionId') return Promise.resolve('conn-1')
+          return Promise.resolve({ connections: mirrorConn, activeConnectionId: 'conn-1' })
+        }),
+      },
+      remote: { list: vi.fn().mockResolvedValue({ ok: true, entries: SAMPLE_ENTRIES }) },
+    })
+    // Simulate the old preload: local exists/reveal are absent.
+    delete window.winraid.local.exists
+    delete window.winraid.local.reveal
+    vi.spyOn(Storage.prototype, 'getItem').mockReturnValue('grid')
+
+    const { container } = render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+
+    const dot = container.querySelector('.menuDotBtn')
+    await act(async () => { fireEvent.click(dot) })
+
+    // Menu opened normally; the reveal item is simply absent (no crash).
+    expect(screen.getByText('Move / Rename')).toBeInTheDocument()
+    expect(screen.queryByText('Reveal in Explorer')).toBeNull()
   })
 
   it('displays file sizes in list view', async () => {
@@ -206,9 +244,9 @@ describe('BrowseView', () => {
     // Resolve the move and flush async updates
     await act(async () => { resolveMove({ ok: true }) })
 
-    // Overlay should disappear and success status should show
+    // Overlay should disappear and a success toast should be raised
     expect(container.querySelector('.moveOverlay')).toBeNull()
-    expect(screen.getByText(/Moved readme\.txt/)).toBeInTheDocument()
+    expect(toast.getSnapshot().some((t) => /Moved readme\.txt/.test(t.msg))).toBe(true)
   })
 
   it('refetches directory listing on move error (rollback)', async () => {
@@ -231,9 +269,9 @@ describe('BrowseView', () => {
     fireEvent.dragOver(dirRow)
     fireEvent.drop(dirRow, { dataTransfer: { types: ['application/x-winraid-internal'] } })
 
-    // Wait for error status and refetch
+    // Wait for error toast and refetch
     await waitFor(() => {
-      expect(screen.getByText('Cross-device rename not supported')).toBeInTheDocument()
+      expect(toast.getSnapshot().some((t) => t.msg === 'Cross-device rename not supported')).toBe(true)
       expect(window.winraid.remote.list).toHaveBeenCalled()
     })
   })
@@ -559,5 +597,29 @@ describe('External file drop (from Explorer)', () => {
         ['C:\\Users\\test\\Pictures\\photo.jpg'],
       )
     )
+  })
+})
+
+describe('BrowseView — breadcrumb copy', () => {
+  it('copies the full current path when the active (current dir) crumb is clicked', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('data')
+
+    fireEvent.click(screen.getByText('data'))
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('/mnt/user/data'))
+  })
+})
+
+describe('BrowseView — open text files in an editor tab', () => {
+  it('routes a text-file click to onOpenEditor (not QuickLook)', async () => {
+    const onOpenEditor = vi.fn()
+    render(<BrowseView onHistoryPush={() => {}} onOpenEditor={onOpenEditor} />)
+    const row = (await screen.findByText('readme.txt')).closest('.row')
+    fireEvent.click(row)
+    expect(onOpenEditor).toHaveBeenCalledWith('/mnt/user/data/readme.txt')
   })
 })

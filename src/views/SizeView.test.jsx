@@ -74,6 +74,39 @@ describe('SizeView — error handling', () => {
   })
 })
 
+describe('SizeView — scan watchdog / liveness', () => {
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  // Contract the backend heartbeat relies on: as long as size:progress events
+  // keep arriving (the backend emits one every 10s while a long du level is in
+  // flight), the 30s no-progress watchdog must not fire.
+  it('does not time out while progress heartbeats keep arriving', () => {
+    let progressCb
+    window.winraid.remote.onSizeProgress = vi.fn((cb) => { progressCb = cb; return () => {} })
+
+    render(<SizeView connectionId="conn-1" connection={CONN} />)
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }))
+
+    for (let i = 0; i < 5; i++) {
+      act(() => { vi.advanceTimersByTime(10000) })           // 10s < 30s watchdog
+      act(() => progressCb({ connectionId: 'conn-1', path: '/mnt/data', count: i + 1, elapsedMs: (i + 1) * 10000 }))
+    }
+
+    expect(screen.queryByText(/timed out/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
+  })
+
+  it('times out after 30s with no progress event', () => {
+    render(<SizeView connectionId="conn-1" connection={CONN} />)
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }))
+
+    act(() => { vi.advanceTimersByTime(30000) })
+
+    expect(screen.getByText(/timed out/i)).toBeInTheDocument()
+  })
+})
+
 describe('SizeView — results state (via size:done event)', () => {
   it('shows "Re-scan" button once size:done fires', async () => {
     let doneCb

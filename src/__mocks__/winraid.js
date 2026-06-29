@@ -66,6 +66,13 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.log,
     },
 
+    activity: {
+      tail: vi.fn().mockResolvedValue([]),
+      onEntry: vi.fn().mockReturnValue(() => {}),
+      reveal: vi.fn().mockResolvedValue({ ok: true }),
+      ...overrides.activity,
+    },
+
     ssh: {
       test: vi.fn().mockResolvedValue({ ok: true }),
       scanConfigs: vi.fn().mockResolvedValue([]),
@@ -89,6 +96,8 @@ export function createWinraidMock(overrides = {}) {
 
     local: {
       clearFolder: vi.fn().mockResolvedValue({ ok: true }),
+      exists: vi.fn().mockResolvedValue(true),
+      reveal: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.local,
     },
 

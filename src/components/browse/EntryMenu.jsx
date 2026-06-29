@@ -3,9 +3,15 @@ import { createPortal } from 'react-dom'
 import { MoreHorizontal } from 'lucide-react'
 import styles from './EntryMenu.module.css'
 
-const EntryMenu = forwardRef(function EntryMenu({ isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete }, ref) {
+const EntryMenu = forwardRef(function EntryMenu({
+  isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete,
+  localCandidate = null, checkLocalExists, onRevealLocal,
+}, ref) {
   const [open, setOpen] = useState(false)
   const [pos,  setPos]  = useState({ top: 0, left: 0 })
+  // Whether the local mirror copy exists — resolved lazily each time the menu
+  // opens so we never stat the filesystem for rows the user never interacts with.
+  const [revealOk, setRevealOk] = useState(false)
   const wrapRef    = useRef(null)
   const dropdownRef = useRef(null)
   // Tracks whether the menu was opened at a cursor position (right-click) vs
@@ -57,7 +63,22 @@ const EntryMenu = forwardRef(function EntryMenu({ isDir, isEditable, busy, onDow
       next.top = btnRect.top - dropRect.height - 4
     }
     if (Object.keys(next).length > 0) setPos((prev) => ({ ...prev, ...next }))
-  }, [open])
+  }, [open, revealOk])
+
+  // Resolve local-mirror existence when the menu opens. The reset lives in the
+  // cleanup (which React runs before the next open and on close) so the effect
+  // body never calls setState synchronously.
+  useEffect(() => {
+    if (!open || !localCandidate || !checkLocalExists) return undefined
+    let cancelled = false
+    // Guard the boundary: checkLocalExists crosses to IPC, which can be absent
+    // (preload/renderer version skew) — a throw here must not crash the tree.
+    Promise.resolve()
+      .then(() => checkLocalExists(localCandidate))
+      .then((ok) => { if (!cancelled) setRevealOk(!!ok) })
+      .catch(() => { if (!cancelled) setRevealOk(false) })
+    return () => { cancelled = true; setRevealOk(false) }
+  }, [open, localCandidate, checkLocalExists])
 
   useEffect(() => {
     if (!open) return
@@ -107,6 +128,11 @@ const EntryMenu = forwardRef(function EntryMenu({ isDir, isEditable, busy, onDow
           <button className={styles.menuItem} onClick={act(onMove)}>
             Move / Rename
           </button>
+          {revealOk && (
+            <button className={styles.menuItem} onClick={act(() => onRevealLocal(localCandidate))}>
+              Reveal in Explorer
+            </button>
+          )}
           <div className={styles.menuDivider} />
           <button
             className={[styles.menuItem, styles.menuItemDanger].join(' ')}

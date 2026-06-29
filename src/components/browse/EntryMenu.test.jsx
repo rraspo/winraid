@@ -1,6 +1,6 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, vi } from 'vitest'
 import { createRef } from 'react'
-import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
+import { render, screen, fireEvent, cleanup, act, waitFor } from '@testing-library/react'
 import EntryMenu from './EntryMenu'
 
 afterEach(cleanup)
@@ -43,5 +43,61 @@ describe('EntryMenu — imperative openAt (right-click)', () => {
     render(<EntryMenu {...baseProps} />)
     fireEvent.click(screen.getByRole('button'))
     expect(screen.getByText('Move / Rename')).toBeInTheDocument()
+  })
+})
+
+describe('EntryMenu — Reveal in Explorer (local mirror)', () => {
+  it('shows the reveal item when a local candidate exists', async () => {
+    const checkLocalExists = vi.fn().mockResolvedValue(true)
+    render(
+      <EntryMenu
+        {...baseProps}
+        isDir
+        localCandidate={'Z:\\winraid\\kepler\\AM'}
+        checkLocalExists={checkLocalExists}
+        onRevealLocal={noop}
+      />
+    )
+    fireEvent.click(screen.getByRole('button'))
+    expect(await screen.findByText('Reveal in Explorer')).toBeInTheDocument()
+    expect(checkLocalExists).toHaveBeenCalledWith('Z:\\winraid\\kepler\\AM')
+  })
+
+  it('hides the reveal item when there is no local candidate', () => {
+    render(<EntryMenu {...baseProps} isDir localCandidate={null} checkLocalExists={vi.fn()} onRevealLocal={noop} />)
+    fireEvent.click(screen.getByRole('button'))
+    expect(screen.queryByText('Reveal in Explorer')).toBeNull()
+  })
+
+  it('hides the reveal item when the local copy does not exist', async () => {
+    const checkLocalExists = vi.fn().mockResolvedValue(false)
+    render(
+      <EntryMenu
+        {...baseProps}
+        isDir
+        localCandidate={'Z:\\winraid\\kepler\\AM'}
+        checkLocalExists={checkLocalExists}
+        onRevealLocal={noop}
+      />
+    )
+    fireEvent.click(screen.getByRole('button'))
+    await waitFor(() => expect(checkLocalExists).toHaveBeenCalled())
+    expect(screen.queryByText('Reveal in Explorer')).toBeNull()
+  })
+
+  it('calls onRevealLocal with the candidate when clicked', async () => {
+    const onRevealLocal = vi.fn()
+    render(
+      <EntryMenu
+        {...baseProps}
+        isDir
+        localCandidate={'Z:\\winraid\\kepler\\AM'}
+        checkLocalExists={vi.fn().mockResolvedValue(true)}
+        onRevealLocal={onRevealLocal}
+      />
+    )
+    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(await screen.findByText('Reveal in Explorer'))
+    expect(onRevealLocal).toHaveBeenCalledWith('Z:\\winraid\\kepler\\AM')
   })
 })

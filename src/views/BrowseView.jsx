@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   ChevronRight, HardDrive, Download, RefreshCw,
-  AlertCircle, AlertTriangle, Loader, FolderPlus, List, LayoutGrid,
+  AlertCircle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
 } from 'lucide-react'
 import { isFavorite } from '../utils/favorites'
+import { isEditableFile } from '../utils/fileTypes'
+import { localMirrorPath } from '../utils/mirrorPath'
 import styles from './BrowseView.module.css'
 import { formatSize } from '../utils/format'
-import EditorModal from '../components/EditorModal'
 import QuickLookOverlay from '../components/QuickLookOverlay'
 import DeleteModal from '../components/modals/DeleteModal'
 import MoveModal from '../components/modals/MoveModal'
@@ -21,24 +22,27 @@ import Tooltip from '../components/ui/Tooltip'
 import { useBrowse } from '../hooks/useBrowse'
 import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
+import * as toast from '../services/toast'
 
-export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style, favorites = [], onToggleFavorite }) {
+const MERGERFS_MSG = 'This directory is a mergerfs union mount — files cannot be uploaded or created here. Navigate into a share folder.'
+
+export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style, favorites = [], onToggleFavorite, onOpenEditor }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
-    connections, selectedId, path, entries, loading, error, status,
-    confirmTarget, editingFile, deleteTarget, moveTarget,
+    connections, selectedId, path, entries, loading, error,
+    confirmTarget, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
     dragSource, dragPos, dragSourcePaths, moveInFlight, downloadProgress,
     selected, bulkAction, bulkMoveDest,
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
     sortMode, setSortMode,
-    setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
+    setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
     setSelectedFile, setShowQuickLook, setHighlightFile,
     cfgRemotePath, localFolder, crumbs,
     fileEntries, selectedEntries, dirCount, fileCount, busy, noConfig,
-    fetchDir, navigate,
+    fetchDir, navigate, copyPath,
     handleCheckout, handleConfirm,
     handleDownload,
     handleDelete, handleMove,
@@ -55,6 +59,23 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     handleExternalDrop,
   } = browse
 
+  // Activating an editable file (click) opens it in an editor tab; media/PDF
+  // still use QuickLook. The 3-dot Edit action routes to the same editor tab.
+  const activateFile = (entry, entryPath) =>
+    isEditableFile(entry.name) ? onOpenEditor?.(entryPath) : browse.openQuickLook(entry, entryPath)
+  const editFile = (entryPath) => onOpenEditor?.(entryPath)
+
+  // "Reveal in Explorer" for mirrored connections: map a remote entry to its
+  // local mirror copy, gate on existence, and open it in the OS file manager.
+  const localMirrorOf  = (entryPath) => localMirrorPath(browse.selectedConn, entryPath)
+  // Optional-call (?.()) so a preload that predates this surface (dev restart,
+  // version skew) degrades to "no reveal item" instead of throwing.
+  const checkLocalExists = (p) => window.winraid?.local?.exists?.(p)
+  const revealLocal = async (p) => {
+    const res = await window.winraid?.local?.reveal?.(p)
+    if (!res?.ok) toast.show({ msg: res?.error || 'Local copy no longer exists.', type: 'error' })
+  }
+
   const sftpCfg = (connections ?? []).find((c) => c.id === selectedId)?.sftp ?? null
 
   const [diskUsage, setDiskUsage]             = useState(null)
@@ -63,6 +84,21 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
   const [sortDropOpen, setSortDropOpen]       = useState(false)
   const breadcrumbRef = useRef(null)
   const sortDropRef   = useRef(null)
+
+  // Contextual notices now live in the toast stack as sticky toasts (no inline
+  // banner shifting the layout). They clear when the condition clears or the
+  // tab unmounts.
+  useEffect(() => {
+    if (mergerfsWarning) toast.show({ id: `mergerfs:${selectedId}`, sticky: true, type: 'warning', msg: MERGERFS_MSG })
+    else toast.dismiss(`mergerfs:${selectedId}`)
+    return () => toast.dismiss(`mergerfs:${selectedId}`)
+  }, [mergerfsWarning, selectedId])
+
+  useEffect(() => {
+    if (error) toast.show({ id: `dir-error:${selectedId}`, sticky: true, type: 'error', msg: error })
+    else toast.dismiss(`dir-error:${selectedId}`)
+    return () => toast.dismiss(`dir-error:${selectedId}`)
+  }, [error, selectedId])
 
   useEffect(() => {
     if (!selectedId) return
@@ -148,7 +184,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       // Don't steal keys from the search input, modals, editors, etc.
       if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return
       // Bail if any modal is open — those should own keyboard input.
-      if (editingFile || showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste) return
+      if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste) return
       if (entries.length === 0) return
 
       typeAheadBufRef.current += e.key.toLowerCase()
@@ -170,7 +206,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       clearTimeout(bufResetTimerRef.current)
       clearTimeout(cursorClearTimerRef.current)
     }
-  }, [entries, setCursorEntry, editingFile, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
+  }, [entries, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
 
   return (
     <div
@@ -184,9 +220,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     >
 
 
-      {editingFile && (
-        <EditorModal connectionId={selectedId} filePath={editingFile} onClose={() => setEditingFile(null)} />
-      )}
       {showQuickLook && selectedFile && (
         <QuickLookOverlay
           file={selectedFile}
@@ -444,8 +477,8 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
                     styles.crumb,
                     c.path === path ? styles.crumbActive : '',
                   ].join(' ')}
-                  onClick={() => c.path !== path && navigate(c.path)}
-                  disabled={c.path === path && !dragSource}
+                  title={c.path === path ? 'Copy full path' : undefined}
+                  onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
                   onDragOver={(e) => handleDragOverFolder(e, c.path)}
                   onDragLeave={handleDragLeaveFolder}
                   onDrop={(e) => handleDrop(e, c.path)}
@@ -455,26 +488,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               </span>
             ))}
           </div>
-
-          {mergerfsWarning && (
-            <div className={styles.mergerfsWarning}>
-              <AlertTriangle size={13} />
-              This directory is a mergerfs union mount — files cannot be uploaded or created here. Navigate into a share folder.
-            </div>
-          )}
-
-          {status && (
-            <div className={[styles.statusFlash, status.ok ? styles.statusOk : styles.statusErr].join(' ')}>
-              {status.msg}
-            </div>
-          )}
-
-          {error && (
-            <div className={styles.errorBanner}>
-              <AlertCircle size={13} />
-              {error}
-            </div>
-          )}
 
           <div className={styles.listArea}>
             {externalDropActive && (
@@ -512,7 +525,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               handleDragLeaveFolder={browse.handleDragLeaveFolder}
               handleDrop={browse.handleDrop}
               navigate={browse.navigate}
-              openQuickLook={browse.openQuickLook}
+              openQuickLook={activateFile}
               handleItemPointer={handleItemPointer}
               toggleSelectAll={toggleSelectAll}
               handleRubberBandStart={handleRubberBandStart}
@@ -520,9 +533,12 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               handleRubberBandEnd={handleRubberBandEnd}
               rubberBand={rubberBand}
               handleDownload={handleDownload}
-              setEditingFile={browse.setEditingFile}
+              setEditingFile={editFile}
               setMoveTarget={browse.setMoveTarget}
               setDeleteTarget={browse.setDeleteTarget}
+              localMirrorOf={localMirrorOf}
+              checkLocalExists={checkLocalExists}
+              onRevealLocal={revealLocal}
             />
           )}
           {viewMode === 'grid' && (
@@ -550,7 +566,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               handleDragLeaveFolder={browse.handleDragLeaveFolder}
               handleDrop={browse.handleDrop}
               navigate={browse.navigate}
-              openQuickLook={browse.openQuickLook}
+              openQuickLook={activateFile}
               handleItemPointer={handleItemPointer}
               toggleSelectAll={toggleSelectAll}
               handleRubberBandStart={handleRubberBandStart}
@@ -558,9 +574,12 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               handleRubberBandEnd={handleRubberBandEnd}
               rubberBand={rubberBand}
               handleDownload={handleDownload}
-              setEditingFile={browse.setEditingFile}
+              setEditingFile={editFile}
               setMoveTarget={browse.setMoveTarget}
               setDeleteTarget={browse.setDeleteTarget}
+              localMirrorOf={localMirrorOf}
+              checkLocalExists={checkLocalExists}
+              onRevealLocal={revealLocal}
             />
           )}
           </div>

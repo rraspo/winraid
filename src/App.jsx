@@ -11,6 +11,8 @@ import BackupView from './views/BackupView'
 import SizeView from './views/SizeView'
 import SettingsView from './views/SettingsView'
 import LogView from './views/LogView'
+import EditorView from './components/EditorView'
+import ToastHost from './components/ui/ToastHost'
 import { useNavHistory } from './hooks/useNavHistory'
 import styles from './App.module.css'
 
@@ -370,6 +372,52 @@ export default function App() {
     setBrowseRestore({ path, quickLookFile: null, connectionId: connId, highlightFile: null, token: Date.now() })
   }
 
+  // Activity entry click → open where the file ended up (remote browse) or
+  // reveal the local folder in the OS file manager.
+  function handleActivityNavigate(entry) {
+    const nav = entry?.nav
+    if (!nav) return
+    if (nav.kind === 'reveal') {
+      window.winraid?.activity.reveal(nav.localPath)
+      return
+    }
+    if (nav.kind === 'remote') {
+      openTab(entry.connectionId, 'browse')
+      setBrowseRestore({
+        path: nav.path,
+        quickLookFile: null,
+        connectionId: entry.connectionId,
+        highlightFile: nav.highlight ?? null,
+        token: Date.now(),
+      })
+    }
+  }
+
+  // --- Editor tabs ----------------------------------------------------------
+  // Dirty editor tabs (by tab id) so closeTab can confirm unsaved changes.
+  const [dirtyTabs, setDirtyTabs] = useState(() => new Set())
+  function setTabDirty(id, dirty) {
+    setDirtyTabs((prev) => {
+      if (dirty === prev.has(id)) return prev
+      const next = new Set(prev)
+      if (dirty) next.add(id); else next.delete(id)
+      return next
+    })
+  }
+
+  // Open a text file in its own editor tab (one per file; re-opening re-activates).
+  function openEditorTab(connId, filePath) {
+    const id = `${connId}:editor:${filePath}`
+    setOpenTabs((prev) =>
+      prev.find((t) => t.id === id)
+        ? prev
+        : [...prev, { id, connId, type: 'editor', filePath, name: filePath.split('/').pop() }]
+    )
+    setActiveTabId(id)
+    setActiveView(null)
+    // Intentionally not pushed to nav history — editor tabs aren't restored by back/forward.
+  }
+
   // --- Tab helpers ----------------------------------------------------------
   function openTab(connId, type) {
     const id = `${connId}:${type}`
@@ -388,10 +436,14 @@ export default function App() {
     if (!tab) return
     setActiveTabId(id)
     setActiveView(null)
-    push({ kind: 'tab', id: tab.id, connId: tab.connId, type: tab.type })
+    // Editor tabs aren't tracked in nav history (they lack the filePath needed
+    // to restore), so don't push them.
+    if (tab.type !== 'editor') push({ kind: 'tab', id: tab.id, connId: tab.connId, type: tab.type })
   }
 
   function closeTab(id) {
+    if (dirtyTabs.has(id) && !window.confirm('This file has unsaved changes. Close anyway?')) return
+    setTabDirty(id, false)
     setOpenTabs((prev) => {
       const idx  = prev.findIndex((t) => t.id === id)
       const next = prev.filter((t) => t.id !== id)
@@ -466,11 +518,13 @@ export default function App() {
             onGlobalToggle={handleGlobalToggle}
             connections={connections}
             onNavigate={navigateView}
+            onActivityNavigate={handleActivityNavigate}
           />
           <TabBar
             openTabs={openTabs}
             activeTabId={activeTabId}
             connections={connections}
+            dirtyTabs={dirtyTabs}
             onActivate={activateTab}
             onClose={closeTab}
           />
@@ -499,7 +553,23 @@ export default function App() {
                 connectionId={tab.connId}
                 favorites={favorites[tab.connId] ?? []}
                 onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
+                onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
               />
+            ))}
+
+            {/* Per-file editor tabs (lazy-mount, keep-alive) */}
+            {openTabs.filter((t) => t.type === 'editor').map((tab) => (
+              <div
+                key={tab.id}
+                style={{ display: activeTabId === tab.id && connEdit === null ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', overflow: 'hidden' }}
+              >
+                <EditorView
+                  connectionId={tab.connId}
+                  filePath={tab.filePath}
+                  active={activeTabId === tab.id && connEdit === null}
+                  onDirtyChange={(dirty) => setTabDirty(tab.id, dirty)}
+                />
+              </div>
             ))}
 
             {/* Per-connection Backup tabs (lazy-mount, keep-alive) */}
@@ -545,6 +615,7 @@ export default function App() {
           />
         </div>
       </div>
+      <ToastHost />
     </div>
   )
 }

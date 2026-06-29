@@ -12,6 +12,7 @@ const GridCard = memo(function GridCard({
   isSelected, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
+  localCandidate, checkLocalExists, onRevealLocal,
 }) {
   const menuRef = useRef(null)
   const icon = isDir
@@ -101,6 +102,9 @@ const GridCard = memo(function GridCard({
             onEdit={() => onEdit(entryPath)}
             onMove={() => onMove({ name: entry.name, path: entryPath, isDir })}
             onDelete={() => onDelete({ name: entry.name, path: entryPath, isDir })}
+            localCandidate={localCandidate}
+            checkLocalExists={checkLocalExists}
+            onRevealLocal={onRevealLocal}
           />
         </div>
         {!isDir && <span className={styles.gridSize}>{formatSize(entry.size)}</span>}
