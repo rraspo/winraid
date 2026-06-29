@@ -2,7 +2,17 @@ import { getNextPending, updateJob, listJobs, STATUS } from './queue.js'
 import { getConfig } from './config.js'
 import { sendToRenderer, notify } from './main.js'
 import { log } from './logger.js'
+import { pushActivity } from './activity.js'
+import { describeActivity, failureTitle } from './activity-format.js'
+import { shouldPruneEmptyDirs } from './folder-mode.js'
 import { unlink } from 'fs/promises'
+
+// Remote directory a job's file lands in (for the upload activity's nav target).
+function uploadDestDir(conn, job) {
+  const base = conn?.sftp?.remotePath ?? conn?.smb?.remotePath ?? ''
+  const full = `${base}/${job.relPath ?? job.filename}`.replace(/\/+/g, '/')
+  return full.slice(0, full.lastIndexOf('/')) || '/'
+}
 
 // ---------------------------------------------------------------------------
 // Worker state
@@ -110,6 +120,8 @@ async function processJob(job) {
     } else {
       notify('Transfer complete', job.filename)
       log('info', `Done: ${job.filename}`)
+      const { title, detail, nav } = describeActivity('upload', { name: job.filename, destDir: uploadDestDir(conn, job) })
+      pushActivity({ type: 'upload', level: 'info', connectionId: job.connectionId, title, detail, nav })
     }
 
     // Delete the local source file when:
@@ -123,8 +135,10 @@ async function processJob(job) {
       )
     }
 
-    // mirror_clean: also prune empty ancestor directories on the local watch tree
-    if (conn.folderMode === 'mirror_clean') {
+    // mirror_clean: also prune empty ancestor directories on the local watch
+    // tree, unless the connection opts to keep its folder structure (e.g. a
+    // download client still expects the folders to exist).
+    if (shouldPruneEmptyDirs(conn)) {
       await removeEmptyDirs(conn.localFolder, job.srcPath)
     }
   } catch (err) {
@@ -138,6 +152,7 @@ async function processJob(job) {
     markError(job, friendly, errorAt)
     notify('Transfer failed', `${job.filename}: ${friendly}`)
     log('error', `Failed: ${job.filename} [${connName}] src=${job.srcPath} → ${remotePath} — ${err.message}`)
+    pushActivity({ type: 'upload', level: 'error', connectionId: job.connectionId, title: failureTitle('upload'), detail: friendly, nav: null })
   }
 }
 

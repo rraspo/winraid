@@ -59,6 +59,7 @@ const HINTS = {
   modeFlat:      'Every file goes directly into the remote path — any local subfolders are ignored.',
   modeMirror:    'Recreates the local subfolder tree at the destination on the NAS.',
   modeMirrorClean: 'Same as Mirror, but also deletes the local source file after it\'s successfully copied to the NAS. Remote files are never deleted.',
+  keepEmptyDirs: 'Delete uploaded files but leave the folder tree in place — prevents removing folders a running download client still expects.',
   extensions:          'Restrict transfers to specific file types. Leave empty to transfer every file.',
   ignoredExtensions:   'Skip files with these extensions. Applied after the whitelist.',
   verifyClean:   'Walk the local watch folder and check each file against the NAS over SFTP. Results are shown in a dialog where you can enqueue missing files, delete confirmed local copies, or ignore either group.',
@@ -389,32 +390,61 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                   />
                 </Field>
 
-                <Field label="Folder structure">
-                  <div className={styles.folderModeRow}>
-                    <ToggleGroup
-                      value={conn.folderMode}
-                      onChange={(v) => setTop('folderMode', v)}
-                      options={[
-                        { value: 'flat',         label: 'Flat',           tip: HINTS.modeFlat },
-                        { value: 'mirror',       label: 'Mirror',         tip: HINTS.modeMirror },
-                        { value: 'mirror_clean', label: 'Mirror + clean', tip: HINTS.modeMirrorClean },
-                      ]}
-                    />
-                    {conn.type === 'sftp' && (
-                      <Tooltip tip={HINTS.verifyClean} side="left">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => setShowVerifyConfirm(true)}
-                          disabled={verifying || !conn.localFolder || !conn.sftp.host}
-                        >
-                          <ShieldCheck size={13} />
-                          {verifying ? 'Verifying…' : 'Verify & Clean'}
-                        </Button>
-                      </Tooltip>
-                    )}
+                <div className={styles.folderModeGroup}>
+                  <Field label="Folder structure">
+                    <div className={styles.folderModeRow}>
+                      <ToggleGroup
+                        value={conn.folderMode}
+                        onChange={(v) => setTop('folderMode', v)}
+                        options={[
+                          { value: 'flat',         label: 'Flat',           tip: HINTS.modeFlat },
+                          { value: 'mirror',       label: 'Mirror',         tip: HINTS.modeMirror },
+                          { value: 'mirror_clean', label: 'Mirror + clean', tip: HINTS.modeMirrorClean },
+                        ]}
+                      />
+                      {conn.type === 'sftp' && (
+                        <Tooltip tip={HINTS.verifyClean} side="left">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setShowVerifyConfirm(true)}
+                            disabled={verifying || !conn.localFolder || !conn.sftp.host}
+                          >
+                            <ShieldCheck size={13} />
+                            {verifying ? 'Verifying…' : 'Verify & Clean'}
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </div>
+                  </Field>
+
+                  {/* Slides down from behind the folder-structure controls when
+                      Mirror + clean is active; collapses and disables otherwise.
+                      Kept mounted so both directions animate. */}
+                  <div
+                    className={[styles.keepEmptyReveal, conn.folderMode === 'mirror_clean' ? styles.keepEmptyOpen : '']
+                      .filter(Boolean).join(' ')}
+                    aria-hidden={conn.folderMode !== 'mirror_clean'}
+                  >
+                    <div className={styles.keepEmptyClip}>
+                      <div className={styles.keepEmptyInner}>
+                        <label className={styles.keepEmptyLabel}>
+                          <input
+                            type="checkbox"
+                            checked={!!conn.keepEmptyDirs}
+                            disabled={conn.folderMode !== 'mirror_clean'}
+                            onChange={(e) => setTop('keepEmptyDirs', e.target.checked)}
+                          />
+                          <span className={styles.keepEmptyCheckmark} />
+                          Keep empty folders
+                        </label>
+                        <Tooltip tip={HINTS.keepEmptyDirs}>
+                          <Info size={12} className={styles.hintIcon} />
+                        </Tooltip>
+                      </div>
+                    </div>
                   </div>
-                </Field>
+                </div>
 
                 <Field label="Extensions" hint={HINTS.extensions}>
                   <ExtensionPicker
