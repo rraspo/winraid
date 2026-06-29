@@ -271,20 +271,63 @@
 
 .activityEntryMsg {
   font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.level_error .activityEntryMsg { color: var(--error);   }
-.level_warn  .activityEntryMsg { color: var(--warning); }
+.activityEntryTitle { font-weight: var(--font-weight-medium); }
+.level_error .activityEntryTitle { color: var(--error);   }
+.level_warn  .activityEntryTitle { color: var(--warning); }
+
+.activityEntryDetail {
+  margin-left: var(--space-2);
+  color: var(--text-muted);
+}
+
+.activityEntryMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.activityPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 140px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+
+.activityPillName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-xs);
+}
 
 .activityEntryTs {
+  flex-shrink: 0;
   font-size: var(--font-size-xs);
   color: var(--text-faint);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   font-weight: var(--font-weight-bold);
 }
+
+/* Clickable entries render as a <button>; reset and add hover affordance. */
+.activityEntryClickable {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color var(--transition);
+}
+.activityEntryClickable:hover { background: var(--bg-hover); }

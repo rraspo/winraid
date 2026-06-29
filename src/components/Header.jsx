@@ -1,9 +1,22 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Play, Square, History, AlertCircle, CheckCircle, X } from 'lucide-react'
+import {
+  Play, Square, History, X,
+  Upload, FolderInput, PenLine, Trash2, FolderPlus, Download, FileQuestion, Activity,
+} from 'lucide-react'
 import Tooltip from './ui/Tooltip'
+import ConnectionIcon from './ConnectionIcon'
 import styles from './Header.module.css'
 
-let _logKeyCounter = 0
+const TYPE_ICON = {
+  upload:           Upload,
+  move:             FolderInput,
+  rename:           PenLine,
+  delete:           Trash2,
+  mkdir:            FolderPlus,
+  checkout:         Download,
+  download:         Download,
+  'verify-missing': FileQuestion,
+}
 
 function relativeTime(ts) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -16,7 +29,7 @@ function relativeTime(ts) {
 
 const EMPTY_CONN_SET = new Set()
 
-export default function Header({ watcherStatus, activeTransfers, queueDepth = 0, batchTotal = 0, batchConnections = EMPTY_CONN_SET, queuePaused, onGlobalToggle, connections = [], onNavigate }) {
+export default function Header({ watcherStatus, activeTransfers, queueDepth = 0, batchTotal = 0, batchConnections = EMPTY_CONN_SET, queuePaused, onGlobalToggle, connections = [], onNavigate, onActivityNavigate }) {
   const entries      = Object.values(watcherStatus ?? {})
   const anyWatching  = entries.some((s) => s.watching)
   const enqueueing   = entries.find((s) => s.state === 'enqueueing')
@@ -57,22 +70,18 @@ export default function Header({ watcherStatus, activeTransfers, queueDepth = 0,
   const dotState = !anyWatching ? 'stopped' : enqueueing ? 'enqueueing' : 'watching'
 
   const [showActivity, setShowActivity] = useState(false)
-  const [logEntries, setLogEntries]     = useState([])
+  const [activityEntries, setActivityEntries] = useState([])
 
   useEffect(() => {
-    window.winraid?.log.tail(12).then((lines) => {
-      if (lines?.length) {
-        setLogEntries(
-          [...lines].reverse().map((e) => ({ ...e, key: `log-${++_logKeyCounter}` }))
-        )
-      }
+    window.winraid?.activity.tail(20).then((entries) => {
+      if (entries?.length) setActivityEntries(entries)
     })
 
-    const unsubLog = window.winraid?.log.onEntry((entry) => {
-      setLogEntries((prev) => [{ ...entry, key: `log-${++_logKeyCounter}` }, ...prev].slice(0, 12))
+    const unsub = window.winraid?.activity.onEntry((entry) => {
+      setActivityEntries((prev) => [entry, ...prev].slice(0, 20))
     })
 
-    return () => { unsubLog?.() }
+    return () => { unsub?.() }
   }, [])
 
   return (
@@ -130,12 +139,17 @@ export default function Header({ watcherStatus, activeTransfers, queueDepth = 0,
             </button>
           </div>
         </div>
-        {logEntries.length === 0 ? (
+        {activityEntries.length === 0 ? (
           <div className={styles.activityEmpty}>No activity yet</div>
         ) : (
           <div className={styles.activityList}>
-            {logEntries.map((entry, i) => (
-              <ActivityEntry key={entry.key ?? i} entry={entry} />
+            {activityEntries.map((entry) => (
+              <ActivityEntry
+                key={entry.id}
+                entry={entry}
+                connections={connections}
+                onNavigate={(e) => { setShowActivity(false); onActivityNavigate?.(e) }}
+              />
             ))}
           </div>
         )}
@@ -144,16 +158,39 @@ export default function Header({ watcherStatus, activeTransfers, queueDepth = 0,
   )
 }
 
-function ActivityEntry({ entry }) {
-  return (
-    <div className={[styles.activityEntry, styles[`level_${entry.level}`]].filter(Boolean).join(' ')}>
-      <div className={styles.activityEntryIcon}>
-        {entry.level === 'error' ? <AlertCircle size={13} /> : <CheckCircle size={13} />}
-      </div>
+function ActivityEntry({ entry, connections, onNavigate }) {
+  const Icon = TYPE_ICON[entry.type] ?? Activity
+  const conn = connections.find((c) => c.id === entry.connectionId)
+  const clickable = !!entry.nav
+
+  const className = [
+    styles.activityEntry,
+    styles[`level_${entry.level}`],
+    clickable ? styles.activityEntryClickable : '',
+  ].filter(Boolean).join(' ')
+
+  const inner = (
+    <>
+      <div className={styles.activityEntryIcon}><Icon size={13} /></div>
       <div className={styles.activityEntryContent}>
-        <p className={styles.activityEntryMsg}>{entry.message}</p>
-        <span className={styles.activityEntryTs}>{relativeTime(entry.ts)}</span>
+        <p className={styles.activityEntryMsg}>
+          <span className={styles.activityEntryTitle}>{entry.title}</span>
+          {entry.detail && <span className={styles.activityEntryDetail}>{entry.detail}</span>}
+        </p>
+        <div className={styles.activityEntryMeta}>
+          {conn && (
+            <span className={styles.activityPill} title={conn.name}>
+              <ConnectionIcon icon={conn.icon ?? null} size={10} />
+              <span className={styles.activityPillName}>{conn.name}</span>
+            </span>
+          )}
+          <span className={styles.activityEntryTs}>{relativeTime(entry.ts)}</span>
+        </div>
       </div>
-    </div>
+    </>
   )
+
+  return clickable
+    ? <button type="button" className={className} onClick={() => onNavigate?.(entry)}>{inner}</button>
+    : <div className={className}>{inner}</div>
 }
