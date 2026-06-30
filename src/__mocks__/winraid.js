@@ -127,6 +127,7 @@ export function createWinraidMock(overrides = {}) {
       onMediaFound: vi.fn().mockReturnValue(() => {}),
       onMediaDone:  vi.fn().mockReturnValue(() => {}),
       onMediaError: vi.fn().mockReturnValue(() => {}),
+      trimVideo: vi.fn().mockResolvedValue({ ok: true, outPath: '/remote/clip.mp4' }),
       ...overrides.remote,
     },
   }

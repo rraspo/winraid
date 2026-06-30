@@ -262,5 +262,7 @@ contextBridge.exposeInMainWorld('winraid', {
     onMediaDone:  (cb) => on('media:done', cb),
     /** Subscribe to per-directory scan errors (non-fatal). Payload: { path, code, msg } */
     onMediaError: (cb) => on('media:error', cb),
+    /** Trim a video on the NAS via ffmpeg stream-copy. start/end in seconds. */
+    trimVideo: (connId, opts) => ipcRenderer.invoke('remote:trim-video', connId, opts),
   },
 })
