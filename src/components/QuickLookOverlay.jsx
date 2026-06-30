@@ -473,6 +473,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimFile,   setTrimFile]   = useState(null)
   const [trimIn,     setTrimIn]     = useState(0)
   const [trimOut,    setTrimOut]    = useState(0)
+  const [trimDur,    setTrimDur]    = useState(0)
   const [trimSaving, setTrimSaving] = useState(false)
   const [snapMsg, setSnapMsg] = useState(null)
   const snapMsgTimerRef = useRef(null)
@@ -484,6 +485,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const mediaRef          = useRef(null)
   const panRef            = useRef({ x: 0, y: 0 })
   const latestRef         = useRef({})
+  const trimTrackRef      = useRef(null)
+  const trimDragRef       = useRef(null)   // 'start' | 'end' | null while dragging a handle
   const type = file ? fileType(file.name) : 'unknown'
   latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, type }
 
@@ -517,10 +520,12 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
   // ── Trim handlers ──────────────────────────────────────────────────────────
   function enterTrimMode() {
-    const dur = mediaRef.current?.duration || 0
+    const dur = mediaRef.current?.duration
+    const safe = Number.isFinite(dur) ? dur : 0
     setTrimFile(file)
     setTrimIn(0)
-    setTrimOut(dur)
+    setTrimOut(safe)
+    setTrimDur(safe)
     setTrimming(true)
   }
 
@@ -530,16 +535,78 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setTrimSaving(false)
   }
 
-  // No cross-clamping: each marker captures the current time independently.
-  // Save is gated on trimOut > trimIn, so an inverted range just disables Save
-  // until the user fixes it.
-  function setTrimStart() {
-    setTrimIn(mediaRef.current?.currentTime ?? 0)
+  // Seek the preview so the user sees the exact frame at the handle they move.
+  function seekPreview(t) {
+    if (mediaRef.current && Number.isFinite(t)) {
+      try { mediaRef.current.currentTime = t } catch { /* not seekable yet */ }
+    }
   }
 
-  function setTrimEnd() {
-    setTrimOut(mediaRef.current?.currentTime ?? 0)
+  // Map a pointer x-coordinate to a time on the trim track.
+  function timeFromClientX(clientX) {
+    const el = trimTrackRef.current
+    if (!el || !trimDur) return 0
+    const rect = el.getBoundingClientRect()
+    if (!rect.width) return 0
+    const pct = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width))
+    return pct * trimDur
   }
+
+  // Drag handles. start clamps to [0, trimOut]; end clamps to [trimIn, trimDur].
+  // No window listeners — pointer capture keeps events on the handle even when
+  // the cursor leaves it.
+  function handleDragDown(which) {
+    return (e) => {
+      if (trimSaving) return
+      e.preventDefault()
+      trimDragRef.current = which
+      e.currentTarget.setPointerCapture?.(e.pointerId)
+    }
+  }
+
+  function handleDragMove(which) {
+    return (e) => {
+      if (trimDragRef.current !== which) return
+      const t = timeFromClientX(e.clientX)
+      if (which === 'start') {
+        const v = Math.max(0, Math.min(t, trimOut))
+        setTrimIn(v)
+        seekPreview(v)
+      } else {
+        const v = Math.min(trimDur, Math.max(t, trimIn))
+        setTrimOut(v)
+        seekPreview(v)
+      }
+    }
+  }
+
+  function handleDragUp(e) {
+    trimDragRef.current = null
+    e.currentTarget.releasePointerCapture?.(e.pointerId)
+  }
+
+  // Keyboard accessibility: arrow keys nudge the focused handle (Shift = 5s).
+  function handleHandleKey(which) {
+    return (e) => {
+      const step = e.shiftKey ? 5 : 1
+      let delta = 0
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') delta = -step
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') delta = step
+      else return
+      e.preventDefault()
+      if (which === 'start') {
+        const v = Math.max(0, Math.min(trimIn + delta, trimOut))
+        setTrimIn(v)
+        seekPreview(v)
+      } else {
+        const v = Math.min(trimDur, Math.max(trimOut + delta, trimIn))
+        setTrimOut(v)
+        seekPreview(v)
+      }
+    }
+  }
+
+  const trimPct = (t) => (trimDur ? (t / trimDur) * 100 : 0)
 
   async function handleTrimSave(overwrite) {
     if (!trimFile || trimOut <= trimIn) return
@@ -982,9 +1049,45 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         {trimming && (
           <div className={styles.trimToolbar}>
             <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
-            <button className={styles.trimSetBtn} onClick={setTrimStart} aria-label="Set start" disabled={trimSaving}>Set start</button>
+            <div className={styles.trimTrack} data-testid="trim-track" ref={trimTrackRef}>
+              <div
+                className={styles.trimSelected}
+                style={{ left: `${trimPct(trimIn)}%`, right: `${100 - trimPct(trimOut)}%` }}
+              />
+              <button
+                type="button"
+                className={`${styles.trimHandle} ${styles.trimHandleStart}`}
+                style={{ left: `${trimPct(trimIn)}%` }}
+                role="slider"
+                aria-label="Trim start"
+                aria-valuemin={0}
+                aria-valuemax={Math.round(trimDur)}
+                aria-valuenow={Math.round(trimIn)}
+                aria-valuetext={fmtClock(trimIn)}
+                disabled={trimSaving}
+                onPointerDown={handleDragDown('start')}
+                onPointerMove={handleDragMove('start')}
+                onPointerUp={handleDragUp}
+                onKeyDown={handleHandleKey('start')}
+              />
+              <button
+                type="button"
+                className={`${styles.trimHandle} ${styles.trimHandleEnd}`}
+                style={{ left: `${trimPct(trimOut)}%` }}
+                role="slider"
+                aria-label="Trim end"
+                aria-valuemin={0}
+                aria-valuemax={Math.round(trimDur)}
+                aria-valuenow={Math.round(trimOut)}
+                aria-valuetext={fmtClock(trimOut)}
+                disabled={trimSaving}
+                onPointerDown={handleDragDown('end')}
+                onPointerMove={handleDragMove('end')}
+                onPointerUp={handleDragUp}
+                onKeyDown={handleHandleKey('end')}
+              />
+            </div>
             <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
-            <button className={styles.trimSetBtn} onClick={setTrimEnd} aria-label="Set end" disabled={trimSaving}>Set end</button>
             <button className={styles.cropCancelBtn} onClick={exitTrimMode} disabled={trimSaving}>Cancel</button>
             <button className={styles.cropSaveBtn} onClick={() => handleTrimSave(false)} disabled={trimSaving || trimOut <= trimIn}>Save as new</button>
             <button className={styles.cropOverwriteBtn} onClick={() => handleTrimSave(true)} disabled={trimSaving || trimOut <= trimIn}>Overwrite</button>

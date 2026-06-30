@@ -219,21 +219,48 @@ describe('QuickLookOverlay trim icon', () => {
 })
 
 describe('QuickLookOverlay trim toolbar', () => {
-  it('enters trim mode and shows the in/out toolbar', () => {
+  // Enter trim mode with a known duration so the track can map position->time.
+  function enterTrim(duration = 12) {
     renderOverlay()
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: duration })
     fireEvent.click(screen.getByLabelText('Trim video'))
-    expect(screen.getByLabelText('Set start')).toBeInTheDocument()
-    expect(screen.getByLabelText('Set end')).toBeInTheDocument()
+    return video
+  }
+
+  it('shows draggable in/out handles and no manual Set buttons', () => {
+    enterTrim()
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+    expect(screen.getByRole('slider', { name: 'Trim end' })).toBeInTheDocument()
+    expect(screen.getByTestId('trim-in')).toBeInTheDocument()
+    expect(screen.getByTestId('trim-out')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Set start')).toBeNull()
+    expect(screen.queryByLabelText('Set end')).toBeNull()
   })
 
-  it('Set start captures the current playback time as the in-point', () => {
-    renderOverlay()
-    fireEvent.click(screen.getByLabelText('Trim video'))
-    const video = document.querySelector('video')
-    Object.defineProperty(video, 'currentTime', { configurable: true, value: 5 })
-    fireEvent.click(screen.getByLabelText('Set start'))
-    expect(screen.getByTestId('trim-in').textContent).toContain('00:05')
+  it('defaults the in-point to 0 and the out-point to the full duration', () => {
+    enterTrim(12)
+    expect(screen.getByTestId('trim-in').textContent).toContain('00:00')
+    expect(screen.getByTestId('trim-out').textContent).toContain('00:12')
+  })
+
+  it('dragging the end handle updates the out-point from the pointer position', () => {
+    enterTrim(100)
+    const track = screen.getByTestId('trim-track')
+    track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
+    const endHandle = screen.getByRole('slider', { name: 'Trim end' })
+    fireEvent.pointerDown(endHandle, { pointerId: 1, clientX: 200 })
+    fireEvent.pointerMove(endHandle, { pointerId: 1, clientX: 100 }) // 50% of 200px -> 50s of 100s
+    fireEvent.pointerUp(endHandle, { pointerId: 1, clientX: 100 })
+    expect(screen.getByTestId('trim-out').textContent).toContain('00:50')
+  })
+
+  it('adjusts a handle with arrow keys for keyboard accessibility', () => {
+    enterTrim(100) // out defaults to 100s (01:40)
+    const endHandle = screen.getByRole('slider', { name: 'Trim end' })
+    fireEvent.keyDown(endHandle, { key: 'ArrowLeft' })
+    expect(screen.getByTestId('trim-out').textContent).toContain('01:39')
   })
 })
 
@@ -252,14 +279,13 @@ describe('QuickLookOverlay trim save', () => {
         onNavigate={() => {}} onClose={() => {}} onDelete={() => {}} canServerEdit
       />
     )
-    fireEvent.click(screen.getByLabelText('Trim video'))
     const video = document.querySelector('video')
-    Object.defineProperty(video, 'currentTime', { configurable: true, value: 4 })
-    fireEvent.click(screen.getByLabelText('Set end'))
+    Object.defineProperty(video, 'duration', { configurable: true, value: 12 })
+    fireEvent.click(screen.getByLabelText('Trim video'))
     fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
     await waitFor(() => expect(trimVideo).toHaveBeenCalled())
     expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
-      path: '/v/clip.mp4', outPath: '/v/clip_trimmed.mp4', start: 0, end: 4,
+      path: '/v/clip.mp4', outPath: '/v/clip_trimmed.mp4', start: 0, end: 12,
     }))
   })
 
@@ -272,13 +298,12 @@ describe('QuickLookOverlay trim save', () => {
         onNavigate={() => {}} onClose={() => {}} onDelete={() => {}} canServerEdit
       />
     )
-    fireEvent.click(screen.getByLabelText('Trim video'))
     const video = document.querySelector('video')
-    Object.defineProperty(video, 'currentTime', { configurable: true, value: 3 })
-    fireEvent.click(screen.getByLabelText('Set end'))
+    Object.defineProperty(video, 'duration', { configurable: true, value: 8 })
+    fireEvent.click(screen.getByLabelText('Trim video'))
     fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
     await waitFor(() => expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
-      path: '/v/clip.mp4', outPath: '/v/clip.mp4',
+      path: '/v/clip.mp4', outPath: '/v/clip.mp4', start: 0, end: 8,
     })))
   })
 })

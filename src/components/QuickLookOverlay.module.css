@@ -241,20 +241,51 @@
   font-variant-numeric: tabular-nums;
 }
 
-.trimSetBtn {
-  padding: var(--space-1) var(--space-3);
+.trimTrack {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 160px;
+  height: 6px;
+  background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg-card);
-  color: var(--text);
-  cursor: pointer;
+  touch-action: none;
 }
 
-.trimSetBtn:hover:not(:disabled) {
-  border-color: var(--border-strong);
+.trimSelected {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  background: var(--accent);
+  opacity: 0.35;
+  border-radius: var(--radius-sm);
 }
 
-.trimSetBtn:disabled {
+.trimHandle {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--bg-panel);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.trimHandle:hover:not(:disabled) {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+.trimHandle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.trimHandle:disabled {
   opacity: 0.4;
   cursor: default;
 }
