@@ -3,15 +3,15 @@ export function cropMimeType(name) {
   return { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp' }[ext] ?? 'image/jpeg'
 }
 
-export function cropCopyPath(remotePath) {
+export function cropCopyPath(remotePath, base = '_cropped') {
   const dot = remotePath.lastIndexOf('.')
-  return dot === -1 ? remotePath + '_cropped' : remotePath.slice(0, dot) + '_cropped' + remotePath.slice(dot)
+  return dot === -1 ? remotePath + base : remotePath.slice(0, dot) + base + remotePath.slice(dot)
 }
 
-// Walk _cropped, _cropped_2, _cropped_3, ... and return the first variant whose
+// Walk <base>, <base>_2, <base>_3, ... and return the first variant whose
 // basename is not already present in existingNames (a Set or array of names in
-// the target directory). Used to avoid clobbering an existing cropped sibling.
-export function nextAvailableCopyPath(remotePath, existingNames) {
+// the target directory). Used to avoid clobbering an existing sibling.
+export function nextAvailableCopyPath(remotePath, existingNames, base = '_cropped') {
   const set     = existingNames instanceof Set ? existingNames : new Set(existingNames ?? [])
   const slash   = remotePath.lastIndexOf('/')
   const dir     = slash >= 0 ? remotePath.slice(0, slash) : ''
@@ -19,11 +19,11 @@ export function nextAvailableCopyPath(remotePath, existingNames) {
   const stem    = remotePath.slice(slash + 1, dot >= slash ? dot : remotePath.length)
   const ext     = dot >= slash ? remotePath.slice(dot) : ''
   for (let i = 1; i < 1000; i++) {
-    const suffix = i === 1 ? '_cropped' : `_cropped_${i}`
+    const suffix = i === 1 ? base : `${base}_${i}`
     const name   = `${stem}${suffix}${ext}`
     if (!set.has(name)) return dir ? `${dir}/${name}` : name
   }
-  return cropCopyPath(remotePath)
+  return cropCopyPath(remotePath, base)
 }
 
 export function fullImageCrop(w, h) {

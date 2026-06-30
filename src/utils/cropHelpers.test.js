@@ -219,6 +219,18 @@ describe('rotateCropImage', () => {
 })
 
 describe('nextAvailableCopyPath', () => {
+  it('defaults to the _cropped suffix (existing behavior)', () => {
+    expect(nextAvailableCopyPath('/a/img.jpg', [])).toBe('/a/img_cropped.jpg')
+  })
+
+  it('accepts a custom suffix base', () => {
+    expect(nextAvailableCopyPath('/a/v.mp4', [], '_trimmed')).toBe('/a/v_trimmed.mp4')
+  })
+
+  it('increments the custom suffix when a sibling exists', () => {
+    expect(nextAvailableCopyPath('/a/v.mp4', ['v_trimmed.mp4'], '_trimmed')).toBe('/a/v_trimmed_2.mp4')
+  })
+
   it('returns the _cropped variant when no copies exist', () => {
     expect(nextAvailableCopyPath('/photos/img.jpg', new Set()))
       .toBe('/photos/img_cropped.jpg')
