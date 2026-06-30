@@ -1808,6 +1808,7 @@ function registerIPC() {
       if (code !== 0) {
         const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
         log('error', `Video trim failed [${label}]: ffmpeg exited ${code} — ${tail}`)
+        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
         return { ok: false, error: tail || `ffmpeg exited ${code}` }
       }
 
