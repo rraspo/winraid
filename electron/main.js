@@ -1804,28 +1804,33 @@ function registerIPC() {
       const duration = end - start
       const cmd = ffmpegTrimCommand({ input: path, output: tmp, start, duration })
 
-      const { code, stderr } = await execWithTimeout(client, cmd, 600_000)
-      if (code !== 0) {
-        const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
-        log('error', `Video trim failed [${label}]: ffmpeg exited ${code} — ${tail}`)
-        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
-        return { ok: false, error: tail || `ffmpeg exited ${code}` }
-      }
+      try {
+        const { code, stderr } = await execWithTimeout(client, cmd, 600_000)
+        if (code !== 0) {
+          const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
+          log('error', `Video trim failed [${label}]: ffmpeg exited ${code} — ${tail}`)
+          client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+          return { ok: false, error: tail || `ffmpeg exited ${code}` }
+        }
 
-      // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
-      // and tmp is a sibling so the move stays on one filesystem (atomic).
-      const mv = await execWithTimeout(client, `mv -f -- ${shQuote(tmp)} ${shQuote(outPath)}`, 60_000)
-      if (mv.code !== 0) {
-        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
-        return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
-      }
+        // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
+        // and tmp is a sibling so the move stays on one filesystem (atomic).
+        const mv = await execWithTimeout(client, `mv -f -- ${shQuote(tmp)} ${shQuote(outPath)}`, 60_000)
+        if (mv.code !== 0) {
+          client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+          return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
+        }
 
-      log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s)`)
-      emitActivity({
-        type: 'upload', connectionId,
-        payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
-      })
-      return { ok: true, outPath }
+        log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s)`)
+        emitActivity({
+          type: 'upload', connectionId,
+          payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+        })
+        return { ok: true, outPath }
+      } catch (err) {
+        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+        throw err
+      }
     } catch (err) {
       log('error', `Video trim failed [${label}]: ${err.message}`)
       return { ok: false, error: err.message }
