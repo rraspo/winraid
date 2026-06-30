@@ -27,6 +27,8 @@ import { validateRemotePath } from './validation.js'
 import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
+import { shQuote } from './shell-quote.js'
+import { ffmpegTrimCommand, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -112,6 +114,23 @@ async function _detectSizeTool(connId, client) {
   _sizeToolCache.set(connId, tool)
   log('info', `[size-scan] sizing tool for ${connId}: ${tool}`)
   return tool
+}
+
+const _ffmpegCache = new Map()
+
+// Detect whether ffmpeg is on PATH for this connection. Cached per connection,
+// mirroring _detectSizeTool. Returns { available, version? }.
+async function _detectFfmpeg(connId, client) {
+  if (_ffmpegCache.has(connId)) return _ffmpegCache.get(connId)
+  let probe = { available: false }
+  try {
+    const { stdout } = await execWithTimeout(client, probeFfmpegCommand(), 15_000)
+    probe = parseFfmpegProbe(stdout)
+  } catch {
+    probe = { available: false }
+  }
+  _ffmpegCache.set(connId, probe)
+  return probe
 }
 
 // List immediate children of dirPath with type + (file) size, via SFTP readdir.
@@ -1449,9 +1468,7 @@ function registerIPC() {
       let usedFallback = false
       if (client) {
         result = await new Promise((resolve) => {
-          const safeSrc = srcPath.replace(/'/g, "'\\''")
-          const safeDst = dstPath.replace(/'/g, "'\\''")
-          client.exec(`mv '${safeSrc}' '${safeDst}'`, (err, stream) => {
+          client.exec(`mv -- ${shQuote(srcPath)} ${shQuote(dstPath)}`, (err, stream) => {
             if (err) {
               log('warn', `Remote move [${label}]: SSH exec error (${err.message}), falling back to SFTP rename`)
               return resolve(null)
@@ -1750,6 +1767,66 @@ function registerIPC() {
       return { ok: true, total, used, free }
     } catch (err) {
       log('error', `Remote disk usage failed [${connectionId}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote: trim a video via ffmpeg stream-copy over SSH exec -------------
+  ipcMain.handle('remote:trim-video', async (_e, connectionId, opts) => {
+    const { path, outPath, start, end } = opts ?? {}
+    if (!validateRemotePath(path) || !validateRemotePath(outPath)) return { ok: false, error: 'Invalid remote path' }
+    if (typeof start !== 'number' || typeof end !== 'number' || start < 0 || end <= start) {
+      return { ok: false, error: 'Invalid trim range' }
+    }
+    const label = await _connLabel(connectionId)
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Trim is only available for SFTP connections' }
+
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const client = _sftpPool.get(connectionId)?.client
+      if (!client) return { ok: false, error: 'Connection unavailable' }
+
+      const probe = await _detectFfmpeg(connectionId, client)
+      if (!probe.available) return { ok: false, error: 'ffmpeg is not installed on the NAS.' }
+
+      // Output to a temp sibling first — ffmpeg must not write the file it reads,
+      // and a temp lets the final move be atomic.
+      const slash = outPath.lastIndexOf('/')
+      const dir   = slash > 0 ? outPath.slice(0, slash) : ''
+      const dot   = outPath.lastIndexOf('.')
+      const ext   = dot > slash ? outPath.slice(dot) : ''
+      const tmp   = `${dir}/.winraid-trim-${Date.now()}${ext}`
+
+      const duration = end - start
+      const cmd = ffmpegTrimCommand({ input: path, output: tmp, start, duration })
+
+      const { code, stderr } = await execWithTimeout(client, cmd, 600_000)
+      if (code !== 0) {
+        const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
+        log('error', `Video trim failed [${label}]: ffmpeg exited ${code} — ${tail}`)
+        return { ok: false, error: tail || `ffmpeg exited ${code}` }
+      }
+
+      // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
+      // and tmp is a sibling so the move stays on one filesystem (atomic).
+      const mv = await execWithTimeout(client, `mv -f -- ${shQuote(tmp)} ${shQuote(outPath)}`, 60_000)
+      if (mv.code !== 0) {
+        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+        return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
+      }
+
+      log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s)`)
+      emitActivity({
+        type: 'upload', connectionId,
+        payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+      })
+      return { ok: true, outPath }
+    } catch (err) {
+      log('error', `Video trim failed [${label}]: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
