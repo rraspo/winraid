@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
-import QuickLookOverlay from './QuickLookOverlay'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
+import * as remoteFS from '../services/remoteFS'
+import QuickLookOverlay from './QuickLookOverlay'
 
 // react-image-crop renders a div wrapper; we don't need its full behavior in tests.
 vi.mock('react-image-crop', () => ({
@@ -13,7 +14,7 @@ beforeEach(() => {
   window.winraid = createWinraidMock()
 })
 
-afterEach(() => { delete window.winraid })
+afterEach(() => { cleanup(); remoteFS.clearAll?.(); delete window.winraid })
 
 const baseProps = {
   connectionId: 'c1',
@@ -190,5 +191,29 @@ describe('QuickLookOverlay — Snapshot encoding', () => {
   it('falls back to JPEG when config returns an unknown format', async () => {
     await renderAndSnapshot({ formatConfigValue: 'tiff' })
     expect(canvasMock.toBlob).toHaveBeenCalledWith(expect.any(Function), 'image/jpeg', 0.92)
+  })
+})
+
+const videoFile = { name: 'clip.mp4', path: '/v/clip.mp4', size: 1000, modified: Date.now(), type: 'file' }
+
+function renderOverlay(props = {}) {
+  return render(
+    <QuickLookOverlay
+      file={videoFile} connectionId="c1" remoteBasePath="/v" files={[videoFile]}
+      onNavigate={() => {}} onClose={() => {}} onDelete={() => {}}
+      canServerEdit={true} {...props}
+    />
+  )
+}
+
+describe('QuickLookOverlay trim icon', () => {
+  it('shows the Trim icon for an SFTP video', () => {
+    renderOverlay()
+    expect(screen.getByLabelText('Trim video')).toBeInTheDocument()
+  })
+
+  it('hides the Trim icon when the connection cannot server-edit (SMB)', () => {
+    renderOverlay({ canServerEdit: false })
+    expect(screen.queryByLabelText('Trim video')).toBeNull()
   })
 })

@@ -241,6 +241,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
             onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
             setDeleteTarget(target)
           }}
+          canServerEdit={browse.selectedConn?.type === 'sftp'}
         />
       )}
       {showPlay && (

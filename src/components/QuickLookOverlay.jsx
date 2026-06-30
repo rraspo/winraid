@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera, Scissors } from 'lucide-react'
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
@@ -401,7 +401,7 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // ---------------------------------------------------------------------------
 // Main overlay
 // ---------------------------------------------------------------------------
-export default function QuickLookOverlay({ file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete }) {
+export default function QuickLookOverlay({ file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit }) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
   const hasPrev    = currentIdx > 0
@@ -454,6 +454,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [cropSaving,  setCropSaving]  = useState(false)
   const [cropError,   setCropError]   = useState(null)
   const [cropRotating, setCropRotating] = useState(false)
+  const [trimming,   setTrimming]   = useState(false)
+  const [trimFile,   setTrimFile]   = useState(null)
+  const [trimIn,     setTrimIn]     = useState(0)
+  const [trimOut,    setTrimOut]    = useState(0)
+  const [trimSaving, setTrimSaving] = useState(false)
   const [snapMsg, setSnapMsg] = useState(null)
   const snapMsgTimerRef = useRef(null)
   const cropImgRef     = useRef(null)
@@ -493,6 +498,15 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   function handleInvertPanChange(v) {
     setInvertPan(v)
     localStorage.setItem('ql-invert-pan', String(v))
+  }
+
+  // ── Trim handlers ──────────────────────────────────────────────────────────
+  function enterTrimMode() {
+    const dur = mediaRef.current?.duration || 0
+    setTrimFile(file)
+    setTrimIn(0)
+    setTrimOut(dur)
+    setTrimming(true)
   }
 
   // ── Crop handlers ──────────────────────────────────────────────────────────
@@ -838,6 +852,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
               aria-label="Save video snapshot"
             >
               <Camera size={16} />
+            </button>
+          </Tooltip>
+        )}
+        {type === 'video' && canServerEdit && !trimming && (
+          <Tooltip tip="Trim" side="bottom">
+            <button
+              className={styles.fileMenuBtn}
+              onClick={enterTrimMode}
+              aria-label="Trim video"
+            >
+              <Scissors size={16} />
             </button>
           </Tooltip>
         )}
