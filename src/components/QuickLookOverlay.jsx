@@ -11,6 +11,7 @@ import { fileType, getExt } from '../utils/fileTypes'
 import { nasStreamUrl } from '../utils/nasStream'
 import { computePan } from '../utils/panMath'
 import * as remoteFS from '../services/remoteFS'
+import * as toast from '../services/toast'
 import {
   cropMimeType,
   cropCopyPath,
@@ -540,8 +541,49 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setTrimOut(mediaRef.current?.currentTime ?? 0)
   }
 
-  // Stub — implemented in Task 8.
-  async function handleTrimSave() { /* implemented in Task 8 */ }
+  async function handleTrimSave(overwrite) {
+    if (!trimFile || trimOut <= trimIn) return
+    setTrimSaving(true)
+    try {
+      let dest
+      if (overwrite) {
+        dest = trimFile.path
+      } else {
+        const slash = trimFile.path.lastIndexOf('/')
+        const dir   = slash > 0 ? trimFile.path.slice(0, slash) : '/'
+        const list  = await window.winraid?.remote.list(connectionId, dir)
+        const names = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+        dest = nextAvailableCopyPath(trimFile.path, names, '_trimmed')
+      }
+
+      const res = await window.winraid?.remote.trimVideo(connectionId, {
+        path: trimFile.path, outPath: dest, start: trimIn, end: trimOut,
+      })
+      if (!res?.ok) throw new Error(res?.error ?? 'Trim failed')
+
+      await window.winraid?.cache.invalidateFile(connectionId, dest)
+      const slash   = dest.lastIndexOf('/')
+      const destDir = slash > 0 ? dest.slice(0, slash) : '/'
+      remoteFS.invalidate(connectionId, destDir)
+      const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
+
+      toast.show({ msg: overwrite ? 'Video trimmed' : 'Trimmed clip saved', type: 'success' })
+
+      if (overwrite) {
+        setCacheBust(Date.now())
+        exitTrimMode()
+      } else {
+        const destName = dest.slice(slash + 1)
+        const entry    = refreshed?.find((e) => e.name === destName)
+        const newFile  = entry ? { ...entry, path: dest } : { name: destName, path: dest, size: 0, modified: Date.now(), type: 'file' }
+        exitTrimMode()
+        onNavigate?.(newFile)
+      }
+    } catch (err) {
+      toast.show({ msg: err.message, type: 'error' })
+      setTrimSaving(false)
+    }
+  }
 
   // ── Crop handlers ──────────────────────────────────────────────────────────
   function enterCropMode() {

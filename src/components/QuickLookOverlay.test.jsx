@@ -236,3 +236,49 @@ describe('QuickLookOverlay trim toolbar', () => {
     expect(screen.getByTestId('trim-in').textContent).toContain('00:05')
   })
 })
+
+describe('QuickLookOverlay trim save', () => {
+  it('calls trimVideo with a _trimmed dest for Save as new', async () => {
+    const trimVideo = vi.fn().mockResolvedValue({ ok: true, outPath: '/v/clip_trimmed.mp4' })
+    window.winraid = createWinraidMock({
+      remote: {
+        list: vi.fn().mockResolvedValue({ ok: true, entries: [{ name: 'clip.mp4', type: 'file' }] }),
+        trimVideo,
+      },
+    })
+    render(
+      <QuickLookOverlay
+        file={videoFile} connectionId="c1" remoteBasePath="/v" files={[videoFile]}
+        onNavigate={() => {}} onClose={() => {}} onDelete={() => {}} canServerEdit
+      />
+    )
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'currentTime', { configurable: true, value: 4 })
+    fireEvent.click(screen.getByLabelText('Set end'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(trimVideo).toHaveBeenCalled())
+    expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      path: '/v/clip.mp4', outPath: '/v/clip_trimmed.mp4', start: 0, end: 4,
+    }))
+  })
+
+  it('passes the original path as outPath for Overwrite', async () => {
+    const trimVideo = vi.fn().mockResolvedValue({ ok: true, outPath: '/v/clip.mp4' })
+    window.winraid = createWinraidMock({ remote: { trimVideo } })
+    render(
+      <QuickLookOverlay
+        file={videoFile} connectionId="c1" remoteBasePath="/v" files={[videoFile]}
+        onNavigate={() => {}} onClose={() => {}} onDelete={() => {}} canServerEdit
+      />
+    )
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'currentTime', { configurable: true, value: 3 })
+    fireEvent.click(screen.getByLabelText('Set end'))
+    fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
+    await waitFor(() => expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      path: '/v/clip.mp4', outPath: '/v/clip.mp4',
+    })))
+  })
+})
