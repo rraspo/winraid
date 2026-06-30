@@ -41,6 +41,15 @@ function formatVideoTimestamp(seconds) {
   return `${pad(h)}-${pad(m)}-${pad(s)}`
 }
 
+// Format seconds as clock time for the trim UI (HH:MM:SS, or MM:SS under 1h).
+function fmtClock(sec) {
+  const s = Math.max(0, Math.floor(sec || 0))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = String(s % 60).padStart(2, '0')
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${String(m).padStart(2, '0')}:${ss}`
+}
+
 // Capture the current frame of a <video> element to a Blob in the given format.
 // fmt is a SNAPSHOT_FORMATS triple: { mime, ext, quality }.
 function captureVideoFrame(videoEl, fmt) {
@@ -418,6 +427,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   // Arrow key navigation + spacebar play/pause (Escape is handled in useBrowse)
   useEffect(() => {
     function onKeyDown(e) {
+      // While trimming, lock everything except Escape (which exits trim mode)
+      if (latestRef.current.trimming) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitTrimMode(); return }
+        return
+      }
       // While cropping, lock everything except Escape (which exits crop mode)
       if (latestRef.current.cropping) {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitCropMode() }
@@ -470,7 +484,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const panRef            = useRef({ x: 0, y: 0 })
   const latestRef         = useRef({})
   const type = file ? fileType(file.name) : 'unknown'
-  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, type }
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, type }
 
 
   function handleLoopChange(v) {
@@ -508,6 +522,26 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setTrimOut(dur)
     setTrimming(true)
   }
+
+  function exitTrimMode() {
+    setTrimming(false)
+    setTrimFile(null)
+    setTrimSaving(false)
+  }
+
+  // No cross-clamping: each marker captures the current time independently.
+  // Save is gated on trimOut > trimIn, so an inverted range just disables Save
+  // until the user fixes it.
+  function setTrimStart() {
+    setTrimIn(mediaRef.current?.currentTime ?? 0)
+  }
+
+  function setTrimEnd() {
+    setTrimOut(mediaRef.current?.currentTime ?? 0)
+  }
+
+  // Stub — implemented in Task 8.
+  async function handleTrimSave() { /* implemented in Task 8 */ }
 
   // ── Crop handlers ──────────────────────────────────────────────────────────
   function enterCropMode() {
@@ -903,6 +937,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             </button>
           </div>
         )}
+        {trimming && (
+          <div className={styles.trimToolbar}>
+            <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
+            <button className={styles.trimSetBtn} onClick={setTrimStart} aria-label="Set start" disabled={trimSaving}>Set start</button>
+            <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
+            <button className={styles.trimSetBtn} onClick={setTrimEnd} aria-label="Set end" disabled={trimSaving}>Set end</button>
+            <button className={styles.cropCancelBtn} onClick={exitTrimMode} disabled={trimSaving}>Cancel</button>
+            <button className={styles.cropSaveBtn} onClick={() => handleTrimSave(false)} disabled={trimSaving || trimOut <= trimIn}>Save as new</button>
+            <button className={styles.cropOverwriteBtn} onClick={() => handleTrimSave(true)} disabled={trimSaving || trimOut <= trimIn}>Overwrite</button>
+          </div>
+        )}
         <FileMenu file={file} onDelete={onDelete} loop={loop} onLoopChange={handleLoopChange} wheelMode={wheelMode} onWheelModeChange={handleWheelModeChange} invertPan={invertPan} onInvertPanChange={handleInvertPanChange} />
         <Tooltip tip="Close (Esc)" side="bottom">
         <button
@@ -922,7 +967,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnLeft].join(' ')}
             onClick={handlePrev}
-            disabled={!hasPrev || cropping}
+            disabled={!hasPrev || cropping || trimming}
             aria-label="Previous file"
           >
             <ChevronLeft size={22} />
@@ -946,7 +991,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnRight].join(' ')}
             onClick={handleNext}
-            disabled={!hasNext || cropping}
+            disabled={!hasNext || cropping || trimming}
             aria-label="Next file"
           >
             <ChevronRight size={22} />

@@ -217,3 +217,22 @@ describe('QuickLookOverlay trim icon', () => {
     expect(screen.queryByLabelText('Trim video')).toBeNull()
   })
 })
+
+describe('QuickLookOverlay trim toolbar', () => {
+  it('enters trim mode and shows the in/out toolbar', () => {
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    expect(screen.getByLabelText('Set start')).toBeInTheDocument()
+    expect(screen.getByLabelText('Set end')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
+  })
+
+  it('Set start captures the current playback time as the in-point', () => {
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'currentTime', { configurable: true, value: 5 })
+    fireEvent.click(screen.getByLabelText('Set start'))
+    expect(screen.getByTestId('trim-in').textContent).toContain('00:05')
+  })
+})

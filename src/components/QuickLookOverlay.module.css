@@ -223,6 +223,42 @@
   cursor: default;
 }
 
+/* ── Inline trim toolbar (shown next to top-bar buttons in trim mode) ── */
+.trimToolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.trimTime {
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+}
+
+.trimTime b {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.trimSetBtn {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.trimSetBtn:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.trimSetBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .fileMenuDrop {
   position: absolute;
   top: calc(100% + 4px);
