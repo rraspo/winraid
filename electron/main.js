@@ -1120,7 +1120,7 @@ function registerIPC() {
         try {
           const u = new URL(url)
           filename = decodeURIComponent(u.pathname.split('/').filter(Boolean).pop() ?? '')
-        } catch {}
+        } catch { /* not a valid URL — leave filename empty */ }
       }
 
       return { ok: true, mime, filename, bytes: ab }
@@ -2209,7 +2209,7 @@ function registerIPC() {
   ipcMain.handle('backup:cancel', () => {
     if (_backupCurrentToken) _backupCurrentToken.cancelled = true
     if (_backupCurrentConn) {
-      try { _backupCurrentConn.end() } catch {}
+      try { _backupCurrentConn.end() } catch { /* already closed */ }
       _backupCurrentConn = null
     }
     return { ok: true }
@@ -2815,7 +2815,7 @@ const _thumbSem = new _Semaphore(4)
 // iteration of the event loop so that IPC and other async work can interleave
 // between thumbnail processing steps.
 function _nativeImageToJpeg(buf) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     setImmediate(() => {
       try {
         const img = nativeImage.createFromBuffer(buf)
@@ -3013,7 +3013,7 @@ function registerNasStreamProtocol() {
               }
             }
           }
-        } catch (_) { /* cache write failure is non-fatal */ }
+        } catch { /* cache write failure is non-fatal */ }
       })
 
       return new Response(body, {

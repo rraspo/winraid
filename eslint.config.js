@@ -34,7 +34,11 @@ export default [
     settings: { react: { version: 'detect' } },
     rules: {
       ...reactPlugin.configs.recommended.rules,
-      ...reactHooks.configs.recommended.rules,
+      // Classic react-hooks rules only. The v7 `recommended` preset adds the
+      // React Compiler rule set (purity, immutability, …) which this codebase
+      // does not yet satisfy — adopting it is a separate, deliberate effort.
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       'react/react-in-jsx-scope': 'off',  // not needed with React 17+
       'react/prop-types': 'off',           // project does not use PropTypes
     },
