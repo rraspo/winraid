@@ -5,6 +5,7 @@
 // we build commands from and are the nastiest injection/parse vectors.
 export function shQuote(str) {
   if (typeof str !== 'string') throw new TypeError('shQuote: expected a string')
+  // eslint-disable-next-line no-control-regex -- matching control chars is the point of this guard
   if (/[\x00-\x1f\x7f]/.test(str)) throw new Error('shQuote: control characters are not allowed')
   return `'${str.replace(/'/g, "'\\''")}'`
 }

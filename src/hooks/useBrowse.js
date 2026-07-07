@@ -211,7 +211,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       if (initial?.sftp?.remotePath) setPath(initial.sftp.remotePath)
     }
     load().then(() => {})
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps — connectionId is stable for the tab lifetime
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- connectionId is stable for the tab lifetime
 
   // Push initial browse history entry
   useEffect(() => {
@@ -233,7 +233,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [showQuickLook, onHistoryPush, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps — pathRef is a ref
+  }, [showQuickLook, onHistoryPush, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps -- pathRef is a ref
 
   // ── Derived values ─────────────────────────────────────────────────────────
   const selectedConn  = connections.find((c) => c.id === selectedId) ?? null

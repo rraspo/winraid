@@ -69,7 +69,7 @@ class WatcherInstance {
     for (const t of this.debounceMap.values()) clearTimeout(t)
     this.debounceMap.clear()
     if (this.checker) {
-      try { this.checker.close() } catch {}
+      try { this.checker.close() } catch { /* already closed */ }
       this.checker = null
     }
     this.folder      = null
