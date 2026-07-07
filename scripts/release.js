@@ -8,6 +8,7 @@
 const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
+const { assertReleasable } = require('./release-guards')
 
 const root = path.resolve(__dirname, '..')
 
@@ -23,6 +24,19 @@ function runSilent(cmd) {
 
 function log(msg) { console.log(`  ${msg}`) }
 function die(msg) { console.error(`  ERROR: ${msg}`); process.exit(1) }
+
+// ── Guards ──────────────────────────────────────────────────────────────────
+// Refuse to release from a dirty tree or off-branch checkout — running
+// `make release` from a feature branch would otherwise publish unmerged,
+// dirty code as the release branch. RELEASE_BRANCH lets a maintainer release
+// from a different branch on purpose.
+const releaseBranch = process.env.RELEASE_BRANCH || 'master'
+let currentBranch
+try {
+  currentBranch = assertReleasable({ runSilent, releaseBranch })
+} catch (err) {
+  die(err.message)
+}
 
 // ── Parse args ──────────────────────────────────────────────────────────────
 
@@ -101,7 +115,7 @@ run('npm run dist')
 
 // Tag and push
 run(`git tag ${releaseTag}`)
-run('git push origin master')
+run(`git push origin ${currentBranch}`)
 run(`git push origin ${releaseTag}`)
 
 // Publish GitHub Release
