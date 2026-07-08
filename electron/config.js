@@ -9,8 +9,21 @@ import { join } from 'path'
 // ---------------------------------------------------------------------------
 const SENSITIVE_CONN_PATHS = ['sftp.password', 'smb.password']
 
+// Set by encryptValue() whenever a secret is written in the clear because
+// the OS keychain is unavailable. Read (and reset) by persist() so callers
+// of setConfig() can surface the fallback to the user instead of it
+// happening silently.
+let _encryptionWarning = false
+
 function encryptValue(v) {
-  if (!v || !safeStorage.isEncryptionAvailable()) return v
+  if (!v) return v
+  if (!safeStorage.isEncryptionAvailable()) {
+    // Warn-but-store: plaintext is the only option without an OS keychain,
+    // so persist the value as-is — never faked behind an `enc:` prefix —
+    // and flag the fallback so the renderer can show a visible warning.
+    _encryptionWarning = true
+    return v
+  }
   return 'enc:' + safeStorage.encryptString(v).toString('base64')
 }
 
@@ -141,7 +154,10 @@ function load() {
 function persist() {
   const { dir, file } = paths()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(file, JSON.stringify(applyToSensitive(_cache, encryptValue), null, 2), 'utf8')
+  _encryptionWarning = false
+  const forDisk = applyToSensitive(_cache, encryptValue)
+  writeFileSync(file, JSON.stringify(forDisk, null, 2), 'utf8')
+  return _encryptionWarning ? { warning: 'encryption-unavailable' } : {}
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +178,9 @@ export function getConfig(key = null) {
  * Sets a top-level key or dot-notation path, then persists to disk.
  * @param {string} key
  * @param {*} value
+ * @returns {{ warning?: 'encryption-unavailable' }} empty object normally, or
+ *   a warning when a secret could not be encrypted and was stored in
+ *   plaintext instead — callers should surface this to the user.
  */
 export function setConfig(key, value) {
   const cfg = load()
@@ -178,5 +197,5 @@ export function setConfig(key, value) {
     }
     node[parts.at(-1)] = value
   }
-  persist()
+  return persist()
 }
