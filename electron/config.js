@@ -9,8 +9,22 @@ import { join } from 'path'
 // ---------------------------------------------------------------------------
 const SENSITIVE_CONN_PATHS = ['sftp.password', 'smb.password']
 
+// Set by encryptValue() whenever a secret would have been written in the
+// clear because the OS keychain is unavailable. Read (and reset) by
+// persist() so callers of setConfig() can surface the fallback to the user
+// instead of it happening silently.
+let _encryptionWarning = false
+
 function encryptValue(v) {
-  if (!v || !safeStorage.isEncryptionAvailable()) return v
+  if (!v) return v
+  if (!safeStorage.isEncryptionAvailable()) {
+    // Refuse to persist the secret at all — never write a plaintext
+    // password, and never fake an `enc:`-prefixed blob either. The
+    // connection is saved without its password; the user re-enters it
+    // each session until encryption is available again.
+    _encryptionWarning = true
+    return ''
+  }
   return 'enc:' + safeStorage.encryptString(v).toString('base64')
 }
 
@@ -141,7 +155,10 @@ function load() {
 function persist() {
   const { dir, file } = paths()
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(file, JSON.stringify(applyToSensitive(_cache, encryptValue), null, 2), 'utf8')
+  _encryptionWarning = false
+  const forDisk = applyToSensitive(_cache, encryptValue)
+  writeFileSync(file, JSON.stringify(forDisk, null, 2), 'utf8')
+  return _encryptionWarning ? { warning: 'encryption-unavailable' } : {}
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +179,9 @@ export function getConfig(key = null) {
  * Sets a top-level key or dot-notation path, then persists to disk.
  * @param {string} key
  * @param {*} value
+ * @returns {{ warning?: 'encryption-unavailable' }} empty object normally, or
+ *   a warning when a secret could not be encrypted and was dropped instead
+ *   of being written in the clear — callers should surface this to the user.
  */
 export function setConfig(key, value) {
   const cfg = load()
@@ -178,5 +198,5 @@ export function setConfig(key, value) {
     }
     node[parts.at(-1)] = value
   }
-  persist()
+  return persist()
 }

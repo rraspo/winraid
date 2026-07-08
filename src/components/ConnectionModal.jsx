@@ -1,6 +1,11 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
+import * as toast from '../services/toast'
 import styles from './ConnectionModal.module.css'
+
+const ENCRYPTION_WARNING_MSG =
+  'Your OS keychain is unavailable, so the password for this connection was not saved. ' +
+  "You'll need to re-enter it next time you connect."
 
 const EMPTY_SFTP = { host: '', port: 22, username: '', password: '', keyPath: '', remotePath: '' }
 const EMPTY_SMB  = { host: '', share: '', username: '', password: '', remotePath: '' }
@@ -77,7 +82,10 @@ export default function ConnectionModal({ existing, onSave, onClose }) {
       ? [...existing_list, toSave]
       : existing_list.map((c) => c.id === toSave.id ? toSave : c)
 
-    await window.winraid?.config.set('connections', updated)
+    const result = await window.winraid?.config.set('connections', updated)
+    if (result?.warning === 'encryption-unavailable') {
+      toast.show({ id: 'connection-encryption-warning', type: 'warning', sticky: true, msg: ENCRYPTION_WARNING_MSG })
+    }
     setSaving(false)
     onSave(toSave)
   }

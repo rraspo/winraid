@@ -692,7 +692,7 @@ function registerIPC() {
       return { error: 'forbidden key' }
     }
     const { setConfig } = await import('./config.js')
-    setConfig(key, value)
+    return setConfig(key, value)
   })
 
   ipcMain.handle('watcher:start', async (_e, connectionId) => {
