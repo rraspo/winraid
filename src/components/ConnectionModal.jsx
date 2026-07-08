@@ -4,8 +4,8 @@ import * as toast from '../services/toast'
 import styles from './ConnectionModal.module.css'
 
 const ENCRYPTION_WARNING_MSG =
-  'Your OS keychain is unavailable, so the password for this connection was not saved. ' +
-  "You'll need to re-enter it next time you connect."
+  'Your OS keychain is unavailable, so the password for this connection was saved without encryption. ' +
+  'Anyone with access to this computer can read it from the config file.'
 
 const EMPTY_SFTP = { host: '', port: 22, username: '', password: '', keyPath: '', remotePath: '' }
 const EMPTY_SMB  = { host: '', share: '', username: '', password: '', remotePath: '' }

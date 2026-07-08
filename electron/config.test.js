@@ -74,17 +74,15 @@ describe('setConfig — encryption unavailable (WR-09)', () => {
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(false)
   })
 
-  it('never writes the plaintext password, and never fakes an enc: blob', async () => {
+  it('stores the plaintext value as-is, never impersonating the enc: format', async () => {
     const { setConfig } = await import('./config.js')
     setConfig('connections', [CONN])
 
-    const raw = readRawConfigFile()
-    expect(raw).not.toContain('hunter2')
-
-    const onDisk = JSON.parse(raw)
+    const onDisk = JSON.parse(readRawConfigFile())
     const persistedPassword = onDisk.connections[0].sftp.password
-    // No plaintext secret, and nothing that impersonates the real enc: format.
-    expect(persistedPassword).not.toBe('hunter2')
+    // Warn-but-store: the plaintext is kept usable, and nothing on disk
+    // pretends to be ciphertext.
+    expect(persistedPassword).toBe('hunter2')
     expect(persistedPassword).not.toMatch(/^enc:/)
     expect(mockSafeStorage.encryptString).not.toHaveBeenCalled()
   })
@@ -96,7 +94,7 @@ describe('setConfig — encryption unavailable (WR-09)', () => {
     expect(result?.warning).toBe('encryption-unavailable')
   })
 
-  it('round-trips without ever reconstituting the plaintext password', async () => {
+  it('round-trips: the password is usable again after an app restart', async () => {
     const { setConfig } = await import('./config.js')
     setConfig('connections', [CONN])
 
@@ -106,11 +104,12 @@ describe('setConfig — encryption unavailable (WR-09)', () => {
     const { getConfig } = await import('./config.js')
 
     const reloaded = getConfig('connections')[0]
-    expect(reloaded.sftp.password).not.toBe('hunter2')
+    expect(reloaded.sftp.password).toBe('hunter2')
+    // The plain value must never be routed through decryptString.
     expect(mockSafeStorage.decryptString).not.toHaveBeenCalled()
   })
 
-  it('does not report a warning when there is no secret to lose', async () => {
+  it('does not report a warning when no secret is being persisted', async () => {
     const { setConfig } = await import('./config.js')
     const result = setConfig('activeConnectionId', 'c1')
 
