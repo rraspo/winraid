@@ -185,14 +185,17 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return
       // Bail if any modal is open — those should own keyboard input.
       if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste) return
-      if (entries.length === 0) return
+      if (browse.entriesWithPaths.length === 0) return
 
       typeAheadBufRef.current += e.key.toLowerCase()
       clearTimeout(bufResetTimerRef.current)
       bufResetTimerRef.current = setTimeout(() => { typeAheadBufRef.current = '' }, 700)
 
       const buf = typeAheadBufRef.current
-      const match = entries.find((entry) => entry.name.toLowerCase().startsWith(buf))
+      // Search the same filtered+sorted list the view renders — jumping
+      // against the raw `entries` array could land the cursor on a row
+      // hidden by the active search filter.
+      const match = browse.entriesWithPaths.find((entry) => entry.name.toLowerCase().startsWith(buf))
       if (match) {
         e.preventDefault()
         setCursorEntry(match.name)
@@ -206,7 +209,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       clearTimeout(bufResetTimerRef.current)
       clearTimeout(cursorClearTimerRef.current)
     }
-  }, [entries, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
+  }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
 
   return (
     <div
