@@ -28,4 +28,18 @@ function assertReleasable({ runSilent, releaseBranch = 'master' } = {}) {
   return currentBranch
 }
 
-module.exports = { assertReleasable }
+// Fail-closed lint + test gate. `run` is injected (rather than shelling out
+// directly) so this can be unit-tested without actually spawning eslint or
+// vitest, and so a lint failure demonstrably prevents the test step — and
+// both demonstrably prevent whatever the caller runs after this returns
+// (build, tag, push, publish) — from ever running.
+function assertQualityGate({ run } = {}) {
+  if (typeof run !== 'function') {
+    throw new TypeError('assertQualityGate requires a run(cmd) function')
+  }
+
+  run('npm run lint')
+  run('npm test')
+}
+
+module.exports = { assertReleasable, assertQualityGate }

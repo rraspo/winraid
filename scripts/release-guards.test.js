@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
-import { assertReleasable } from './release-guards.js'
+import { assertReleasable, assertQualityGate } from './release-guards.js'
 
 function runSilentStub({ branch = 'master', status = '' } = {}) {
   return vi.fn((cmd) => {
@@ -33,5 +33,35 @@ describe('assertReleasable', () => {
 
   it('requires a runSilent function to be provided', () => {
     expect(() => assertReleasable({})).toThrow(/runSilent/)
+  })
+})
+
+describe('assertQualityGate', () => {
+  it('runs lint then test, in order, when both succeed', () => {
+    const calls = []
+    const run = vi.fn((cmd) => { calls.push(cmd) })
+    assertQualityGate({ run })
+    expect(calls).toEqual(['npm run lint', 'npm test'])
+  })
+
+  it('throws and never runs tests when lint fails (fail closed)', () => {
+    const run = vi.fn((cmd) => {
+      if (cmd === 'npm run lint') throw new Error('eslint: 2 errors')
+    })
+    expect(() => assertQualityGate({ run })).toThrow(/eslint/)
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(run).toHaveBeenCalledWith('npm run lint')
+  })
+
+  it('throws when lint passes but tests fail', () => {
+    const run = vi.fn((cmd) => {
+      if (cmd === 'npm test') throw new Error('vitest: 1 failed')
+    })
+    expect(() => assertQualityGate({ run })).toThrow(/vitest/)
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
+  it('requires a run function to be provided', () => {
+    expect(() => assertQualityGate({})).toThrow(/run/)
   })
 })

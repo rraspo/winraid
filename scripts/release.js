@@ -8,7 +8,7 @@
 const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
-const { assertReleasable } = require('./release-guards')
+const { assertReleasable, assertQualityGate } = require('./release-guards')
 
 const root = path.resolve(__dirname, '..')
 
@@ -37,6 +37,13 @@ try {
 } catch (err) {
   die(err.message)
 }
+
+// Lint + test gate — fail closed. `run` uses stdio: 'inherit' and execSync's
+// default behavior of throwing on a non-zero exit code, so a failing lint or
+// test run halts the script here, before any version bump, build, tag, push,
+// or publish happens.
+log('Running lint + test gate...')
+assertQualityGate({ run })
 
 // ── Parse args ──────────────────────────────────────────────────────────────
 
