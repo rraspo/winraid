@@ -7,6 +7,7 @@
 const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
+const { assertReleasable } = require('./release-guards')
 
 const root = path.resolve(__dirname, '..')
 
@@ -20,6 +21,17 @@ function runSilent(cmd) {
 
 function log(msg) { console.log(`  ${msg}`) }
 function die(msg) { console.error(`  ERROR: ${msg}`); process.exit(1) }
+
+// Refuse to tag from a dirty tree or off-branch checkout — see release.js for
+// the full rationale. RELEASE_BRANCH lets a maintainer tag a different branch
+// on purpose.
+const releaseBranch = process.env.RELEASE_BRANCH || 'master'
+let currentBranch
+try {
+  currentBranch = assertReleasable({ runSilent, releaseBranch })
+} catch (err) {
+  die(err.message)
+}
 
 const args = process.argv.slice(2)
 let explicitTag = null
@@ -75,7 +87,7 @@ try {
 }
 
 run(`git tag ${releaseTag}`)
-run('git push origin master')
+run(`git push origin ${currentBranch}`)
 run(`git push origin ${releaseTag}`)
 
 console.log()
