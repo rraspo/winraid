@@ -15,6 +15,7 @@ import {
   powerMonitor,
 } from 'electron'
 import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
+import { pathToFileURL } from 'url'
 import { readFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync, unlink as unlinkAsync } from 'fs/promises'
 import { createHash } from 'crypto'
@@ -29,6 +30,7 @@ import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
 import { ffmpegTrimCommand, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -337,6 +339,18 @@ function parseSshConfig(content, homeDir) {
 // ---------------------------------------------------------------------------
 // BrowserWindow
 // ---------------------------------------------------------------------------
+
+// The single URL every BrowserWindow in this app is allowed to load/navigate
+// within — the dev server root in `electron-vite dev`, or the packaged
+// index.html in the built .exe. Shared by the will-navigate guard on both
+// the main window and the What's New window (both load the same renderer
+// bundle, optionally with a `#whatsnew` hash).
+function appEntryUrl() {
+  return app.isPackaged
+    ? pathToFileURL(join(__dirname, '../renderer/index.html')).toString()
+    : 'http://localhost:5173/'
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1080,
@@ -381,6 +395,14 @@ function createWindow() {
       mainWindow.webContents.reload()
     }
   })
+
+  // Navigation guards — renderer or NAS-sourced content (a crafted filename
+  // rendered into a link, the CSP-whitelisted CDN content) must never be
+  // able to spawn new windows or navigate this window away from the app's
+  // own page. Legitimate external links are opened via shell.openExternal
+  // from the renderer/IPC layer instead of window.open.
+  mainWindow.webContents.setWindowOpenHandler(createWindowOpenHandler())
+  mainWindow.webContents.on('will-navigate', createWillNavigateHandler(appEntryUrl()))
 
   // Native right-click context menu for nas-stream:// images.
   // Mirrors Chrome's image right-click behaviour (Copy image, Copy address).
@@ -479,6 +501,10 @@ function createWhatsNewWindow() {
   })
   whatsNewWindow.setMenuBarVisibility(false)
   whatsNewWindow.on('closed', () => { whatsNewWindow = null })
+
+  // Same navigation guards as the main window — see createWindow().
+  whatsNewWindow.webContents.setWindowOpenHandler(createWindowOpenHandler())
+  whatsNewWindow.webContents.on('will-navigate', createWillNavigateHandler(appEntryUrl()))
 
   if (!app.isPackaged) {
     whatsNewWindow.loadURL('http://localhost:5173/#whatsnew')
@@ -3042,25 +3068,35 @@ function registerNasStreamProtocol() {
 app.whenReady().then(async () => {
   // Inject a Content Security Policy for the renderer via the session layer.
   // Production uses a strict policy; dev relaxes script-src so Vite HMR works.
+  // The dashboard-icons feature (ConnectionIcon.jsx / IconPicker.jsx) is the
+  // only thing that needs external hosts: <img> tags load SVGs from the
+  // jsdelivr CDN, and IconPicker fetches the icon metadata JSON from
+  // raw.githubusercontent.com. Both are pinned to their exact path/prefix
+  // rather than whitelisting the bare host, and scoped to the directive the
+  // feature actually uses (img-src for the CDN images, connect-src for the
+  // metadata fetch) — neither host is needed in the other directive.
+  const DASHBOARD_ICONS_CDN_PREFIX = 'https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/svg/'
+  const DASHBOARD_ICONS_METADATA_URL = 'https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main/metadata.json'
+
   const csp = app.isPackaged
     ? "default-src 'self' nas-stream:; " +
       "script-src 'self'; " +
       "style-src 'self' 'unsafe-inline'; " +
-      "img-src 'self' data: blob: nas-stream: https://cdn.jsdelivr.net; " +
+      `img-src 'self' data: blob: nas-stream: ${DASHBOARD_ICONS_CDN_PREFIX}; ` +
       "media-src 'self' nas-stream:; " +
       // frame-src/object-src don't inherit reliably for the PDF viewer iframe,
       // so allow nas-stream: explicitly (QuickLook PDF preview).
       "frame-src 'self' nas-stream:; " +
       "object-src 'self' nas-stream:; " +
       "worker-src 'self' blob:; " +
-      "connect-src 'self' nas-stream: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
+      `connect-src 'self' nas-stream: ${DASHBOARD_ICONS_METADATA_URL}`
     : "default-src 'self' 'unsafe-inline' 'unsafe-eval' ws: nas-stream:; " +
-      "img-src 'self' data: blob: nas-stream:; " +
+      `img-src 'self' data: blob: nas-stream: ${DASHBOARD_ICONS_CDN_PREFIX}; ` +
       "media-src 'self' blob: nas-stream:; " +
       "frame-src 'self' nas-stream:; " +
       "object-src 'self' nas-stream:; " +
       "worker-src 'self' blob:; " +
-      "connect-src 'self' nas-stream: ws: wss: https://cdn.jsdelivr.net https://raw.githubusercontent.com"
+      `connect-src 'self' nas-stream: ws: wss: ${DASHBOARD_ICONS_METADATA_URL}`
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders }
