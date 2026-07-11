@@ -262,6 +262,75 @@ describe('QuickLookOverlay trim toolbar', () => {
     fireEvent.keyDown(endHandle, { key: 'ArrowLeft' })
     expect(screen.getByTestId('trim-out').textContent).toContain('01:39')
   })
+
+  it('renders one timeline below the video instead of a second slider in the header', () => {
+    const video = enterTrim()
+    const bar = screen.getByTestId('trim-bar')
+    expect(bar.contains(screen.getByTestId('trim-track'))).toBe(true)
+    // The bar follows the video in document order (sits under it, not in the header)
+    expect(video.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(video.parentElement.contains(bar)).toBe(true)
+  })
+
+  it('hides the native video controls while trimming and restores them on cancel', () => {
+    const video = enterTrim()
+    expect(video.controls).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(video.controls).toBe(true)
+  })
+})
+
+describe('QuickLookOverlay trim playback preview', () => {
+  function enterTrimWithMedia(duration = 100) {
+    renderOverlay()
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: duration })
+    video.play  = vi.fn(() => { video._paused = false })
+    video.pause = vi.fn(() => { video._paused = true })
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => video._paused !== false })
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    return video
+  }
+
+  it('shows a playhead on the trim track', () => {
+    enterTrimWithMedia()
+    expect(screen.getByTestId('trim-playhead')).toBeInTheDocument()
+  })
+
+  it('play button starts the preview from the in-point', () => {
+    const video = enterTrimWithMedia(100)
+    // Move the in-point to 25s, then play: preview must start at the in-point
+    const track = screen.getByTestId('trim-track')
+    track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
+    const startHandle = screen.getByRole('slider', { name: 'Trim start' })
+    fireEvent.pointerDown(startHandle, { pointerId: 1, clientX: 0 })
+    fireEvent.pointerMove(startHandle, { pointerId: 1, clientX: 50 }) // 25% of 200px -> 25s
+    fireEvent.pointerUp(startHandle, { pointerId: 1, clientX: 50 })
+    video.currentTime = 0
+    fireEvent.click(screen.getByRole('button', { name: 'Play selection' }))
+    expect(video.currentTime).toBe(25)
+    expect(video.play).toHaveBeenCalled()
+  })
+
+  it('pauses the preview when playback reaches the out-point', () => {
+    const video = enterTrimWithMedia(100)
+    const track = screen.getByTestId('trim-track')
+    track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
+    const endHandle = screen.getByRole('slider', { name: 'Trim end' })
+    fireEvent.pointerDown(endHandle, { pointerId: 1, clientX: 200 })
+    fireEvent.pointerMove(endHandle, { pointerId: 1, clientX: 100 }) // out = 50s
+    fireEvent.pointerUp(endHandle, { pointerId: 1, clientX: 100 })
+    fireEvent.click(screen.getByRole('button', { name: 'Play selection' }))
+    video.currentTime = 51
+    fireEvent.timeUpdate(video)
+    expect(video.pause).toHaveBeenCalled()
+  })
+
+  it('space toggles play/pause while trimming instead of being locked', () => {
+    const video = enterTrimWithMedia(100)
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(video.play).toHaveBeenCalled()
+  })
 })
 
 describe('QuickLookOverlay trim save', () => {
