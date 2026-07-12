@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import * as remoteFS from '../services/remoteFS'
-import * as toast from '../services/toast'
 import QuickLookOverlay from './QuickLookOverlay'
 
 // react-image-crop renders a div wrapper; we don't need its full behavior in tests.
@@ -292,20 +291,26 @@ describe('QuickLookOverlay trim engine gate', () => {
     expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
   })
 
-  it('enters with a local-trim notice when only this PC has ffmpeg', async () => {
+  it('offers the local-trim choice when only this PC has ffmpeg, and remembers it', async () => {
     window.winraid = createWinraidMock({
       remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
     })
-    toast.clearAll()
     renderOverlay()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
+    // Dialog first, not straight into selection
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Trim locally' }))
     expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
-    expect(toast.getSnapshot().some((t) => t.type === 'info')).toBe(true)
-    toast.clearAll()
+    // Leave trim mode, re-enter: choice is remembered, no dialog
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
   })
 
-  it('offers download/locate instead of entering selection when no engine exists', async () => {
+  it('offers download/locate but no local-trim choice when no engine exists', async () => {
     window.winraid = createWinraidMock({
       remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
     })
@@ -315,7 +320,8 @@ describe('QuickLookOverlay trim engine gate', () => {
     expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
     expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Locate ffmpeg/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Locate on this PC/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trim locally' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
   })
@@ -346,13 +352,23 @@ describe('QuickLookOverlay trim engine gate', () => {
     renderOverlay()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: /Locate ffmpeg/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Locate on this PC/ }))
     await act(async () => {})
     expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Locate ffmpeg/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Locate on this PC/ }))
     await act(async () => {})
     expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
     expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('drops the zoom cursor while trimming', async () => {
+    renderOverlay()
+    const area = document.querySelector('[class*="previewArea"]')
+    expect(area.className).toMatch(/previewAreaZoom/)
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(area.className).not.toMatch(/previewAreaZoom/)
+    expect(area.className).not.toMatch(/previewAreaScroll/)
   })
 })
 

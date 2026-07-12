@@ -483,7 +483,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimSaving, setTrimSaving] = useState(false)
   const [trimPos,     setTrimPos]     = useState(0)
   const [trimPlaying, setTrimPlaying] = useState(false)
-  const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', pct?, error? }
+  const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', canLocalTrim?, pct?, error? }
+  const trimLocalAckRef = useRef(false)  // 'Trim locally' chosen once this session
   const [snapMsg, setSnapMsg] = useState(null)
   const snapMsgTimerRef = useRef(null)
   const cropImgRef     = useRef(null)
@@ -544,21 +545,25 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   // Gate on an available trim engine before letting the user pick a range —
-  // otherwise the failure would only surface at save time. With no NAS
-  // ffmpeg the cut runs locally; with neither, offer download/locate.
+  // otherwise the failure would only surface at save time. Without NAS
+  // ffmpeg a dialog offers the choices (trim locally / locate / download);
+  // "trim locally" is remembered for the rest of the session.
   async function enterTrimMode() {
     const cap = await window.winraid?.remote.trimCapability?.(connectionId)
     if (!cap?.ok) {
       toast.show({ msg: cap?.error ?? 'Could not check trim support', type: 'error' })
       return
     }
-    if (cap.mode === 'none') {
-      setTrimSetup({ phase: 'prompt' })
+    if (cap.mode === 'server' || (cap.mode === 'local' && trimLocalAckRef.current)) {
+      beginTrim()
       return
     }
-    if (cap.mode === 'local') {
-      toast.show({ msg: 'The NAS has no ffmpeg — this trim will run on your PC', type: 'info' })
-    }
+    setTrimSetup({ phase: 'prompt', canLocalTrim: cap.mode === 'local' })
+  }
+
+  function handleLocalTrimChoice() {
+    trimLocalAckRef.current = true
+    setTrimSetup(null)
     beginTrim()
   }
 
@@ -570,11 +575,12 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     const res = await window.winraid?.remote.downloadFfmpeg?.()
     unsubscribe?.()
     if (res?.ok) {
+      trimLocalAckRef.current = true
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg ready — trims will run on your PC', type: 'success' })
       beginTrim()
     } else {
-      setTrimSetup({ phase: 'prompt', error: res?.error ?? 'Download failed' })
+      setTrimSetup({ phase: 'prompt', canLocalTrim: false, error: res?.error ?? 'Download failed' })
     }
   }
 
@@ -582,11 +588,12 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     const res = await window.winraid?.remote.locateFfmpeg?.()
     if (res?.canceled) return
     if (res?.ok) {
+      trimLocalAckRef.current = true
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg found — trims will run on your PC', type: 'success' })
       beginTrim()
     } else {
-      setTrimSetup({ phase: 'prompt', error: res?.error ?? 'That file did not work' })
+      setTrimSetup((prev) => ({ phase: 'prompt', canLocalTrim: prev?.canLocalTrim ?? false, error: res?.error ?? 'That file did not work' }))
     }
   }
 
@@ -1278,9 +1285,9 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           ref={previewAreaRef}
           className={[
             styles.previewArea,
-            wheelMode === 'zoom' ? styles.previewAreaZoom : styles.previewAreaScroll,
-          ].join(' ')}
-          style={zoom > 1 ? { cursor: 'crosshair' } : undefined}
+            trimming ? '' : (wheelMode === 'zoom' ? styles.previewAreaZoom : styles.previewAreaScroll),
+          ].filter(Boolean).join(' ')}
+          style={zoom > 1 && !trimming ? { cursor: 'crosshair' } : undefined}
         >
           {renderPreview()}
         </div>
@@ -1314,11 +1321,13 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             <div className={modalStyles.modalHeader}>
               <span className={modalStyles.modalIconWrap}><Scissors size={20} /></span>
               <div>
-                <h2 className={modalStyles.modalTitle}>Trimming needs ffmpeg</h2>
+                <h2 className={modalStyles.modalTitle}>The NAS has no ffmpeg</h2>
                 <p className={modalStyles.modalSubtitle}>
-                  The NAS does not have ffmpeg and none was found on this PC.
-                  Download the official build once (~80 MB), or point WinRaid
-                  at an ffmpeg.exe you already have.
+                  The cut can still happen on this PC: WinRaid downloads the
+                  video, trims it locally, and uploads the result.{' '}
+                  {trimSetup.canLocalTrim
+                    ? 'An ffmpeg is already available on this PC.'
+                    : 'That needs an ffmpeg on this PC — download the official build once (~80 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
                 </p>
               </div>
             </div>
@@ -1339,8 +1348,16 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             ) : (
               <div className={modalStyles.modalActions}>
                 <button className={modalStyles.modalCancel} onClick={() => setTrimSetup(null)}>Cancel</button>
-                <button className={modalStyles.modalCancel} onClick={handleFfmpegLocate}>Locate ffmpeg…</button>
-                <button className={modalStyles.modalConfirm} onClick={handleFfmpegDownload}>Download (~80 MB)</button>
+                <button className={modalStyles.modalCancel} onClick={handleFfmpegLocate}>Locate on this PC…</button>
+                <button
+                  className={trimSetup.canLocalTrim ? modalStyles.modalCancel : modalStyles.modalConfirm}
+                  onClick={handleFfmpegDownload}
+                >
+                  Download (~80 MB)
+                </button>
+                {trimSetup.canLocalTrim && (
+                  <button className={modalStyles.modalConfirm} onClick={handleLocalTrimChoice}>Trim locally</button>
+                )}
               </div>
             )}
           </div>
