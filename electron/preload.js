@@ -264,5 +264,7 @@ contextBridge.exposeInMainWorld('winraid', {
     onMediaError: (cb) => on('media:error', cb),
     /** Trim a video on the NAS via ffmpeg stream-copy. start/end in seconds. */
     trimVideo: (connId, opts) => ipcRenderer.invoke('remote:trim-video', connId, opts),
+    /** Probe whether ffmpeg exists on the NAS for this connection (cached). */
+    probeFfmpeg: (connId) => ipcRenderer.invoke('remote:probe-ffmpeg', connId),
   },
 })

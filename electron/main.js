@@ -1797,6 +1797,30 @@ function registerIPC() {
     }
   })
 
+  // -- Remote: probe ffmpeg availability, so the UI can gate trim entry ------
+  ipcMain.handle('remote:probe-ffmpeg', async (_e, connectionId) => {
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: true, available: false }
+
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const client = _sftpPool.get(connectionId)?.client
+      if (!client) return { ok: false, error: 'Connection unavailable' }
+
+      // A cached negative would outlive an ffmpeg install on the NAS; the
+      // probe only runs on a Trim click, so re-checking negatives is cheap.
+      if (_ffmpegCache.get(connectionId)?.available === false) _ffmpegCache.delete(connectionId)
+
+      const probe = await _detectFfmpeg(connectionId, client)
+      return { ok: true, available: !!probe.available, version: probe.version }
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
+  })
+
   // -- Remote: trim a video via ffmpeg stream-copy over SSH exec -------------
   ipcMain.handle('remote:trim-video', async (_e, connectionId, opts) => {
     const { path, outPath, start, end } = opts ?? {}

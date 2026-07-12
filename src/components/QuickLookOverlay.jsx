@@ -527,7 +527,20 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   // ── Trim handlers ──────────────────────────────────────────────────────────
-  function enterTrimMode() {
+  async function enterTrimMode() {
+    // Gate on ffmpeg before letting the user pick a range — otherwise the
+    // failure would only surface at save time, after the selection work.
+    // The probe result is cached per connection in the main process.
+    const probe = await window.winraid?.remote.probeFfmpeg?.(connectionId)
+    if (!probe?.ok) {
+      toast.show({ msg: probe?.error ?? 'Could not check ffmpeg on the NAS', type: 'error' })
+      return
+    }
+    if (!probe.available) {
+      toast.show({ msg: 'Trim needs ffmpeg on the NAS and it is not installed there', type: 'error' })
+      return
+    }
+
     const v = mediaRef.current
     const dur = v?.duration
     const safe = Number.isFinite(dur) ? dur : 0
@@ -597,10 +610,26 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
   }
 
-  // Clicking the bare track (not a handle) scrubs the preview to that time.
+  // Pressing anywhere on the track except a handle scrubs the playhead, and
+  // keeps scrubbing while the pointer is dragged — jumping straight to the
+  // end of the selection beats waiting for playback to get there.
   function handleTrackPointerDown(e) {
-    if (e.target !== trimTrackRef.current || trimSaving) return
+    if (trimSaving || e.target.closest('button')) return
+    e.preventDefault()
+    trimDragRef.current = 'scrub'
+    trimTrackRef.current?.setPointerCapture?.(e.pointerId)
     seekPreview(timeFromClientX(e.clientX))
+  }
+
+  function handleTrackPointerMove(e) {
+    if (trimDragRef.current !== 'scrub') return
+    seekPreview(timeFromClientX(e.clientX))
+  }
+
+  function handleTrackPointerUp(e) {
+    if (trimDragRef.current !== 'scrub') return
+    trimDragRef.current = null
+    trimTrackRef.current?.releasePointerCapture?.(e.pointerId)
   }
 
   // Map a pointer x-coordinate to a time on the trim track.
@@ -1001,6 +1030,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         data-testid="trim-track"
         ref={trimTrackRef}
         onPointerDown={handleTrackPointerDown}
+        onPointerMove={handleTrackPointerMove}
+        onPointerUp={handleTrackPointerUp}
       >
         <div
           className={styles.trimSelected}
