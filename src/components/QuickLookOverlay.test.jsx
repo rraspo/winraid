@@ -283,26 +283,75 @@ describe('QuickLookOverlay trim toolbar', () => {
   })
 })
 
-describe('QuickLookOverlay trim ffmpeg gate', () => {
-  it('warns on the Trim click and never enters selection when ffmpeg is missing', async () => {
+describe('QuickLookOverlay trim engine gate', () => {
+  it('checks capability on the Trim click and enters when the NAS has ffmpeg', async () => {
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(window.winraid.remote.trimCapability).toHaveBeenCalledWith('c1')
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('enters with a local-trim notice when only this PC has ffmpeg', async () => {
     window.winraid = createWinraidMock({
-      remote: { probeFfmpeg: vi.fn().mockResolvedValue({ ok: true, available: false }) },
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
     })
     toast.clearAll()
     renderOverlay()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
-    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
-    expect(screen.queryByTestId('trim-bar')).toBeNull()
-    expect(toast.getSnapshot().some((t) => t.type === 'error')).toBe(true)
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+    expect(toast.getSnapshot().some((t) => t.type === 'info')).toBe(true)
     toast.clearAll()
   })
 
-  it('probes the file connection and enters trim mode when ffmpeg is available', async () => {
+  it('offers download/locate instead of entering selection when no engine exists', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
     renderOverlay()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
-    expect(window.winraid.remote.probeFfmpeg).toHaveBeenCalledWith('c1')
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Locate ffmpeg/ })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+  })
+
+  it('downloading from the prompt enters trim mode once ffmpeg is ready', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Download/ }))
+    await act(async () => {})
+    expect(window.winraid.remote.downloadFfmpeg).toHaveBeenCalled()
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('locating an ffmpeg enters trim mode, and canceling the picker keeps the prompt', async () => {
+    window.winraid = createWinraidMock({
+      remote: {
+        trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }),
+        locateFfmpeg: vi.fn()
+          .mockResolvedValueOnce({ ok: true, canceled: true })
+          .mockResolvedValueOnce({ ok: true, path: 'C:/tools/ffmpeg.exe' }),
+      },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Locate ffmpeg/ }))
+    await act(async () => {})
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Locate ffmpeg/ }))
+    await act(async () => {})
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
     expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
   })
 })

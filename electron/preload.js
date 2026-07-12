@@ -264,7 +264,13 @@ contextBridge.exposeInMainWorld('winraid', {
     onMediaError: (cb) => on('media:error', cb),
     /** Trim a video on the NAS via ffmpeg stream-copy. start/end in seconds. */
     trimVideo: (connId, opts) => ipcRenderer.invoke('remote:trim-video', connId, opts),
-    /** Probe whether ffmpeg exists on the NAS for this connection (cached). */
-    probeFfmpeg: (connId) => ipcRenderer.invoke('remote:probe-ffmpeg', connId),
+    /** Where a trim can run: { mode: 'server' | 'local' | 'none' }. Cached probes. */
+    trimCapability: (connId) => ipcRenderer.invoke('trim:capability', connId),
+    /** One-time download of a static ffmpeg for local trims. */
+    downloadFfmpeg: () => ipcRenderer.invoke('trim:download-ffmpeg'),
+    /** Subscribe to ffmpeg download progress (0..1). Returns unsubscribe. */
+    onFfmpegDownloadProgress: (cb) => on('trim:download-progress', cb),
+    /** Native picker for an existing ffmpeg.exe; validated and remembered. */
+    locateFfmpeg: () => ipcRenderer.invoke('trim:locate-ffmpeg'),
   },
 })

@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera, Scissors, Play, Pause } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera, Scissors, Play, Pause, AlertCircle } from 'lucide-react'
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
 import ProgressRing from './ui/ProgressRing'
 import PdfPreview from './PdfPreview'
 import styles from './QuickLookOverlay.module.css'
+import modalStyles from './modals/modals.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt } from '../utils/fileTypes'
 import { nasStreamUrl } from '../utils/nasStream'
@@ -482,6 +483,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimSaving, setTrimSaving] = useState(false)
   const [trimPos,     setTrimPos]     = useState(0)
   const [trimPlaying, setTrimPlaying] = useState(false)
+  const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', pct?, error? }
   const [snapMsg, setSnapMsg] = useState(null)
   const snapMsgTimerRef = useRef(null)
   const cropImgRef     = useRef(null)
@@ -527,20 +529,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   // ── Trim handlers ──────────────────────────────────────────────────────────
-  async function enterTrimMode() {
-    // Gate on ffmpeg before letting the user pick a range — otherwise the
-    // failure would only surface at save time, after the selection work.
-    // The probe result is cached per connection in the main process.
-    const probe = await window.winraid?.remote.probeFfmpeg?.(connectionId)
-    if (!probe?.ok) {
-      toast.show({ msg: probe?.error ?? 'Could not check ffmpeg on the NAS', type: 'error' })
-      return
-    }
-    if (!probe.available) {
-      toast.show({ msg: 'Trim needs ffmpeg on the NAS and it is not installed there', type: 'error' })
-      return
-    }
-
+  function beginTrim() {
     const v = mediaRef.current
     const dur = v?.duration
     const safe = Number.isFinite(dur) ? dur : 0
@@ -552,6 +541,53 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setTrimPos(Number.isFinite(v?.currentTime) ? v.currentTime : 0)
     setTrimPlaying(false)
     setTrimming(true)
+  }
+
+  // Gate on an available trim engine before letting the user pick a range —
+  // otherwise the failure would only surface at save time. With no NAS
+  // ffmpeg the cut runs locally; with neither, offer download/locate.
+  async function enterTrimMode() {
+    const cap = await window.winraid?.remote.trimCapability?.(connectionId)
+    if (!cap?.ok) {
+      toast.show({ msg: cap?.error ?? 'Could not check trim support', type: 'error' })
+      return
+    }
+    if (cap.mode === 'none') {
+      setTrimSetup({ phase: 'prompt' })
+      return
+    }
+    if (cap.mode === 'local') {
+      toast.show({ msg: 'The NAS has no ffmpeg — this trim will run on your PC', type: 'info' })
+    }
+    beginTrim()
+  }
+
+  async function handleFfmpegDownload() {
+    setTrimSetup({ phase: 'downloading', pct: 0 })
+    const unsubscribe = window.winraid?.remote.onFfmpegDownloadProgress?.((pct) =>
+      setTrimSetup({ phase: 'downloading', pct })
+    )
+    const res = await window.winraid?.remote.downloadFfmpeg?.()
+    unsubscribe?.()
+    if (res?.ok) {
+      setTrimSetup(null)
+      toast.show({ msg: 'ffmpeg ready — trims will run on your PC', type: 'success' })
+      beginTrim()
+    } else {
+      setTrimSetup({ phase: 'prompt', error: res?.error ?? 'Download failed' })
+    }
+  }
+
+  async function handleFfmpegLocate() {
+    const res = await window.winraid?.remote.locateFfmpeg?.()
+    if (res?.canceled) return
+    if (res?.ok) {
+      setTrimSetup(null)
+      toast.show({ msg: 'ffmpeg found — trims will run on your PC', type: 'success' })
+      beginTrim()
+    } else {
+      setTrimSetup({ phase: 'prompt', error: res?.error ?? 'That file did not work' })
+    }
   }
 
   function exitTrimMode() {
@@ -1270,6 +1306,46 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       )}
 
       {snapMsg && <div className={styles.snapToast}>{snapMsg}</div>}
+
+      {/* Trim engine setup: no ffmpeg on the NAS or this PC */}
+      {trimSetup && (
+        <div className={modalStyles.modalOverlay} data-testid="trim-setup-modal">
+          <div className={modalStyles.modal}>
+            <div className={modalStyles.modalHeader}>
+              <span className={modalStyles.modalIconWrap}><Scissors size={20} /></span>
+              <div>
+                <h2 className={modalStyles.modalTitle}>Trimming needs ffmpeg</h2>
+                <p className={modalStyles.modalSubtitle}>
+                  The NAS does not have ffmpeg and none was found on this PC.
+                  Download the official build once (~80 MB), or point WinRaid
+                  at an ffmpeg.exe you already have.
+                </p>
+              </div>
+            </div>
+
+            {trimSetup.error && (
+              <div className={modalStyles.modalWarning}>
+                <AlertCircle size={14} />
+                <span>{trimSetup.error}</span>
+              </div>
+            )}
+
+            {trimSetup.phase === 'downloading' ? (
+              <div className={modalStyles.modalActions}>
+                <span className={styles.trimTime}>
+                  Downloading ffmpeg… {Math.round((trimSetup.pct ?? 0) * 100)}%
+                </span>
+              </div>
+            ) : (
+              <div className={modalStyles.modalActions}>
+                <button className={modalStyles.modalCancel} onClick={() => setTrimSetup(null)}>Cancel</button>
+                <button className={modalStyles.modalCancel} onClick={handleFfmpegLocate}>Locate ffmpeg…</button>
+                <button className={modalStyles.modalConfirm} onClick={handleFfmpegDownload}>Download (~80 MB)</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )

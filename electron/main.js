@@ -13,13 +13,15 @@ import {
   shell,
   Notification,
   powerMonitor,
+  net,
 } from 'electron'
+import { spawn } from 'child_process'
 import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
 import { pathToFileURL } from 'url'
 import { readFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync, unlink as unlinkAsync } from 'fs/promises'
 import { createHash } from 'crypto'
-import { homedir, userInfo } from 'os'
+import { homedir, userInfo, tmpdir } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { initActivity, pushActivity, tailActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
@@ -29,7 +31,8 @@ import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
-import { ffmpegTrimCommand, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
 
 // ---------------------------------------------------------------------------
@@ -1797,12 +1800,29 @@ function registerIPC() {
     }
   })
 
-  // -- Remote: probe ffmpeg availability, so the UI can gate trim entry ------
-  ipcMain.handle('remote:probe-ffmpeg', async (_e, connectionId) => {
+  // -- Trim engine: NAS ffmpeg, local ffmpeg, or none ------------------------
+  // 'server' trims on the NAS over SSH (no data transfer); 'local' downloads
+  // the file, cuts it on this PC and uploads the result; 'none' means the
+  // renderer should offer to download or locate a local ffmpeg.
+  let _localFfmpegPath = null
+  let _ffmpegDownloadPromise = null
+
+  async function _resolveLocalFfmpeg() {
+    if (_localFfmpegPath) return _localFfmpegPath
+    const { getConfig } = await import('./config.js')
+    const local = await findLocalFfmpeg({
+      dataDir: app.getPath('userData'),
+      customPath: getConfig('trimFfmpegPath'),
+    })
+    if (local) _localFfmpegPath = local.path
+    return local ? local.path : null
+  }
+
+  ipcMain.handle('trim:capability', async (_e, connectionId) => {
     try {
       const conn = await _getConnConfig(connectionId)
       if (!conn) return { ok: false, error: 'Connection not found' }
-      if (conn.type !== 'sftp') return { ok: true, available: false }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Trim is only available for SFTP connections' }
 
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
@@ -1815,11 +1835,108 @@ function registerIPC() {
       if (_ffmpegCache.get(connectionId)?.available === false) _ffmpegCache.delete(connectionId)
 
       const probe = await _detectFfmpeg(connectionId, client)
-      return { ok: true, available: !!probe.available, version: probe.version }
+      if (probe.available) return { ok: true, mode: 'server', version: probe.version }
+
+      const localPath = await _resolveLocalFfmpeg()
+      if (localPath) return { ok: true, mode: 'local' }
+      return { ok: true, mode: 'none' }
     } catch (err) {
       return { ok: false, error: err.message }
     }
   })
+
+  ipcMain.handle('trim:download-ffmpeg', async () => {
+    if (!_ffmpegDownloadPromise) {
+      _ffmpegDownloadPromise = downloadFfmpeg({
+        dataDir: app.getPath('userData'),
+        request: (url) => net.request(url),
+        onProgress: (pct) => mainWindow?.webContents.send('trim:download-progress', pct),
+      })
+      _ffmpegDownloadPromise.finally(() => { _ffmpegDownloadPromise = null })
+    }
+    const res = await _ffmpegDownloadPromise
+    if (res.ok) {
+      _localFfmpegPath = res.path
+      log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version})`)
+    } else {
+      log('error', `ffmpeg download failed: ${res.error}`)
+    }
+    return res
+  })
+
+  ipcMain.handle('trim:locate-ffmpeg', async () => {
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Locate ffmpeg',
+      properties: ['openFile'],
+      filters: [{ name: 'ffmpeg', extensions: ['exe'] }],
+    })
+    if (result.canceled || !result.filePaths[0]) return { ok: true, canceled: true }
+
+    const chosen = result.filePaths[0]
+    const probe = await validateFfmpegBinary(chosen)
+    if (!probe.available) return { ok: false, error: 'That file did not run as ffmpeg' }
+
+    const { setConfig } = await import('./config.js')
+    setConfig('trimFfmpegPath', chosen)
+    _localFfmpegPath = chosen
+    log('info', `ffmpeg located by user for local trims: ${chosen} (${probe.version})`)
+    return { ok: true, path: chosen, version: probe.version }
+  })
+
+  // Local-fallback trim: pull the source down, stream-copy on this PC with
+  // the resolved local ffmpeg, push the cut back up, then finalize with the
+  // same atomic sibling-move the server path uses.
+  async function _localTrim({ connectionId, sftp, client, label, path, outPath, start, end }) {
+    const slash = outPath.lastIndexOf('/')
+    const dir   = slash > 0 ? outPath.slice(0, slash) : ''
+    const dot   = outPath.lastIndexOf('.')
+    const ext   = dot > slash ? outPath.slice(dot) : ''
+    const remoteTmp = `${dir}/.winraid-trim-${Date.now()}${ext}`
+
+    const workDir = join(tmpdir(), 'winraid-trim')
+    mkdirSync(workDir, { recursive: true })
+    const localIn  = join(workDir, `in-${Date.now()}${ext}`)
+    const localOut = join(workDir, `out-${Date.now()}${ext}`)
+
+    try {
+      await new Promise((resolve, reject) => sftp.fastGet(path, localIn, (err) => (err ? reject(err) : resolve())))
+
+      const args = ffmpegTrimArgs({ input: localIn, output: localOut, start, duration: end - start })
+      await new Promise((resolve, reject) => {
+        const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
+        let errTail = ''
+        proc.stderr?.on('data', (chunk) => { errTail = (errTail + chunk).slice(-800) })
+        proc.on('error', reject)
+        proc.on('close', (code) => {
+          if (code === 0) return resolve()
+          const tail = errTail.trim().split('\n').slice(-3).join(' ').slice(0, 400)
+          reject(new Error(tail || `ffmpeg exited ${code}`))
+        })
+      })
+
+      await new Promise((resolve, reject) => sftp.fastPut(localOut, remoteTmp, (err) => (err ? reject(err) : resolve())))
+
+      const mv = await execWithTimeout(client, `mv -f -- ${shQuote(remoteTmp)} ${shQuote(outPath)}`, 60_000)
+      if (mv.code !== 0) {
+        client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
+        return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
+      }
+
+      log('info', `Video trimmed locally [${label}]: ${path} -> ${outPath} (${(end - start).toFixed(2)}s)`)
+      emitActivity({
+        type: 'upload', connectionId,
+        payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+      })
+      return { ok: true, outPath }
+    } catch (err) {
+      client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
+      log('error', `Local video trim failed [${label}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    } finally {
+      rmSync(localIn, { force: true })
+      rmSync(localOut, { force: true })
+    }
+  }
 
   // -- Remote: trim a video via ffmpeg stream-copy over SSH exec -------------
   ipcMain.handle('remote:trim-video', async (_e, connectionId, opts) => {
@@ -1841,7 +1958,14 @@ function registerIPC() {
       if (!client) return { ok: false, error: 'Connection unavailable' }
 
       const probe = await _detectFfmpeg(connectionId, client)
-      if (!probe.available) return { ok: false, error: 'ffmpeg is not installed on the NAS.' }
+      if (!probe.available) {
+        // No NAS ffmpeg: fall back to trimming on this PC. Join an in-flight
+        // download if the user kicked one off from the trim-entry prompt.
+        if (_ffmpegDownloadPromise) await _ffmpegDownloadPromise
+        const localPath = await _resolveLocalFfmpeg()
+        if (!localPath) return { ok: false, error: 'ffmpeg is not available on the NAS or this PC.' }
+        return await _localTrim({ connectionId, sftp, client, label, path, outPath, start, end })
+      }
 
       // Output to a temp sibling first — ffmpeg must not write the file it reads,
       // and a temp lets the final move be atomic.

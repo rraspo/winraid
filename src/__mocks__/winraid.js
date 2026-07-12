@@ -128,7 +128,10 @@ export function createWinraidMock(overrides = {}) {
       onMediaDone:  vi.fn().mockReturnValue(() => {}),
       onMediaError: vi.fn().mockReturnValue(() => {}),
       trimVideo: vi.fn().mockResolvedValue({ ok: true, outPath: '/remote/clip.mp4' }),
-      probeFfmpeg: vi.fn().mockResolvedValue({ ok: true, available: true }),
+      trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'server' }),
+      downloadFfmpeg: vi.fn().mockResolvedValue({ ok: true, path: 'C:/ffmpeg/ffmpeg.exe' }),
+      onFfmpegDownloadProgress: vi.fn().mockReturnValue(() => {}),
+      locateFfmpeg: vi.fn().mockResolvedValue({ ok: true, path: 'C:/tools/ffmpeg.exe' }),
       ...overrides.remote,
     },
   }
