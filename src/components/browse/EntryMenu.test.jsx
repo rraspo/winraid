@@ -53,14 +53,14 @@ describe('EntryMenu — Reveal in Explorer (local mirror)', () => {
       <EntryMenu
         {...baseProps}
         isDir
-        localCandidate={'Z:\\winraid\\kepler\\AM'}
+        localCandidate={'Z:\\winraid\\media\\photos'}
         checkLocalExists={checkLocalExists}
         onRevealLocal={noop}
       />
     )
     fireEvent.click(screen.getByRole('button'))
     expect(await screen.findByText('Reveal in Explorer')).toBeInTheDocument()
-    expect(checkLocalExists).toHaveBeenCalledWith('Z:\\winraid\\kepler\\AM')
+    expect(checkLocalExists).toHaveBeenCalledWith('Z:\\winraid\\media\\photos')
   })
 
   it('hides the reveal item when there is no local candidate', () => {
@@ -75,7 +75,7 @@ describe('EntryMenu — Reveal in Explorer (local mirror)', () => {
       <EntryMenu
         {...baseProps}
         isDir
-        localCandidate={'Z:\\winraid\\kepler\\AM'}
+        localCandidate={'Z:\\winraid\\media\\photos'}
         checkLocalExists={checkLocalExists}
         onRevealLocal={noop}
       />
@@ -91,13 +91,13 @@ describe('EntryMenu — Reveal in Explorer (local mirror)', () => {
       <EntryMenu
         {...baseProps}
         isDir
-        localCandidate={'Z:\\winraid\\kepler\\AM'}
+        localCandidate={'Z:\\winraid\\media\\photos'}
         checkLocalExists={vi.fn().mockResolvedValue(true)}
         onRevealLocal={onRevealLocal}
       />
     )
     fireEvent.click(screen.getByRole('button'))
     fireEvent.click(await screen.findByText('Reveal in Explorer'))
-    expect(onRevealLocal).toHaveBeenCalledWith('Z:\\winraid\\kepler\\AM')
+    expect(onRevealLocal).toHaveBeenCalledWith('Z:\\winraid\\media\\photos')
   })
 })

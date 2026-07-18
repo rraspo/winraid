@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import SizeView from './SizeView'
 
-const CONN = { id: 'conn-1', name: 'Kepler', type: 'sftp', sftp: { host: '10.0.0.1', remotePath: '/mnt/data' } }
+const CONN = { id: 'conn-1', name: 'Atlas', type: 'sftp', sftp: { host: '10.0.0.1', remotePath: '/mnt/data' } }
 
 beforeEach(() => {
   window.winraid = createWinraidMock()

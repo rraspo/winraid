@@ -20,7 +20,7 @@ vi.mock('../components/PlayOverlay', () => ({
 const TEST_CONNECTIONS = [
   {
     id: 'conn-1',
-    name: 'Kepler',
+    name: 'Atlas',
     localFolder: 'C:\\sync',
     sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' },
   },
@@ -154,7 +154,7 @@ describe('BrowseView', () => {
     // local.exists/local.reveal surface. The reveal item must degrade gracefully,
     // never throw an uncaught TypeError that takes down the browse view.
     const mirrorConn = [{
-      id: 'conn-1', name: 'Kepler', folderMode: 'mirror',
+      id: 'conn-1', name: 'Atlas', folderMode: 'mirror',
       localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' },
     }]
     window.winraid = createWinraidMock({

@@ -17,7 +17,7 @@ vi.mock('../components/PlayOverlay', () => ({
 const TEST_CONNECTIONS = [
   {
     id: 'conn-1',
-    name: 'Kepler',
+    name: 'Atlas',
     localFolder: 'C:\\sync',
     sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' },
   },

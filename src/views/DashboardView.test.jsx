@@ -4,7 +4,7 @@ import { createWinraidMock } from '../__mocks__/winraid'
 import DashboardView from './DashboardView'
 
 const CONNECTIONS = [
-  { id: 'conn-1', name: 'Kepler', type: 'sftp', icon: null, sftp: { host: '10.0.0.1', remotePath: '/mnt/data' } },
+  { id: 'conn-1', name: 'Atlas', type: 'sftp', icon: null, sftp: { host: '10.0.0.1', remotePath: '/mnt/data' } },
 ]
 
 beforeEach(() => {

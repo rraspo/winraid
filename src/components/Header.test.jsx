@@ -3,7 +3,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import Header from './Header'
 import { createWinraidMock } from '../__mocks__/winraid'
 
-const CONNS = [{ id: 'c1', name: 'Kepler', icon: null }]
+const CONNS = [{ id: 'c1', name: 'Atlas', icon: null }]
 
 const ENTRIES = [
   { id: 1, ts: Date.now(), level: 'info', type: 'move', connectionId: 'c1',
@@ -39,7 +39,7 @@ describe('Header activity feed', () => {
     renderHeader()
     await waitFor(() => expect(screen.getByText('Moved photo.jpg')).toBeInTheDocument())
     expect(screen.getByText('→ /media/archive')).toBeInTheDocument()
-    expect(screen.getAllByText('Kepler').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Atlas').length).toBeGreaterThan(0)
   })
 
   it('renders a clickable entry as a button and navigates on click', async () => {
