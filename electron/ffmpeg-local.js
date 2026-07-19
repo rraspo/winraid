@@ -50,16 +50,30 @@ export async function findLocalFfmpeg({ dataDir, customPath }) {
 // Download the official static build, keep only ffmpeg.exe. Extraction uses
 // PowerShell Expand-Archive - the app ships on Windows only, so it is always
 // present and saves a zip dependency. `request` is electron net.request
-// (injected so this module stays importable outside Electron).
-export async function downloadFfmpeg({ dataDir, request, onProgress }) {
+// (injected so this module stays importable outside Electron). `signal` is
+// an optional AbortSignal letting the caller cancel an in-flight download.
+export async function downloadFfmpeg({ dataDir, request, onProgress, signal }) {
+  if (signal?.aborted) return { ok: false, canceled: true }
+
   const dir = join(dataDir, 'ffmpeg')
   const zipPath = join(dir, 'download.zip')
   const extractDir = join(dir, 'extract')
   mkdirSync(dir, { recursive: true })
 
+  let canceled = false
+  let onAbort
+
   try {
     await new Promise((resolve, reject) => {
       const req = request(FFMPEG_WIN64_URL)
+
+      onAbort = () => {
+        canceled = true
+        req.abort()
+        reject(new Error('Download canceled'))
+      }
+      signal?.addEventListener('abort', onAbort)
+
       req.on('response', (res) => {
         if (res.statusCode !== 200) return reject(new Error(`Download failed (HTTP ${res.statusCode})`))
         const total = Number(res.headers['content-length'] ?? 0)
@@ -99,8 +113,9 @@ export async function downloadFfmpeg({ dataDir, request, onProgress }) {
     if (!probe.available) throw new Error('The downloaded ffmpeg did not run')
     return { ok: true, path: finalPath, version: probe.version }
   } catch (err) {
-    return { ok: false, error: err.message }
+    return canceled ? { ok: false, canceled: true } : { ok: false, error: err.message }
   } finally {
+    signal?.removeEventListener('abort', onAbort)
     rmSync(zipPath, { force: true })
     rmSync(extractDir, { recursive: true, force: true })
   }

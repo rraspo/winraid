@@ -1806,6 +1806,7 @@ function registerIPC() {
   // renderer should offer to download or locate a local ffmpeg.
   let _localFfmpegPath = null
   let _ffmpegDownloadPromise = null
+  let _ffmpegDownloadController = null
 
   async function _resolveLocalFfmpeg() {
     if (_localFfmpegPath) return _localFfmpegPath
@@ -1847,21 +1848,33 @@ function registerIPC() {
 
   ipcMain.handle('trim:download-ffmpeg', async () => {
     if (!_ffmpegDownloadPromise) {
+      _ffmpegDownloadController = new AbortController()
       _ffmpegDownloadPromise = downloadFfmpeg({
         dataDir: app.getPath('userData'),
         request: (url) => net.request(url),
         onProgress: (pct) => mainWindow?.webContents.send('trim:download-progress', pct),
+        signal: _ffmpegDownloadController.signal,
       })
-      _ffmpegDownloadPromise.finally(() => { _ffmpegDownloadPromise = null })
+      _ffmpegDownloadPromise.finally(() => {
+        _ffmpegDownloadPromise = null
+        _ffmpegDownloadController = null
+      })
     }
     const res = await _ffmpegDownloadPromise
     if (res.ok) {
       _localFfmpegPath = res.path
       log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version})`)
+    } else if (res.canceled) {
+      log('info', 'ffmpeg download canceled')
     } else {
       log('error', `ffmpeg download failed: ${res.error}`)
     }
     return res
+  })
+
+  ipcMain.handle('trim:cancel-ffmpeg-download', async () => {
+    _ffmpegDownloadController?.abort()
+    return { ok: true }
   })
 
   ipcMain.handle('trim:locate-ffmpeg', async () => {

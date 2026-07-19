@@ -568,9 +568,10 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   async function handleFfmpegDownload() {
-    setTrimSetup({ phase: 'downloading', pct: 0 })
+    const canLocalTrim = trimSetup?.canLocalTrim ?? false
+    setTrimSetup({ phase: 'downloading', pct: 0, canLocalTrim })
     const unsubscribe = window.winraid?.remote.onFfmpegDownloadProgress?.((pct) =>
-      setTrimSetup({ phase: 'downloading', pct })
+      setTrimSetup({ phase: 'downloading', pct, canLocalTrim })
     )
     const res = await window.winraid?.remote.downloadFfmpeg?.()
     unsubscribe?.()
@@ -579,8 +580,10 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg ready — trims will run on your PC', type: 'success' })
       beginTrim()
+    } else if (res?.canceled) {
+      setTrimSetup({ phase: 'prompt', canLocalTrim })
     } else {
-      setTrimSetup({ phase: 'prompt', canLocalTrim: false, error: res?.error ?? 'Download failed' })
+      setTrimSetup({ phase: 'prompt', canLocalTrim, error: res?.error ?? 'Download failed' })
     }
   }
 
@@ -1344,6 +1347,12 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
                 <span className={styles.trimTime}>
                   Downloading ffmpeg… {Math.round((trimSetup.pct ?? 0) * 100)}%
                 </span>
+                <button
+                  className={modalStyles.modalCancel}
+                  onClick={() => window.winraid?.remote.cancelFfmpegDownload?.()}
+                >
+                  Cancel
+                </button>
               </div>
             ) : (
               <div className={modalStyles.modalActions}>

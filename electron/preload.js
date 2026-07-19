@@ -268,6 +268,8 @@ contextBridge.exposeInMainWorld('winraid', {
     trimCapability: (connId) => ipcRenderer.invoke('trim:capability', connId),
     /** One-time download of a static ffmpeg for local trims. */
     downloadFfmpeg: () => ipcRenderer.invoke('trim:download-ffmpeg'),
+    /** Abort an in-flight ffmpeg download started by downloadFfmpeg. */
+    cancelFfmpegDownload: () => ipcRenderer.invoke('trim:cancel-ffmpeg-download'),
     /** Subscribe to ffmpeg download progress (0..1). Returns unsubscribe. */
     onFfmpegDownloadProgress: (cb) => on('trim:download-progress', cb),
     /** Native picker for an existing ffmpeg.exe; validated and remembered. */

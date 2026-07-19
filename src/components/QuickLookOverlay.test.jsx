@@ -403,6 +403,31 @@ describe('QuickLookOverlay trim engine gate', () => {
     }
   })
 
+  it('offers Cancel while downloading, which aborts and returns to the intact prompt', async () => {
+    let resolveDownload
+    window.winraid = createWinraidMock({
+      remote: {
+        trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }),
+        downloadFfmpeg: vi.fn(() => new Promise((resolve) => { resolveDownload = resolve })),
+        cancelFfmpegDownload: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Download/ }))
+    await act(async () => {})
+    // Downloading phase: progress plus a way out
+    expect(screen.getByText(/Downloading ffmpeg/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(window.winraid.remote.cancelFfmpegDownload).toHaveBeenCalled()
+    await act(async () => { resolveDownload({ ok: false, canceled: true }) })
+    // Back at the prompt with the local-trim choice intact — no error banner, no trim mode
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Trim locally' })).toBeInTheDocument()
+    expect(document.querySelector('[class*="modalWarning"]')).toBeNull()
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+  })
 })
 
 describe('QuickLookOverlay trim playback preview', () => {
