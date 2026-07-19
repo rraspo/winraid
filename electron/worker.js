@@ -127,8 +127,10 @@ async function processJob(job) {
     // Delete the local source file when:
     //  - operation is 'move' (explicit move-and-delete), OR
     //  - folderMode is 'mirror_clean' (copy-then-clean-local, regardless of operation)
+    // A skipped transfer moved nothing this run, so it must never delete the
+    // source — the remote copy was not written by us and may be a stale stub.
     // NOTE: mirror_clean NEVER touches remote files — it only cleans the local side.
-    const shouldDeleteLocal = conn.operation === 'move' || conn.folderMode === 'mirror_clean'
+    const shouldDeleteLocal = !result?.skipped && (conn.operation === 'move' || conn.folderMode === 'mirror_clean')
     if (shouldDeleteLocal) {
       await unlink(job.srcPath).catch((err) =>
         log('warn', `Could not delete local source after transfer: ${err.message}`)
@@ -137,8 +139,10 @@ async function processJob(job) {
 
     // mirror_clean: also prune empty ancestor directories on the local watch
     // tree, unless the connection opts to keep its folder structure (e.g. a
-    // download client still expects the folders to exist).
-    if (shouldPruneEmptyDirs(conn)) {
+    // download client still expects the folders to exist). Gated on the same
+    // real-transfer condition as the unlink above: a skip left the file in
+    // place, so its directory is not ours to prune.
+    if (!result?.skipped && shouldPruneEmptyDirs(conn)) {
       await removeEmptyDirs(conn.localFolder, job.srcPath)
     }
   } catch (err) {

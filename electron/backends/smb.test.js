@@ -37,7 +37,8 @@ vi.mock('fs/promises', () => ({
   utimes:  vi.fn(() => Promise.resolve()),
 }))
 
-import { utimes } from 'fs/promises'
+import { access, stat, utimes } from 'fs/promises'
+import { createWriteStream } from 'fs'
 import { createSmbBackend } from './smb.js'
 
 describe('SMB backend — preserves source timestamps', () => {
@@ -64,5 +65,53 @@ describe('SMB backend — preserves source timestamps', () => {
     expect(destPath).toMatch(/photo\.jpg$/)
     expect(atime).toEqual(new Date('2026-01-15T10:00:00Z'))
     expect(mtime).toEqual(new Date('2025-06-01T08:30:00Z'))
+  })
+})
+
+// WR-01 acceptance: like SFTP, the SMB skip decision must be an integrity
+// check — a destination that merely exists (e.g. a 0-byte leftover from an
+// aborted copy) must not be treated as already-transferred.
+describe('SMB skip integrity (WR-01)', () => {
+  const LOCAL_SIZE = 4096
+  const cfg = { host: 'nas.local', share: 'media', remotePath: '\\photos' }
+  const job = {
+    srcPath:    'C:\\local\\photo.jpg',
+    filename:   'photo.jpg',
+    relPath:    'photo.jpg',
+    remoteDest: null,
+  }
+
+  // stat() must answer for both sides: UNC paths are the remote destination,
+  // anything else is the local source.
+  function statBySide(remoteSize) {
+    stat.mockImplementation((path) => Promise.resolve({
+      size:  String(path).startsWith('\\\\') ? remoteSize : LOCAL_SIZE,
+      atime: new Date('2026-01-15T10:00:00Z'),
+      mtime: new Date('2025-06-01T08:30:00Z'),
+    }))
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('copies instead of skipping when the destination exists with a DIFFERENT size', async () => {
+    access.mockResolvedValue(undefined) // destination exists...
+    statBySide(0)                       // ...but is a 0-byte stub
+
+    const result = await createSmbBackend(cfg).transfer({ ...job }, vi.fn())
+
+    expect(result?.skipped).not.toBe(true)
+    expect(createWriteStream).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips only when the destination size matches the source size', async () => {
+    access.mockResolvedValue(undefined)
+    statBySide(LOCAL_SIZE)
+
+    const result = await createSmbBackend(cfg).transfer({ ...job }, vi.fn())
+
+    expect(result).toEqual({ skipped: true })
+    expect(createWriteStream).not.toHaveBeenCalled()
   })
 })

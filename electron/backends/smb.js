@@ -33,18 +33,30 @@ async function transfer(cfg, job, onProgress) {
   const subPath  = win32.join(job.remoteDest ?? cfg.remotePath, job.relPath.replace(/\//g, '\\'))
   const destPath = win32.join(uncShare, subPath)
 
+  // Stat the source up front — needed for the skip check below and reused for
+  // the copy size and timestamp preservation, so we never stat it twice.
+  const localStat = await stat(job.srcPath)
+
+  // Skip only when the destination already holds a same-size copy. Existence
+  // alone is not proof of a completed transfer: a truncated or zero-byte
+  // leftover from an aborted copy would otherwise count as done and, under
+  // move / mirror_clean, cost us the only good local copy. Size equality is
+  // the integrity rule (no checksum — we own both ends and never partial-resume).
   try {
     await access(destPath)
-    log('info', `SMB skip (exists on remote): ${job.filename} → ${destPath}`)
-    return { skipped: true }
+    const remoteStat = await stat(destPath)
+    if (remoteStat.size === localStat.size) {
+      log('info', `SMB skip (already transferred): ${job.filename} → ${destPath}`)
+      return { skipped: true }
+    }
+    log('info', `SMB size mismatch, re-copying: ${job.filename} (local ${localStat.size} vs remote ${remoteStat.size})`)
   } catch {
-    // Does not exist — proceed with copy
+    // Absent destination — proceed with copy
   }
 
   const destDir = dirname(destPath)
   await mkdir(destDir, { recursive: true })
 
-  const localStat = await stat(job.srcPath)
   await copyWithProgress(job.srcPath, destPath, localStat.size, onProgress)
 
   // Preserve source timestamps — the stream copy otherwise leaves the
