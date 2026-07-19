@@ -80,3 +80,6 @@ CLAUDE.md
 *.tmp
 *.bak
 *.orig
+
+# Coverage output (vitest/c8)
+coverage/
