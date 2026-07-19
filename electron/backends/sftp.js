@@ -28,12 +28,21 @@ async function transfer(cfg, job, onProgress) {
     const remotePath = buildRemotePath(job.remoteDest ?? cfg.remotePath, job.relPath)
 
     log('info', `SFTP checking remote: ${remotePath}`)
+    // Skip only when the remote already holds a same-size copy. Existence alone
+    // is not proof of a completed transfer: a truncated or zero-byte leftover
+    // from an aborted run would otherwise count as done and, under move /
+    // mirror_clean, cost us the only good local copy. Size equality is the
+    // integrity rule (no checksum — we own both ends and never partial-resume).
     try {
-      await sftpStat(sftp, remotePath)
-      log('info', `SFTP skip (exists on remote): ${job.filename} → ${remotePath}`)
-      return { skipped: true }
+      const remoteStat = await sftpStat(sftp, remotePath)
+      const localStat = await stat(job.srcPath)
+      if (remoteStat.size === localStat.size) {
+        log('info', `SFTP skip (already transferred): ${job.filename} → ${remotePath}`)
+        return { skipped: true }
+      }
+      log('info', `SFTP size mismatch, re-uploading: ${job.filename} (local ${localStat.size} vs remote ${remoteStat.size})`)
     } catch {
-      // Does not exist — proceed with upload
+      // Absent (or unreadable) remote — proceed with upload
     }
 
     const remoteDir = posix.dirname(remotePath)
