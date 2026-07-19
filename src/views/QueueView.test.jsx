@@ -7,7 +7,7 @@ import QueueView from './QueueView'
 // Test data
 // ---------------------------------------------------------------------------
 const TEST_CONNECTIONS = [
-  { id: 'conn-1', name: 'Kepler', sftp: { host: '10.0.0.1', remotePath: '/mnt' } },
+  { id: 'conn-1', name: 'Atlas', sftp: { host: '10.0.0.1', remotePath: '/mnt' } },
 ]
 
 function makeJob(overrides = {}) {
@@ -174,7 +174,7 @@ describe('QueueView', () => {
     window.winraid.queue.list.mockResolvedValue([makeJob()])
 
     render(<QueueView connections={TEST_CONNECTIONS} />)
-    expect(await screen.findByText('Kepler')).toBeInTheDocument()
+    expect(await screen.findByText('Atlas')).toBeInTheDocument()
   })
 
   it('file column uses flex:1 and minWidth:0 (no magic numbers)', async () => {

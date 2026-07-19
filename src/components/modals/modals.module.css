@@ -183,9 +183,11 @@
 
 .modalWarning svg { flex-shrink: 0; margin-top: 2px; }
 
-/* Action row */
+/* Action row. Wraps so rows with many buttons (e.g. the trim-engine setup
+   dialog) reflow instead of shrinking buttons and spilling their labels. */
 .modalActions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-2);
   padding: 16px 24px;
@@ -196,6 +198,8 @@
 .modalCancel {
   padding: 0 16px;
   height: 34px;
+  flex-shrink: 0;
+  white-space: nowrap;
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--text-muted);
@@ -205,9 +209,27 @@
 
 .modalCancel:hover { color: var(--text); border-color: var(--text-faint); }
 
+/* Secondary real action — outlined, distinct from the muted Cancel dismissal. */
+.modalSecondary {
+  padding: 0 16px;
+  height: 34px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.modalSecondary:hover { color: var(--accent); border-color: var(--accent); }
+
 .modalConfirm {
   padding: 0 16px;
   height: 34px;
+  flex-shrink: 0;
+  white-space: nowrap;
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: var(--font-weight-medium);
@@ -222,6 +244,8 @@
 .modalConfirmAccent {
   padding: 0 16px;
   height: 34px;
+  flex-shrink: 0;
+  white-space: nowrap;
   border-radius: var(--radius-sm);
   font-size: 13px;
   font-weight: var(--font-weight-medium);

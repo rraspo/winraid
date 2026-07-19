@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { ffmpegTrimCommand, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe, FFMPEG_WIN64_URL } from './video-trim.js'
 
 describe('ffmpegTrimCommand', () => {
   const cmd = ffmpegTrimCommand({
@@ -27,6 +27,30 @@ describe('ffmpegTrimCommand', () => {
 
   it('rejects a path with control characters', () => {
     expect(() => ffmpegTrimCommand({ input: '/v/a\nb.mp4', output: '/v/o.mp4', start: 0, duration: 1 })).toThrow()
+  })
+})
+
+describe('ffmpegTrimArgs', () => {
+  it('mirrors the remote flags as an unquoted array for a local spawn', () => {
+    const args = ffmpegTrimArgs({
+      input: 'C:\\tmp dir\\in.mp4',
+      output: 'C:\\tmp dir\\out.mp4',
+      start: 1.5,
+      duration: 8.5,
+    })
+    expect(args).toEqual([
+      '-nostdin', '-y',
+      '-ss', '1.500',
+      '-i', 'C:\\tmp dir\\in.mp4',
+      '-t', '8.500',
+      '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero',
+      'C:\\tmp dir\\out.mp4',
+    ])
+  })
+
+  it('publishes a Windows static-build download URL', () => {
+    expect(FFMPEG_WIN64_URL).toMatch(/^https:\/\//)
+    expect(FFMPEG_WIN64_URL).toMatch(/\.zip$/)
   })
 })
 

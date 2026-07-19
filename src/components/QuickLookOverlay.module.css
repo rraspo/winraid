@@ -223,12 +223,56 @@
   cursor: default;
 }
 
-/* ── Inline trim toolbar (shown next to top-bar buttons in trim mode) ── */
+/* ── Trim mode: actions in the top bar, timeline below the video ── */
 .trimToolbar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
+}
+
+.trimBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding-top: var(--space-3);
+}
+
+.trimPlayBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.trimPlayBtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.trimPlayBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.trimPlayhead {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  transform: translateX(-50%);
+  background: var(--text);
+  border-radius: 1px;
+  pointer-events: none;
 }
 
 .trimTime {
@@ -444,6 +488,21 @@
   box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
   display: block;
   outline: none;
+}
+
+/* Column that shrink-wraps to the video's rendered width so the trim bar
+   below stays aligned with it */
+.videoCol {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Leave room for the trim bar below the video */
+.previewVideoTrimming {
+  max-height: calc(100vh - 200px);
 }
 
 /* ── Audio ───────────────────────────────────────────────────────────────── */

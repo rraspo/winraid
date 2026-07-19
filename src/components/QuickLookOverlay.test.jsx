@@ -220,16 +220,18 @@ describe('QuickLookOverlay trim icon', () => {
 
 describe('QuickLookOverlay trim toolbar', () => {
   // Enter trim mode with a known duration so the track can map position->time.
-  function enterTrim(duration = 12) {
+  // Entry is async: ffmpeg availability is probed before selection is enabled.
+  async function enterTrim(duration = 12) {
     renderOverlay()
     const video = document.querySelector('video')
     Object.defineProperty(video, 'duration', { configurable: true, value: duration })
     fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
     return video
   }
 
-  it('shows draggable in/out handles and no manual Set buttons', () => {
-    enterTrim()
+  it('shows draggable in/out handles and no manual Set buttons', async () => {
+    await enterTrim()
     expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
     expect(screen.getByRole('slider', { name: 'Trim end' })).toBeInTheDocument()
     expect(screen.getByTestId('trim-in')).toBeInTheDocument()
@@ -239,14 +241,14 @@ describe('QuickLookOverlay trim toolbar', () => {
     expect(screen.queryByLabelText('Set end')).toBeNull()
   })
 
-  it('defaults the in-point to 0 and the out-point to the full duration', () => {
-    enterTrim(12)
+  it('defaults the in-point to 0 and the out-point to the full duration', async () => {
+    await enterTrim(12)
     expect(screen.getByTestId('trim-in').textContent).toContain('00:00')
     expect(screen.getByTestId('trim-out').textContent).toContain('00:12')
   })
 
-  it('dragging the end handle updates the out-point from the pointer position', () => {
-    enterTrim(100)
+  it('dragging the end handle updates the out-point from the pointer position', async () => {
+    await enterTrim(100)
     const track = screen.getByTestId('trim-track')
     track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
     const endHandle = screen.getByRole('slider', { name: 'Trim end' })
@@ -256,11 +258,243 @@ describe('QuickLookOverlay trim toolbar', () => {
     expect(screen.getByTestId('trim-out').textContent).toContain('00:50')
   })
 
-  it('adjusts a handle with arrow keys for keyboard accessibility', () => {
-    enterTrim(100) // out defaults to 100s (01:40)
+  it('adjusts a handle with arrow keys for keyboard accessibility', async () => {
+    await enterTrim(100) // out defaults to 100s (01:40)
     const endHandle = screen.getByRole('slider', { name: 'Trim end' })
     fireEvent.keyDown(endHandle, { key: 'ArrowLeft' })
     expect(screen.getByTestId('trim-out').textContent).toContain('01:39')
+  })
+
+  it('renders one timeline below the video instead of a second slider in the header', async () => {
+    const video = await enterTrim()
+    const bar = screen.getByTestId('trim-bar')
+    expect(bar.contains(screen.getByTestId('trim-track'))).toBe(true)
+    // The bar follows the video in document order (sits under it, not in the header)
+    expect(video.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(video.parentElement.contains(bar)).toBe(true)
+  })
+
+  it('hides the native video controls while trimming and restores them on cancel', async () => {
+    const video = await enterTrim()
+    expect(video.controls).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(video.controls).toBe(true)
+  })
+})
+
+describe('QuickLookOverlay trim engine gate', () => {
+  it('checks capability on the Trim click and enters when the NAS has ffmpeg', async () => {
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(window.winraid.remote.trimCapability).toHaveBeenCalledWith('c1')
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('offers the local-trim choice when only this PC has ffmpeg, and remembers it', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    // Dialog first, not straight into selection
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Trim locally' }))
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+    // Leave trim mode, re-enter: choice is remembered, no dialog
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('offers download/locate but no local-trim choice when no engine exists', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Download/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Locate on this PC/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Trim locally' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+  })
+
+  it('downloading from the prompt enters trim mode once ffmpeg is ready', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Download/ }))
+    await act(async () => {})
+    expect(window.winraid.remote.downloadFfmpeg).toHaveBeenCalled()
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('locating an ffmpeg enters trim mode, and canceling the picker keeps the prompt', async () => {
+    window.winraid = createWinraidMock({
+      remote: {
+        trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }),
+        locateFfmpeg: vi.fn()
+          .mockResolvedValueOnce({ ok: true, canceled: true })
+          .mockResolvedValueOnce({ ok: true, path: 'C:/tools/ffmpeg.exe' }),
+      },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Locate on this PC/ }))
+    await act(async () => {})
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Locate on this PC/ }))
+    await act(async () => {})
+    expect(screen.queryByTestId('trim-setup-modal')).toBeNull()
+    expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  it('drops the zoom cursor while trimming', async () => {
+    renderOverlay()
+    const area = document.querySelector('[class*="previewArea"]')
+    expect(area.className).toMatch(/previewAreaZoom/)
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(area.className).not.toMatch(/previewAreaZoom/)
+    expect(area.className).not.toMatch(/previewAreaScroll/)
+  })
+
+  it('styles the primary and secondary choices distinctly when no engine exists', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    const download = screen.getByRole('button', { name: /Download/ })
+    const locate   = screen.getByRole('button', { name: /Locate on this PC/ })
+    const cancel   = screen.getByRole('button', { name: 'Cancel' })
+    // Downloading is the primary path here: accent, never the destructive red
+    expect(download.className).toMatch(/modalConfirmAccent/)
+    // A real action must not look like a dismissal
+    expect(locate.className).toMatch(/modalSecondary/)
+    expect(cancel.className).toMatch(/modalCancel/)
+    expect(locate.className).not.toBe(cancel.className)
+  })
+
+  it('styles Trim locally as the accent primary and never uses the destructive red', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'Trim locally' }).className).toMatch(/modalConfirmAccent/)
+    expect(screen.getByRole('button', { name: /Download/ }).className).toMatch(/modalSecondary/)
+    for (const btn of screen.getAllByRole('button')) {
+      expect(btn.className).not.toMatch(/modalConfirm(?!Accent)/)
+    }
+  })
+
+  it('offers Cancel while downloading, which aborts and returns to the intact prompt', async () => {
+    let resolveDownload
+    window.winraid = createWinraidMock({
+      remote: {
+        trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }),
+        downloadFfmpeg: vi.fn(() => new Promise((resolve) => { resolveDownload = resolve })),
+        cancelFfmpegDownload: vi.fn().mockResolvedValue({ ok: true }),
+      },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: /Download/ }))
+    await act(async () => {})
+    // Downloading phase: progress plus a way out
+    expect(screen.getByText(/Downloading ffmpeg/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(window.winraid.remote.cancelFfmpegDownload).toHaveBeenCalled()
+    await act(async () => { resolveDownload({ ok: false, canceled: true }) })
+    // Back at the prompt with the local-trim choice intact — no error banner, no trim mode
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Trim locally' })).toBeInTheDocument()
+    expect(document.querySelector('[class*="modalWarning"]')).toBeNull()
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+  })
+})
+
+describe('QuickLookOverlay trim playback preview', () => {
+  async function enterTrimWithMedia(duration = 100) {
+    renderOverlay()
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: duration })
+    video.play  = vi.fn(() => { video._paused = false })
+    video.pause = vi.fn(() => { video._paused = true })
+    Object.defineProperty(video, 'paused', { configurable: true, get: () => video._paused !== false })
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    return video
+  }
+
+  it('shows a playhead on the trim track', async () => {
+    await enterTrimWithMedia()
+    expect(screen.getByTestId('trim-playhead')).toBeInTheDocument()
+  })
+
+  it('dragging the bare track scrubs the playhead without moving the handles', async () => {
+    const video = await enterTrimWithMedia(100)
+    const track = screen.getByTestId('trim-track')
+    track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
+    fireEvent.pointerDown(track, { pointerId: 1, clientX: 150 })
+    expect(video.currentTime).toBe(75)
+    fireEvent.pointerMove(track, { pointerId: 1, clientX: 180 })
+    expect(video.currentTime).toBe(90)
+    fireEvent.pointerUp(track, { pointerId: 1, clientX: 180 })
+    // Selection is untouched: scrubbing only moves the play index
+    expect(screen.getByTestId('trim-in').textContent).toContain('00:00')
+    expect(screen.getByTestId('trim-out').textContent).toContain('01:40')
+  })
+
+  it('play button starts the preview from the in-point', async () => {
+    const video = await enterTrimWithMedia(100)
+    // Move the in-point to 25s, then play: preview must start at the in-point
+    const track = screen.getByTestId('trim-track')
+    track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
+    const startHandle = screen.getByRole('slider', { name: 'Trim start' })
+    fireEvent.pointerDown(startHandle, { pointerId: 1, clientX: 0 })
+    fireEvent.pointerMove(startHandle, { pointerId: 1, clientX: 50 }) // 25% of 200px -> 25s
+    fireEvent.pointerUp(startHandle, { pointerId: 1, clientX: 50 })
+    video.currentTime = 0
+    fireEvent.click(screen.getByRole('button', { name: 'Play selection' }))
+    expect(video.currentTime).toBe(25)
+    expect(video.play).toHaveBeenCalled()
+  })
+
+  it('pauses the preview when playback reaches the out-point', async () => {
+    const video = await enterTrimWithMedia(100)
+    const track = screen.getByTestId('trim-track')
+    track.getBoundingClientRect = () => ({ left: 0, width: 200, right: 200, top: 0, bottom: 6, height: 6, x: 0, y: 0 })
+    const endHandle = screen.getByRole('slider', { name: 'Trim end' })
+    fireEvent.pointerDown(endHandle, { pointerId: 1, clientX: 200 })
+    fireEvent.pointerMove(endHandle, { pointerId: 1, clientX: 100 }) // out = 50s
+    fireEvent.pointerUp(endHandle, { pointerId: 1, clientX: 100 })
+    fireEvent.click(screen.getByRole('button', { name: 'Play selection' }))
+    video.currentTime = 51
+    fireEvent.timeUpdate(video)
+    expect(video.pause).toHaveBeenCalled()
+  })
+
+  it('space toggles play/pause while trimming instead of being locked', async () => {
+    const video = await enterTrimWithMedia(100)
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(video.play).toHaveBeenCalled()
   })
 })
 
@@ -282,6 +516,7 @@ describe('QuickLookOverlay trim save', () => {
     const video = document.querySelector('video')
     Object.defineProperty(video, 'duration', { configurable: true, value: 12 })
     fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
     await waitFor(() => expect(trimVideo).toHaveBeenCalled())
     expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
@@ -301,6 +536,7 @@ describe('QuickLookOverlay trim save', () => {
     const video = document.querySelector('video')
     Object.defineProperty(video, 'duration', { configurable: true, value: 8 })
     fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
     await waitFor(() => expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
       path: '/v/clip.mp4', outPath: '/v/clip.mp4', start: 0, end: 8,

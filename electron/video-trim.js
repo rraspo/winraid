@@ -18,6 +18,23 @@ export function ffmpegTrimCommand({ input, output, start, duration }) {
   ].join(' ')
 }
 
+// Same trim as ffmpegTrimCommand but as an argv array for a local spawn —
+// no shell, so paths need no quoting.
+export function ffmpegTrimArgs({ input, output, start, duration }) {
+  return [
+    '-nostdin', '-y',
+    '-ss', fmtSecs(start),
+    '-i', input,
+    '-t', fmtSecs(duration),
+    '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero',
+    output,
+  ]
+}
+
+// Official Windows static build (linked from ffmpeg.org). The zip nests
+// <build-name>/bin/ffmpeg.exe.
+export const FFMPEG_WIN64_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+
 export function probeFfmpegCommand() {
   return 'ffmpeg -version'
 }

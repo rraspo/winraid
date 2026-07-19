@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera, Scissors } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera, Scissors, Play, Pause, AlertCircle } from 'lucide-react'
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
 import ProgressRing from './ui/ProgressRing'
 import PdfPreview from './PdfPreview'
 import styles from './QuickLookOverlay.module.css'
+import modalStyles from './modals/modals.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt } from '../utils/fileTypes'
 import { nasStreamUrl } from '../utils/nasStream'
@@ -220,7 +221,7 @@ function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onL
   )
 }
 
-function VideoPreview({ src, loop, zoom, pan, mediaRef }) {
+function VideoPreview({ src, loop, zoom, pan, mediaRef, trimming, trimBar }) {
   const videoRef = useRef(null)
 
   // Restore saved volume/muted on mount
@@ -242,16 +243,19 @@ function VideoPreview({ src, loop, zoom, pan, mediaRef }) {
 
   return (
     <div className={styles.mediaWrap}>
-      <video
-        ref={(el) => { videoRef.current = el; if (mediaRef) mediaRef.current = el }}
-        className={styles.previewVideo}
-        src={src}
-        controls
-        autoPlay
-        loop={loop}
-        onVolumeChange={handleVolumeChange}
-        style={panStyle(zoom, pan)}
-      />
+      <div className={styles.videoCol}>
+        <video
+          ref={(el) => { videoRef.current = el; if (mediaRef) mediaRef.current = el }}
+          className={[styles.previewVideo, trimming ? styles.previewVideoTrimming : ''].filter(Boolean).join(' ')}
+          src={src}
+          controls={!trimming}
+          autoPlay
+          loop={loop}
+          onVolumeChange={handleVolumeChange}
+          style={panStyle(zoom, pan)}
+        />
+        {trimBar}
+      </div>
     </div>
   )
 }
@@ -428,9 +432,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   // Arrow key navigation + spacebar play/pause (Escape is handled in useBrowse)
   useEffect(() => {
     function onKeyDown(e) {
-      // While trimming, lock everything except Escape (which exits trim mode)
+      // While trimming, lock everything except Escape (exits trim mode) and
+      // space (previews the selection)
       if (latestRef.current.trimming) {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitTrimMode(); return }
+        if (e.key === ' ')      { e.preventDefault(); e.stopPropagation(); toggleTrimPlay(); return }
         return
       }
       // While cropping, lock everything except Escape (which exits crop mode)
@@ -475,6 +481,10 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimOut,    setTrimOut]    = useState(0)
   const [trimDur,    setTrimDur]    = useState(0)
   const [trimSaving, setTrimSaving] = useState(false)
+  const [trimPos,     setTrimPos]     = useState(0)
+  const [trimPlaying, setTrimPlaying] = useState(false)
+  const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', canLocalTrim?, pct?, error? }
+  const trimLocalAckRef = useRef(false)  // 'Trim locally' chosen once this session
   const [snapMsg, setSnapMsg] = useState(null)
   const snapMsgTimerRef = useRef(null)
   const cropImgRef     = useRef(null)
@@ -487,6 +497,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const latestRef         = useRef({})
   const trimTrackRef      = useRef(null)
   const trimDragRef       = useRef(null)   // 'start' | 'end' | null while dragging a handle
+  const trimRangeRef      = useRef({ in: 0, out: 0 })  // current selection for stable listeners
   const type = file ? fileType(file.name) : 'unknown'
   latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, type }
 
@@ -519,27 +530,152 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   // ── Trim handlers ──────────────────────────────────────────────────────────
-  function enterTrimMode() {
-    const dur = mediaRef.current?.duration
+  function beginTrim() {
+    const v = mediaRef.current
+    const dur = v?.duration
     const safe = Number.isFinite(dur) ? dur : 0
+    v?.pause?.()
     setTrimFile(file)
     setTrimIn(0)
     setTrimOut(safe)
     setTrimDur(safe)
+    setTrimPos(Number.isFinite(v?.currentTime) ? v.currentTime : 0)
+    setTrimPlaying(false)
     setTrimming(true)
+  }
+
+  // Gate on an available trim engine before letting the user pick a range —
+  // otherwise the failure would only surface at save time. Without NAS
+  // ffmpeg a dialog offers the choices (trim locally / locate / download);
+  // "trim locally" is remembered for the rest of the session.
+  async function enterTrimMode() {
+    const cap = await window.winraid?.remote.trimCapability?.(connectionId)
+    if (!cap?.ok) {
+      toast.show({ msg: cap?.error ?? 'Could not check trim support', type: 'error' })
+      return
+    }
+    if (cap.mode === 'server' || (cap.mode === 'local' && trimLocalAckRef.current)) {
+      beginTrim()
+      return
+    }
+    setTrimSetup({ phase: 'prompt', canLocalTrim: cap.mode === 'local' })
+  }
+
+  function handleLocalTrimChoice() {
+    trimLocalAckRef.current = true
+    setTrimSetup(null)
+    beginTrim()
+  }
+
+  async function handleFfmpegDownload() {
+    const canLocalTrim = trimSetup?.canLocalTrim ?? false
+    setTrimSetup({ phase: 'downloading', pct: 0, canLocalTrim })
+    const unsubscribe = window.winraid?.remote.onFfmpegDownloadProgress?.((pct) =>
+      setTrimSetup({ phase: 'downloading', pct, canLocalTrim })
+    )
+    const res = await window.winraid?.remote.downloadFfmpeg?.()
+    unsubscribe?.()
+    if (res?.ok) {
+      trimLocalAckRef.current = true
+      setTrimSetup(null)
+      toast.show({ msg: 'ffmpeg ready — trims will run on your PC', type: 'success' })
+      beginTrim()
+    } else if (res?.canceled) {
+      setTrimSetup({ phase: 'prompt', canLocalTrim })
+    } else {
+      setTrimSetup({ phase: 'prompt', canLocalTrim, error: res?.error ?? 'Download failed' })
+    }
+  }
+
+  async function handleFfmpegLocate() {
+    const res = await window.winraid?.remote.locateFfmpeg?.()
+    if (res?.canceled) return
+    if (res?.ok) {
+      trimLocalAckRef.current = true
+      setTrimSetup(null)
+      toast.show({ msg: 'ffmpeg found — trims will run on your PC', type: 'success' })
+      beginTrim()
+    } else {
+      setTrimSetup((prev) => ({ phase: 'prompt', canLocalTrim: prev?.canLocalTrim ?? false, error: res?.error ?? 'That file did not work' }))
+    }
   }
 
   function exitTrimMode() {
     setTrimming(false)
     setTrimFile(null)
     setTrimSaving(false)
+    setTrimPlaying(false)
+  }
+
+  trimRangeRef.current = { in: trimIn, out: trimOut }
+
+  // Track the playhead and clamp the preview to the selection: reaching the
+  // out-point pauses, so play shows exactly what would be saved.
+  useEffect(() => {
+    if (!trimming) return undefined
+    const v = mediaRef.current
+    if (!v) return undefined
+    const onTime = () => {
+      const t = v.currentTime
+      setTrimPos(Number.isFinite(t) ? t : 0)
+      if (!v.paused && t >= trimRangeRef.current.out) v.pause()
+    }
+    const onPlay  = () => setTrimPlaying(true)
+    const onPause = () => setTrimPlaying(false)
+    v.addEventListener('timeupdate', onTime)
+    v.addEventListener('play', onPlay)
+    v.addEventListener('pause', onPause)
+    return () => {
+      v.removeEventListener('timeupdate', onTime)
+      v.removeEventListener('play', onPlay)
+      v.removeEventListener('pause', onPause)
+    }
+  }, [trimming, mediaRef])
+
+  function toggleTrimPlay() {
+    const v = mediaRef.current
+    if (!v) return
+    if (v.paused) {
+      const { in: start, out: end } = trimRangeRef.current
+      if (!Number.isFinite(v.currentTime) || v.currentTime < start || v.currentTime >= end) {
+        try { v.currentTime = start } catch { /* not seekable yet */ }
+        setTrimPos(start)
+      }
+      const p = v.play()
+      p?.catch?.(() => {})
+    } else {
+      v.pause()
+    }
   }
 
   // Seek the preview so the user sees the exact frame at the handle they move.
   function seekPreview(t) {
     if (mediaRef.current && Number.isFinite(t)) {
       try { mediaRef.current.currentTime = t } catch { /* not seekable yet */ }
+      setTrimPos(t)
     }
+  }
+
+  // Pressing anywhere on the track except a handle scrubs the playhead, and
+  // keeps scrubbing while the pointer is dragged — jumping straight to the
+  // end of the selection beats waiting for playback to get there.
+  function handleTrackPointerDown(e) {
+    if (trimSaving || e.target.closest('button')) return
+    e.preventDefault()
+    trimDragRef.current = 'scrub'
+    trimTrackRef.current?.setPointerCapture?.(e.pointerId)
+    seekPreview(timeFromClientX(e.clientX))
+  }
+
+  function handleTrackPointerMove(e) {
+    if (trimDragRef.current !== 'scrub') return
+    seekPreview(timeFromClientX(e.clientX))
+  }
+
+  function handleTrackPointerUp(e) {
+    if (trimDragRef.current !== 'scrub') return
+    trimDragRef.current = null
+    trimTrackRef.current?.releasePointerCapture?.(e.pointerId)
   }
 
   // Map a pointer x-coordinate to a time on the trim track.
@@ -921,6 +1057,74 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     window.winraid?.showImageContextMenu?.(connectionId, target.path)
   }
 
+  // Single trim timeline, rendered directly below the video where the native
+  // seekbar would be (native controls are hidden while trimming).
+  const trimBar = trimming ? (
+    <div className={styles.trimBar} data-testid="trim-bar">
+      <button
+        type="button"
+        className={styles.trimPlayBtn}
+        onClick={toggleTrimPlay}
+        disabled={trimSaving}
+        aria-label={trimPlaying ? 'Pause preview' : 'Play selection'}
+      >
+        {trimPlaying ? <Pause size={14} /> : <Play size={14} />}
+      </button>
+      <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
+      <div
+        className={styles.trimTrack}
+        data-testid="trim-track"
+        ref={trimTrackRef}
+        onPointerDown={handleTrackPointerDown}
+        onPointerMove={handleTrackPointerMove}
+        onPointerUp={handleTrackPointerUp}
+      >
+        <div
+          className={styles.trimSelected}
+          style={{ left: `${trimPct(trimIn)}%`, right: `${100 - trimPct(trimOut)}%` }}
+        />
+        <div
+          className={styles.trimPlayhead}
+          data-testid="trim-playhead"
+          style={{ left: `${trimPct(Math.min(trimPos, trimDur))}%` }}
+        />
+        <button
+          type="button"
+          className={`${styles.trimHandle} ${styles.trimHandleStart}`}
+          style={{ left: `${trimPct(trimIn)}%` }}
+          role="slider"
+          aria-label="Trim start"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(trimDur)}
+          aria-valuenow={Math.round(trimIn)}
+          aria-valuetext={fmtClock(trimIn)}
+          disabled={trimSaving}
+          onPointerDown={handleDragDown('start')}
+          onPointerMove={handleDragMove('start')}
+          onPointerUp={handleDragUp}
+          onKeyDown={handleHandleKey('start')}
+        />
+        <button
+          type="button"
+          className={`${styles.trimHandle} ${styles.trimHandleEnd}`}
+          style={{ left: `${trimPct(trimOut)}%` }}
+          role="slider"
+          aria-label="Trim end"
+          aria-valuemin={0}
+          aria-valuemax={Math.round(trimDur)}
+          aria-valuenow={Math.round(trimOut)}
+          aria-valuetext={fmtClock(trimOut)}
+          disabled={trimSaving}
+          onPointerDown={handleDragDown('end')}
+          onPointerMove={handleDragMove('end')}
+          onPointerUp={handleDragUp}
+          onKeyDown={handleHandleKey('end')}
+        />
+      </div>
+      <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
+    </div>
+  ) : null
+
   function renderPreview() {
     if (cropping && type === 'image') {
       return (
@@ -938,7 +1142,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
     switch (type) {
       case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} onContextMenu={handleImageContextMenu} />
-      case 'video': return <VideoPreview src={src} loop={loop} zoom={zoom} pan={pan} mediaRef={mediaRef} />
+      case 'video': return <VideoPreview src={src} loop={loop && !trimming} zoom={zoom} pan={pan} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} />
       case 'audio': return <AudioPreview file={file} src={src} />
       case 'pdf':   return <PdfPreview src={src} />
       case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
@@ -1048,46 +1252,6 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         )}
         {trimming && (
           <div className={styles.trimToolbar}>
-            <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
-            <div className={styles.trimTrack} data-testid="trim-track" ref={trimTrackRef}>
-              <div
-                className={styles.trimSelected}
-                style={{ left: `${trimPct(trimIn)}%`, right: `${100 - trimPct(trimOut)}%` }}
-              />
-              <button
-                type="button"
-                className={`${styles.trimHandle} ${styles.trimHandleStart}`}
-                style={{ left: `${trimPct(trimIn)}%` }}
-                role="slider"
-                aria-label="Trim start"
-                aria-valuemin={0}
-                aria-valuemax={Math.round(trimDur)}
-                aria-valuenow={Math.round(trimIn)}
-                aria-valuetext={fmtClock(trimIn)}
-                disabled={trimSaving}
-                onPointerDown={handleDragDown('start')}
-                onPointerMove={handleDragMove('start')}
-                onPointerUp={handleDragUp}
-                onKeyDown={handleHandleKey('start')}
-              />
-              <button
-                type="button"
-                className={`${styles.trimHandle} ${styles.trimHandleEnd}`}
-                style={{ left: `${trimPct(trimOut)}%` }}
-                role="slider"
-                aria-label="Trim end"
-                aria-valuemin={0}
-                aria-valuemax={Math.round(trimDur)}
-                aria-valuenow={Math.round(trimOut)}
-                aria-valuetext={fmtClock(trimOut)}
-                disabled={trimSaving}
-                onPointerDown={handleDragDown('end')}
-                onPointerMove={handleDragMove('end')}
-                onPointerUp={handleDragUp}
-                onKeyDown={handleHandleKey('end')}
-              />
-            </div>
-            <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
             <button className={styles.cropCancelBtn} onClick={exitTrimMode} disabled={trimSaving}>Cancel</button>
             <button className={styles.cropSaveBtn} onClick={() => handleTrimSave(false)} disabled={trimSaving || trimOut <= trimIn}>Save as new</button>
             <button className={styles.cropOverwriteBtn} onClick={() => handleTrimSave(true)} disabled={trimSaving || trimOut <= trimIn}>Overwrite</button>
@@ -1124,9 +1288,9 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           ref={previewAreaRef}
           className={[
             styles.previewArea,
-            wheelMode === 'zoom' ? styles.previewAreaZoom : styles.previewAreaScroll,
-          ].join(' ')}
-          style={zoom > 1 ? { cursor: 'crosshair' } : undefined}
+            trimming ? '' : (wheelMode === 'zoom' ? styles.previewAreaZoom : styles.previewAreaScroll),
+          ].filter(Boolean).join(' ')}
+          style={zoom > 1 && !trimming ? { cursor: 'crosshair' } : undefined}
         >
           {renderPreview()}
         </div>
@@ -1152,6 +1316,62 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       )}
 
       {snapMsg && <div className={styles.snapToast}>{snapMsg}</div>}
+
+      {/* Trim engine setup: no ffmpeg on the NAS or this PC */}
+      {trimSetup && (
+        <div className={modalStyles.modalOverlay} data-testid="trim-setup-modal">
+          <div className={modalStyles.modal}>
+            <div className={modalStyles.modalHeader}>
+              <span className={modalStyles.modalIconWrap}><Scissors size={20} /></span>
+              <div>
+                <h2 className={modalStyles.modalTitle}>The NAS has no ffmpeg</h2>
+                <p className={modalStyles.modalSubtitle}>
+                  The cut can still happen on this PC: WinRaid downloads the
+                  video, trims it locally, and uploads the result.{' '}
+                  {trimSetup.canLocalTrim
+                    ? 'An ffmpeg is already available on this PC.'
+                    : 'That needs an ffmpeg on this PC — download the official build once (~80 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
+                </p>
+              </div>
+            </div>
+
+            {trimSetup.error && (
+              <div className={modalStyles.modalWarning}>
+                <AlertCircle size={14} />
+                <span>{trimSetup.error}</span>
+              </div>
+            )}
+
+            {trimSetup.phase === 'downloading' ? (
+              <div className={modalStyles.modalActions}>
+                <span className={styles.trimTime}>
+                  Downloading ffmpeg… {Math.round((trimSetup.pct ?? 0) * 100)}%
+                </span>
+                <button
+                  className={modalStyles.modalCancel}
+                  onClick={() => window.winraid?.remote.cancelFfmpegDownload?.()}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className={modalStyles.modalActions}>
+                <button className={modalStyles.modalCancel} onClick={() => setTrimSetup(null)}>Cancel</button>
+                <button className={modalStyles.modalSecondary} onClick={handleFfmpegLocate}>Locate on this PC…</button>
+                <button
+                  className={trimSetup.canLocalTrim ? modalStyles.modalSecondary : modalStyles.modalConfirmAccent}
+                  onClick={handleFfmpegDownload}
+                >
+                  Download (~80 MB)
+                </button>
+                {trimSetup.canLocalTrim && (
+                  <button className={modalStyles.modalConfirmAccent} onClick={handleLocalTrimChoice}>Trim locally</button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   )
