@@ -1,9 +1,8 @@
-import { Client } from 'ssh2'
-import { readFile, stat } from 'fs/promises'
+import { stat } from 'fs/promises'
 import { posix } from 'path'
-import { homedir } from 'os'
 import { log } from '../logger.js'
 import { setSftpTimestamps } from '../sftp-helpers.js'
+import { createSshConnection } from '../ssh-connection.js'
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -60,34 +59,15 @@ async function transfer(cfg, job, onProgress) {
 // ---------------------------------------------------------------------------
 
 async function connect(cfg) {
-  const connectOpts = {
-    host:     cfg.host,
-    port:     cfg.port ?? 22,
-    username: cfg.username,
-    // Retry aggressively once — the connection should be fast on LAN
-    readyTimeout: 10_000,
-  }
-
-  if (cfg.keyPath) {
-    const resolvedKeyPath = cfg.keyPath.replace(/^~/, homedir())
-    connectOpts.privateKey = await readFile(resolvedKeyPath)
-  } else {
-    connectOpts.password = cfg.password
-  }
+  // Connection setup (config, tilde-expanded key, ready/error) is centralized
+  // in ssh-connection.js (WR-36); here we just open the SFTP channel on top.
+  const conn = await createSshConnection(cfg, { readyTimeout: 10_000 })
 
   return new Promise((resolve, reject) => {
-    const conn = new Client()
-
-    conn.on('error', reject)
-
-    conn.on('ready', () => {
-      conn.sftp((err, sftp) => {
-        if (err) { conn.end(); return reject(err) }
-        resolve({ conn, sftp })
-      })
+    conn.sftp((err, sftp) => {
+      if (err) { conn.end(); return reject(err) }
+      resolve({ conn, sftp })
     })
-
-    conn.connect(connectOpts)
   })
 }
 

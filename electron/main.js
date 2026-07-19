@@ -1164,35 +1164,13 @@ function registerIPC() {
   ipcMain.handle('ssh:test', async (_e, cfg) => {
     try {
       validateCfg(cfg)
-      const { Client } = await import('ssh2')
-
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try {
-          privateKey = readFileSync(kp)
-        } catch (e) {
-          return { ok: false, error: `Cannot read key file: ${e.message}` }
-        }
-      }
-
-      return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => { conn.end(); resolve({ ok: true }) })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
-      })
+      const { createSshConnection } = await import('./ssh-connection.js')
+      const conn = await createSshConnection(cfg, { readyTimeout: 10_000 })
+      conn.end()
+      return { ok: true }
     } catch (err) {
+      // Covers validation, the tagged "Cannot read key file: ..." message, and
+      // ssh2 connect errors — all surfaced verbatim as before.
       return { ok: false, error: err.message }
     }
   })
@@ -2268,33 +2246,17 @@ function registerIPC() {
     }
     const sftpCfg = activeConn.sftp
 
-    const { Client } = await import('ssh2')
-    let privateKey
-    if (sftpCfg.keyPath) {
-      const kp = sftpCfg.keyPath.startsWith('~')
-        ? join(homedir(), sftpCfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-        : sftpCfg.keyPath
-      try { privateKey = readFileSync(kp) }
-      catch (e) { return { ok: false, error: `Cannot read key file: ${e.message}` } }
-    }
-
     let conn, sftp
     try {
-      ({ conn, sftp } = await new Promise((resolve, reject) => {
-        const c = new Client()
-        c.on('ready', () =>
-          c.sftp((err, s) => { if (err) { c.end(); reject(err) } else resolve({ conn: c, sftp: s }) })
-        ).on('error', reject)
-         .connect({
-          host:         sftpCfg.host,
-          port:         sftpCfg.port || 22,
-          username:     sftpCfg.username,
-          password:     sftpCfg.password?.trim() || undefined,
-          privateKey:   privateKey || undefined,
-          readyTimeout: 15_000,
-        })
-      }))
+      const { createSshConnection } = await import('./ssh-connection.js')
+      conn = await createSshConnection(sftpCfg, { readyTimeout: 15_000 })
+      sftp = await new Promise((resolve, reject) => {
+        conn.sftp((err, s) => { if (err) { conn.end(); reject(err) } else resolve(s) })
+      })
     } catch (err) {
+      // A key-read failure keeps its own message (no "SSH connection failed"
+      // prefix, no log) exactly as before; connect/sftp errors are wrapped.
+      if (err.code === 'KEY_READ_FAILED') return { ok: false, error: err.message }
       log('error', `Backup: SSH connection failed — ${err.message}`)
       return { ok: false, error: `SSH connection failed: ${err.message}` }
     }
@@ -2402,44 +2364,20 @@ function registerIPC() {
       return { ok: false, error: err.message }
     }
     try {
-      const { Client } = await import('ssh2')
-
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try {
-          privateKey = readFileSync(kp)
-        } catch (e) {
-          return { ok: false, error: `Cannot read key file: ${e.message}` }
-        }
-      }
-
-      return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp((err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-              sftp.mkdir(dirPath, (err2) => {
-                conn.end()
-                if (err2) return resolve({ ok: false, error: err2.message })
-                resolve({ ok: true })
-              })
-            })
+      const { createSshConnection } = await import('./ssh-connection.js')
+      const conn = await createSshConnection(cfg, { readyTimeout: 10_000 })
+      return await new Promise((resolve) => {
+        conn.sftp((err, sftp) => {
+          if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
+          sftp.mkdir(dirPath, (err2) => {
+            conn.end()
+            if (err2) return resolve({ ok: false, error: err2.message })
+            resolve({ ok: true })
           })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
+        })
       })
     } catch (err) {
+      // key-read ("Cannot read key file: ...") and connect errors, verbatim
       return { ok: false, error: err.message }
     }
   })
@@ -2452,58 +2390,34 @@ function registerIPC() {
       return { ok: false, error: err.message }
     }
     try {
-      const { Client } = await import('ssh2')
+      const { createSshConnection } = await import('./ssh-connection.js')
+      const conn = await createSshConnection(cfg, { readyTimeout: 10_000 })
+      return await new Promise((resolve) => {
+        conn.sftp((err, sftp) => {
+          if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
 
-      let privateKey
-      if (cfg.keyPath) {
-        const kp = cfg.keyPath.startsWith('~')
-          ? join(homedir(), cfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-          : cfg.keyPath
-        try {
-          privateKey = readFileSync(kp)
-        } catch (e) {
-          return { ok: false, error: `Cannot read key file: ${e.message}` }
-        }
-      }
+          const dirPath = cfg.remotePath || '/'
+          sftp.readdir(dirPath, (err, list) => {
+            conn.end()
+            if (err) return resolve({ ok: false, error: err.message })
 
-      return new Promise((resolve) => {
-        const conn = new Client()
-        conn
-          .on('ready', () => {
-            conn.sftp((err, sftp) => {
-              if (err) { conn.end(); return resolve({ ok: false, error: err.message }) }
-
-              const dirPath = cfg.remotePath || '/'
-              sftp.readdir(dirPath, (err, list) => {
-                conn.end()
-                if (err) return resolve({ ok: false, error: err.message })
-
-                const entries = list
-                  .map((e) => ({
-                    name: e.filename,
-                    type: ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
-                  }))
-                  .filter((e) => !e.name.startsWith('.'))   // hide dotfiles
-                  .sort((a, b) => {
-                    if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
-                    return a.name.localeCompare(b.name)
-                  })
-
-                resolve({ ok: true, entries })
+            const entries = list
+              .map((e) => ({
+                name: e.filename,
+                type: ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
+              }))
+              .filter((e) => !e.name.startsWith('.'))   // hide dotfiles
+              .sort((a, b) => {
+                if (a.type !== b.type) return a.type === 'dir' ? -1 : 1
+                return a.name.localeCompare(b.name)
               })
-            })
+
+            resolve({ ok: true, entries })
           })
-          .on('error', (err) => resolve({ ok: false, error: err.message }))
-          .connect({
-            host:         cfg.host,
-            port:         cfg.port || 22,
-            username:     cfg.username,
-            password:     cfg.password?.trim() || undefined,
-            privateKey:   privateKey || undefined,
-            readyTimeout: 10_000,
-          })
+        })
       })
     } catch (err) {
+      // key-read ("Cannot read key file: ...") and connect errors, verbatim
       return { ok: false, error: err.message }
     }
   })
@@ -2804,18 +2718,9 @@ async function _poolConnect(connId) {
   if (!conn || conn.type !== 'sftp') return null
 
   const sftpCfg = conn.sftp
-  const { Client } = await import('ssh2')
 
-  let privateKey
-  if (sftpCfg?.keyPath) {
-    const kp = sftpCfg.keyPath.startsWith('~')
-      ? join(homedir(), sftpCfg.keyPath.slice(1).replace(/^[/\\]/, ''))
-      : sftpCfg.keyPath
-    try { privateKey = readFileSync(kp) }
-    catch { return null }
-  }
-
-  // Decrypt password if stored encrypted
+  // Decrypt password if stored encrypted (pool-specific: it reads persisted
+  // config, unlike the renderer-supplied cfgs the other handlers receive).
   let password = sftpCfg?.password ?? ''
   if (typeof password === 'string' && password.startsWith('enc:')) {
     const { safeStorage } = await import('electron')
@@ -2826,34 +2731,30 @@ async function _poolConnect(connId) {
     }
   }
 
+  const { createSshConnection } = await import('./ssh-connection.js')
+  let client
+  try {
+    client = await createSshConnection(sftpCfg, { readyTimeout: 15_000, password })
+  } catch {
+    // key-read failure or connect error — the pool simply has no connection
+    return null
+  }
+
   return new Promise((resolve) => {
-    const client = new Client()
-    client
-      .on('ready', () => {
-        client.sftp((err, sftpHandle) => {
-          if (err) {
-            client.end()
-            return resolve(null)
-          }
-          const timer = setTimeout(() => {
-            try { client.end() } catch { /* best effort */ }
-            _sftpPool.delete(connId)
-          }, SFTP_POOL_TTL)
-          _sftpPool.set(connId, { client, sftp: sftpHandle, timer })
-          client.on('close', () => _sftpPool.delete(connId))
-          client.on('error', () => _sftpPool.delete(connId))
-          resolve(sftpHandle)
-        })
-      })
-      .on('error', () => resolve(null))
-      .connect({
-        host:         sftpCfg.host,
-        port:         sftpCfg.port || 22,
-        username:     sftpCfg.username,
-        password:     password?.trim() || undefined,
-        privateKey:   privateKey || undefined,
-        readyTimeout: 15_000,
-      })
+    client.sftp((err, sftpHandle) => {
+      if (err) {
+        client.end()
+        return resolve(null)
+      }
+      const timer = setTimeout(() => {
+        try { client.end() } catch { /* best effort */ }
+        _sftpPool.delete(connId)
+      }, SFTP_POOL_TTL)
+      _sftpPool.set(connId, { client, sftp: sftpHandle, timer })
+      client.on('close', () => _sftpPool.delete(connId))
+      client.on('error', () => _sftpPool.delete(connId))
+      resolve(sftpHandle)
+    })
   })
 }
 
