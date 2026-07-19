@@ -73,6 +73,22 @@ npm run dev          # dev server with hot reload
 npm run dist         # build installer → release/WinRaid-Setup.exe
 ```
 
+## Releases
+
+Releases are built and published by CI, not locally. Pushing a tag matching
+`v*` (e.g. `v2.9.0`) triggers `.github/workflows/release.yml`, which builds
+the Windows installer and publishes it — installer `.exe` + `latest.yml` — to
+[GitHub Releases](https://github.com/rraspo/winraid/releases). Use `make tag`
+(or `npm run tag`) to bump the version, commit, tag, and push — no local
+build; CI takes it from there.
+
+`make release` still runs the full build-and-publish locally; it is a manual
+fallback for offline releases and should not be used together with the CI
+workflow (both would publish the same tag).
+
+Installers are currently **unsigned** — code signing will be wired in once a
+certificate is available.
+
 ## Tech stack
 
 | Layer | Tech |
