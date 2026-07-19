@@ -209,6 +209,22 @@
 
 .modalCancel:hover { color: var(--text); border-color: var(--text-faint); }
 
+/* Secondary real action — outlined, distinct from the muted Cancel dismissal. */
+.modalSecondary {
+  padding: 0 16px;
+  height: 34px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.modalSecondary:hover { color: var(--accent); border-color: var(--accent); }
+
 .modalConfirm {
   padding: 0 16px;
   height: 34px;

@@ -1348,15 +1348,15 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             ) : (
               <div className={modalStyles.modalActions}>
                 <button className={modalStyles.modalCancel} onClick={() => setTrimSetup(null)}>Cancel</button>
-                <button className={modalStyles.modalCancel} onClick={handleFfmpegLocate}>Locate on this PC…</button>
+                <button className={modalStyles.modalSecondary} onClick={handleFfmpegLocate}>Locate on this PC…</button>
                 <button
-                  className={trimSetup.canLocalTrim ? modalStyles.modalCancel : modalStyles.modalConfirm}
+                  className={trimSetup.canLocalTrim ? modalStyles.modalSecondary : modalStyles.modalConfirmAccent}
                   onClick={handleFfmpegDownload}
                 >
                   Download (~80 MB)
                 </button>
                 {trimSetup.canLocalTrim && (
-                  <button className={modalStyles.modalConfirm} onClick={handleLocalTrimChoice}>Trim locally</button>
+                  <button className={modalStyles.modalConfirmAccent} onClick={handleLocalTrimChoice}>Trim locally</button>
                 )}
               </div>
             )}

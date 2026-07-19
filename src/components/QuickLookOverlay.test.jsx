@@ -370,6 +370,39 @@ describe('QuickLookOverlay trim engine gate', () => {
     expect(area.className).not.toMatch(/previewAreaZoom/)
     expect(area.className).not.toMatch(/previewAreaScroll/)
   })
+
+  it('styles the primary and secondary choices distinctly when no engine exists', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    const download = screen.getByRole('button', { name: /Download/ })
+    const locate   = screen.getByRole('button', { name: /Locate on this PC/ })
+    const cancel   = screen.getByRole('button', { name: 'Cancel' })
+    // Downloading is the primary path here: accent, never the destructive red
+    expect(download.className).toMatch(/modalConfirmAccent/)
+    // A real action must not look like a dismissal
+    expect(locate.className).toMatch(/modalSecondary/)
+    expect(cancel.className).toMatch(/modalCancel/)
+    expect(locate.className).not.toBe(cancel.className)
+  })
+
+  it('styles Trim locally as the accent primary and never uses the destructive red', async () => {
+    window.winraid = createWinraidMock({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
+    })
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'Trim locally' }).className).toMatch(/modalConfirmAccent/)
+    expect(screen.getByRole('button', { name: /Download/ }).className).toMatch(/modalSecondary/)
+    for (const btn of screen.getAllByRole('button')) {
+      expect(btn.className).not.toMatch(/modalConfirm(?!Accent)/)
+    }
+  })
+
 })
 
 describe('QuickLookOverlay trim playback preview', () => {
