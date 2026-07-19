@@ -1,6 +1,6 @@
 import { getNextPending, updateJob, listJobs, STATUS } from './queue.js'
 import { getConfig } from './config.js'
-import { sendToRenderer, notify } from './main.js'
+import { sendToRenderer, notify } from './ipc-bridge.js'
 import { log } from './logger.js'
 import { pushActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'

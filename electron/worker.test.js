@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 // Mock all dependencies before importing worker
 vi.mock('./queue.js',  () => ({ getNextPending: vi.fn(), updateJob: vi.fn(), listJobs: vi.fn(() => []), STATUS: { PENDING: 'PENDING', TRANSFERRING: 'TRANSFERRING', DONE: 'DONE', ERROR: 'ERROR' } }))
 vi.mock('./config.js', () => ({ getConfig: vi.fn(() => ({ connections: [] })) }))
-vi.mock('./main.js',   () => ({ sendToRenderer: vi.fn(), notify: vi.fn() }))
+vi.mock('./ipc-bridge.js', () => ({ init: vi.fn(), sendToRenderer: vi.fn(), notify: vi.fn() }))
 vi.mock('./logger.js', () => ({ log: vi.fn() }))
 
 import { getNextPending } from './queue.js'
