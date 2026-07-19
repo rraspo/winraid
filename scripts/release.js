@@ -1,4 +1,9 @@
-// Cross-platform release script.
+// Cross-platform release script: runs the lint + test quality gate, then
+// bumps the version, tags, and pushes. The installer build and GitHub Release
+// are produced by CI (.github/workflows/release.yml) on the pushed v* tag —
+// this script never builds or publishes locally. It differs from `make tag`
+// only in that it enforces the quality gate before tagging.
+//
 // Usage:
 //   node scripts/release.js                 → bump patch
 //   node scripts/release.js minor           → bump minor
@@ -109,36 +114,14 @@ try {
   run(`git commit -m "Bump version to ${releaseVer}"`)
 }
 
-// Clean previous build
-log('Cleaning previous build...')
-for (const dir of ['release', 'out']) {
-  const p = path.join(root, dir)
-  fs.rmSync(p, { recursive: true, force: true })
-}
-
-// Build
-log('Building installer...')
-run('npm run dist')
-
-// Tag and push
+// Tag and push — the build and GitHub Release are produced by CI
+// (.github/workflows/release.yml) when the v* tag lands on the remote. This
+// script deliberately does NOT build or publish locally: doing so would
+// double-publish against the CI job on the same tag (see README > Releases).
 run(`git tag ${releaseTag}`)
 run(`git push origin ${currentBranch}`)
 run(`git push origin ${releaseTag}`)
 
-// Publish GitHub Release
 console.log()
-log(`Publishing GitHub Release ${releaseTag}...`)
-const releaseDir = path.join(root, 'release')
-const exe = fs.readdirSync(releaseDir).find(n => n.endsWith('.exe') && !n.endsWith('.blockmap'))
-if (!exe) die('No .exe found in release/')
-
-const assets = [`"${path.join('release', exe)}"`]
-if (fs.existsSync(path.join(releaseDir, 'latest.yml'))) {
-  assets.push(`"${path.join('release', 'latest.yml')}"`)
-}
-
-run(`gh release create ${releaseTag} --title "WinRaid ${releaseTag}" --generate-notes ${assets.join(' ')}`)
-
-console.log()
-log(`Released ${releaseTag}`)
+log(`Tagged and pushed ${releaseTag} — CI is building and publishing the release`)
 console.log()
