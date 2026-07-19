@@ -19,7 +19,7 @@ endif
 .DEFAULT_GOAL := help
 
 help:
-	@node -e "console.log(['','  WinRaid','','  Dev','    make dev            Start electron-vite dev server','    make build          Build renderer + main','    make test           Run Vitest unit tests','    make lint           Run ESLint','','  Release','    make release              Bump patch, build, tag, push, GH release','    make release minor        Bump minor version','    make release major        Bump major version','    make tag                  Tag + push only (no build)','    make dist                 Build installer only','','  Helpers','    make version        Show latest release tag','    make clean          Remove build output',''].join('\n'))"
+	@node -e "console.log(['','  WinRaid','','  Dev','    make dev            Start electron-vite dev server','    make build          Build renderer + main','    make test           Run Vitest unit tests','    make lint           Run ESLint','','  Release (CI builds + publishes on the pushed v* tag)','    make release              Lint+test gate, bump patch, tag, push','    make release minor        Bump minor version','    make release major        Bump major version','    make tag                  Bump, tag, push (no quality gate)','    make dist                 Build installer locally (smoke test)','','  Helpers','    make version        Show latest release tag','    make clean          Remove build output',''].join('\n'))"
 
 dev:
 	npx electron-vite dev
