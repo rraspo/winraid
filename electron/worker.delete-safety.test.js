@@ -16,7 +16,7 @@ vi.mock('./queue.js', () => ({
   STATUS: { PENDING: 'PENDING', TRANSFERRING: 'TRANSFERRING', DONE: 'DONE', ERROR: 'ERROR' },
 }))
 vi.mock('./config.js', () => ({ getConfig: vi.fn() }))
-vi.mock('./main.js', () => ({ sendToRenderer: vi.fn(), notify: vi.fn() }))
+vi.mock('./ipc-bridge.js', () => ({ init: vi.fn(), sendToRenderer: vi.fn(), notify: vi.fn() }))
 vi.mock('./logger.js', () => ({ log: vi.fn() }))
 vi.mock('./activity.js', () => ({ pushActivity: vi.fn() }))
 vi.mock('./activity-format.js', () => ({

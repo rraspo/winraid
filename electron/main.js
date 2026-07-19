@@ -11,7 +11,6 @@ import {
   clipboard,
   dialog,
   shell,
-  Notification,
   powerMonitor,
   net,
 } from 'electron'
@@ -34,6 +33,9 @@ import { shQuote } from './shell-quote.js'
 import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
+import { init as initIpcBridge, sendToRenderer, notify } from './ipc-bridge.js'
+import * as watcher from './watcher.js'
+import * as queue from './queue.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -91,8 +93,6 @@ let _backupCurrentConn  = null  // active SSH Client during backup:run — used 
 // used by resume-all to restart only those connections.
 let _watchingBeforePause = new Set()
 
-let _watcher = null
-let _queue   = null
 
 /** Active size scans: connectionId → { cancelled: boolean } */
 const _sizeScans = new Map()
@@ -234,16 +234,6 @@ async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, concu
   return children.length
 }
 
-async function getWatcher() {
-  if (!_watcher) _watcher = await import('./watcher.js')
-  return _watcher
-}
-
-async function getQueue() {
-  if (!_queue) _queue = await import('./queue.js')
-  return _queue
-}
-
 // ---------------------------------------------------------------------------
 // IPC input validation helpers
 // ---------------------------------------------------------------------------
@@ -377,6 +367,7 @@ function createWindow() {
     },
   })
 
+  initIpcBridge(mainWindow)
   initLogger(sendToRenderer)
   initActivity(sendToRenderer)
 
@@ -570,7 +561,7 @@ function rebuildTrayMenu() {
           isPaused = false
           const { getConfig } = await import('./config.js')
           const cfg = getConfig()
-          const w   = await getWatcher()
+          const w = watcher
           for (const connectionId of _watchingBeforePause) {
             const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
             if (!conn?.localFolder) continue
@@ -591,7 +582,7 @@ function rebuildTrayMenu() {
         } else {
           // Pause — stop all watchers and the worker
           isPaused = true
-          const w = await getWatcher()
+          const w = watcher
           _watchingBeforePause = new Set(
             Object.entries(w.listWatcherStates())
               .filter(([, s]) => s.watching)
@@ -741,7 +732,7 @@ function registerIPC() {
     } catch {
       return { ok: false, error: 'cannot access local folder' }
     }
-    const w = await getWatcher()
+    const w = watcher
     w.startWatcher(
       connectionId,
       folder,
@@ -751,7 +742,7 @@ function registerIPC() {
     sendToRenderer('watcher:status', w.listWatcherStates())
     rebuildTrayMenu()
     // Kick the worker for any PENDING jobs that were skipped by hasActiveJob
-    const q = await getQueue()
+    const q = queue
     if (q.listJobs().some((j) => j.status === 'PENDING')) {
       const { ensureWorkerRunning } = await import('./worker.js')
       ensureWorkerRunning()
@@ -763,7 +754,7 @@ function registerIPC() {
     if (typeof connectionId !== 'string' || !connectionId.trim()) {
       return { ok: false, error: 'Invalid connectionId' }
     }
-    const w = await getWatcher()
+    const w = watcher
     w.stopWatcher(connectionId)
     sendToRenderer('watcher:status', w.listWatcherStates())
     rebuildTrayMenu()
@@ -771,7 +762,7 @@ function registerIPC() {
   })
 
   ipcMain.handle('watcher:list', async () => {
-    const w = await getWatcher()
+    const w = watcher
     return w.listWatcherStates()
   })
 
@@ -790,7 +781,7 @@ function registerIPC() {
 
   ipcMain.handle('watcher:pause-all', async () => {
     isPaused = true
-    const w = await getWatcher()
+    const w = watcher
     // Capture which connections were watching so resume-all can restart them
     _watchingBeforePause = new Set(
       Object.entries(w.listWatcherStates())
@@ -809,7 +800,7 @@ function registerIPC() {
     isPaused = false
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
-    const w   = await getWatcher()
+    const w = watcher
     for (const connectionId of _watchingBeforePause) {
       const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
       if (!conn?.localFolder) continue
@@ -832,42 +823,42 @@ function registerIPC() {
   })
 
   ipcMain.handle('queue:list', async () => {
-    const q = await getQueue()
+    const q = queue
     return q.listJobs()
   })
 
   ipcMain.handle('queue:stats', async () => {
-    const q = await getQueue()
+    const q = queue
     return { lifetimeCompleted: q.getLifetimeCompleted() }
   })
 
   ipcMain.handle('queue:reduce-completed', async (_e, n) => {
-    const q = await getQueue()
+    const q = queue
     const lifetimeCompleted = q.reduceLifetimeCompleted(Number(n) || 0)
     sendToRenderer('queue:updated', { type: 'stats' })
     return { lifetimeCompleted }
   })
 
   ipcMain.handle('queue:retry', async (_e, jobId) => {
-    const q = await getQueue()
+    const q = queue
     q.retryJob(jobId)
     sendToRenderer('queue:updated', { type: 'retry', jobId })
   })
 
   ipcMain.handle('queue:remove', async (_e, jobId) => {
-    const q = await getQueue()
+    const q = queue
     q.removeJob(jobId)
     sendToRenderer('queue:updated', { type: 'removed', jobId })
   })
 
   ipcMain.handle('queue:clear-done', async () => {
-    const q = await getQueue()
+    const q = queue
     q.clearDone()
     sendToRenderer('queue:updated', { type: 'cleared' })
   })
 
   ipcMain.handle('queue:clear-stale', async () => {
-    const q = await getQueue()
+    const q = queue
     const removedIds = q.clearStale()
     for (const jobId of removedIds) {
       sendToRenderer('queue:updated', { type: 'removed', jobId })
@@ -876,7 +867,7 @@ function registerIPC() {
   })
 
   ipcMain.handle('queue:cancel', async (_e, jobId) => {
-    const q = await getQueue()
+    const q = queue
     const jobs = q.listJobs()
     const job = jobs.find((j) => j.id === jobId)
     if (!job) return { ok: false, error: 'job not found' }
@@ -907,7 +898,7 @@ function registerIPC() {
     if (!conn) return { ok: false, error: 'connection not found' }
     if (!Array.isArray(relPaths)) return { ok: false, error: 'invalid relPaths' }
     const resolvedBase = resolve(conn.localFolder)
-    const q = await getQueue()
+    const q = queue
     for (const rel of relPaths) {
       if (typeof rel !== 'string' || rel.includes('..')) continue
       const filePath = join(localFolder, ...rel.split('/'))
@@ -957,7 +948,7 @@ function registerIPC() {
       return results
     }
 
-    const q = await getQueue()
+    const q = queue
     let count = 0
 
     for (const localPath of localPaths) {
@@ -2560,7 +2551,7 @@ function makeFileDetectedCallback(connectionId) {
       ? basename(filePath)
       : relative(conn.localFolder, filePath).replace(/\\/g, '/')
 
-    const q = await getQueue()
+    const q = queue
 
     // During the initial folder scan, skip files that are already in the
     // local queue OR already present on the remote (covers wiped queues).
@@ -2637,20 +2628,9 @@ async function openRemoteCheckerForConn(conn) {
   return null
 }
 
-// ---------------------------------------------------------------------------
-// Exports for worker / watcher
-// ---------------------------------------------------------------------------
-export function sendToRenderer(channel, payload) {
-  if (mainWindow?.webContents && !mainWindow.webContents.isDestroyed()) {
-    mainWindow.webContents.send(channel, payload)
-  }
-}
-
-export function notify(title, body) {
-  if (Notification.isSupported()) {
-    new Notification({ title, body, silent: false }).show()
-  }
-}
+// sendToRenderer / notify now live in ipc-bridge.js (WR-28) — imported at the
+// top and re-used by main.js's own IPC handlers. main.js wires the bridge to
+// the BrowserWindow via initIpcBridge() in createWindow().
 
 // ---------------------------------------------------------------------------
 // Auto-updater (production only)
@@ -3298,7 +3278,7 @@ app.whenReady().then(async () => {
   try {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
-    const w = await getWatcher()
+    const w = watcher
     for (const conn of (cfg.connections ?? [])) {
       if (!conn.localFolder) continue
       try {
@@ -3318,7 +3298,7 @@ app.whenReady().then(async () => {
     // Kick the worker in case there are PENDING jobs left from a previous session.
     // onFileDetected only calls ensureWorkerRunning for newly detected files, so
     // jobs that were already PENDING when the app restarted would otherwise sit idle.
-    const q = await getQueue()
+    const q = queue
     if (q.listJobs().some((j) => j.status === 'PENDING')) {
       const { ensureWorkerRunning } = await import('./worker.js')
       ensureWorkerRunning()
