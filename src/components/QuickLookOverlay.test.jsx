@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import * as remoteFS from '../services/remoteFS'
+import * as toast from '../services/toast'
 import QuickLookOverlay from './QuickLookOverlay'
 
 // react-image-crop renders a div wrapper; we don't need its full behavior in tests.
@@ -541,5 +542,169 @@ describe('QuickLookOverlay trim save', () => {
     await waitFor(() => expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
       path: '/v/clip.mp4', outPath: '/v/clip.mp4', start: 0, end: 8,
     })))
+  })
+
+  // The exact cut can degrade to a keyframe-snapped one (no encoder for the
+  // codec, a stream MPEG-TS cannot carry). The toast must not imply precision
+  // the file does not have.
+  async function saveTrimWith(result) {
+    window.winraid = createWinraidMock({
+      remote: {
+        list: vi.fn().mockResolvedValue({ ok: true, entries: [{ name: 'clip.mp4', type: 'file' }] }),
+        trimVideo: vi.fn().mockResolvedValue(result),
+      },
+    })
+    render(
+      <QuickLookOverlay
+        file={videoFile} connectionId="c1" remoteBasePath="/v" files={[videoFile]}
+        onNavigate={() => {}} onClose={() => {}} onDelete={() => {}} canServerEdit
+      />
+    )
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: 12 })
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+  }
+
+  it('says so when the cut could not start on the chosen frame', async () => {
+    const show = vi.spyOn(toast, 'show')
+    await saveTrimWith({ ok: true, outPath: '/v/clip_trimmed.mp4', exact: false })
+    await waitFor(() => expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ msg: expect.stringMatching(/cut moved to the nearest keyframe/i), type: 'success' })
+    ))
+  })
+
+  it('reports a plain success when the cut landed on the chosen frame', async () => {
+    const show = vi.spyOn(toast, 'show')
+    await saveTrimWith({ ok: true, outPath: '/v/clip_trimmed.mp4', exact: true })
+    await waitFor(() => expect(show).toHaveBeenCalledWith({ msg: 'Trimmed clip saved', type: 'success' }))
+  })
+})
+
+describe('QuickLookOverlay rotate icon', () => {
+  it('shows the Rotate icon for an SFTP video', () => {
+    renderOverlay()
+    expect(screen.getByLabelText('Rotate video')).toBeInTheDocument()
+  })
+
+  it('hides the Rotate icon when the connection cannot server-edit (SMB)', () => {
+    renderOverlay({ canServerEdit: false })
+    expect(screen.queryByLabelText('Rotate video')).toBeNull()
+  })
+
+  it('hides the Rotate icon for containers without rotation metadata (mkv)', () => {
+    const mkvFile = { name: 'clip.mkv', path: '/v/clip.mkv', size: 1000, modified: 0, type: 'file' }
+    renderOverlay({ file: mkvFile, files: [mkvFile] })
+    expect(screen.queryByLabelText('Rotate video')).toBeNull()
+  })
+
+  it('hides the Rotate icon while trimming', async () => {
+    renderOverlay()
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: 10 })
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.queryByLabelText('Rotate video')).toBeNull()
+  })
+})
+
+describe('QuickLookOverlay rotate flow', () => {
+  // Open the rotate dialog; entry is gated on the same ffmpeg capability
+  // probe the trim feature uses.
+  async function openRotate(overrides) {
+    if (overrides) window.winraid = createWinraidMock(overrides)
+    renderOverlay()
+    fireEvent.click(screen.getByLabelText('Rotate video'))
+    await act(async () => {})
+  }
+
+  it('checks the ffmpeg capability and opens the rotate dialog', async () => {
+    await openRotate()
+    expect(window.winraid.remote.trimCapability).toHaveBeenCalledWith('c1')
+    expect(screen.getByTestId('rotate-modal')).toBeInTheDocument()
+  })
+
+  it('defaults to rotate right and saves a 90-degree clockwise copy', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(window.winraid.remote.rotateVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      path: '/v/clip.mp4', outPath: '/v/clip_rotated.mp4', degrees: 90,
+    })))
+  })
+
+  it('picks the next free _rotated name when one already exists', async () => {
+    await openRotate({
+      remote: { list: vi.fn().mockResolvedValue({ ok: true, entries: [{ name: 'clip_rotated.mp4', type: 'file' }] }) },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(window.winraid.remote.rotateVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      outPath: '/v/clip_rotated_2.mp4',
+    })))
+  })
+
+  it('sends 270 degrees for rotate left', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByLabelText('Rotate left'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(window.winraid.remote.rotateVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      degrees: 270,
+    })))
+  })
+
+  it('sends 180 degrees for the half-turn option', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByLabelText('Rotate 180'))
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(window.winraid.remote.rotateVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      degrees: 180,
+    })))
+  })
+
+  it('passes the original path as outPath for Overwrite', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
+    await waitFor(() => expect(window.winraid.remote.rotateVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      path: '/v/clip.mp4', outPath: '/v/clip.mp4', degrees: 90,
+    })))
+  })
+
+  it('closes the dialog after a successful rotation', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(screen.queryByTestId('rotate-modal')).toBeNull())
+  })
+
+  it('keeps the dialog open when the rotation fails', async () => {
+    await openRotate({
+      remote: { rotateVideo: vi.fn().mockResolvedValue({ ok: false, error: 'ffmpeg exited 1' }) },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+    await waitFor(() => expect(window.winraid.remote.rotateVideo).toHaveBeenCalled())
+    expect(screen.getByTestId('rotate-modal')).toBeInTheDocument()
+  })
+
+  it('cancel closes the dialog without rotating', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByTestId('rotate-modal')).toBeNull()
+    expect(window.winraid.remote.rotateVideo).not.toHaveBeenCalled()
+  })
+
+  it('shows the ffmpeg setup dialog when no engine exists', async () => {
+    await openRotate({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    expect(screen.queryByTestId('rotate-modal')).toBeNull()
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+  })
+
+  it('continues into the rotate dialog after choosing the local engine', async () => {
+    await openRotate({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
+    })
+    expect(screen.queryByTestId('rotate-modal')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Trim locally' }))
+    expect(screen.getByTestId('rotate-modal')).toBeInTheDocument()
   })
 })

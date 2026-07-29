@@ -32,7 +32,8 @@ import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from
 import { shQuote } from './shell-quote.js'
 import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { isWithinBase } from './path-guard.js'
-import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
 import { init as initIpcBridge, sendToRenderer, notify } from './ipc-bridge.js'
@@ -1900,18 +1901,21 @@ function registerIPC() {
     try {
       await new Promise((resolve, reject) => sftp.fastGet(path, localIn, (err) => (err ? reject(err) : resolve())))
 
-      const args = ffmpegTrimArgs({ input: localIn, output: localOut, start, duration: end - start })
-      await new Promise((resolve, reject) => {
-        const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
-        let errTail = ''
-        proc.stderr?.on('data', (chunk) => { errTail = (errTail + chunk).slice(-800) })
-        proc.on('error', reject)
-        proc.on('close', (code) => {
-          if (code === 0) return resolve()
-          const tail = errTail.trim().split('\n').slice(-3).join(' ').slice(0, 400)
-          reject(new Error(tail || `ffmpeg exited ${code}`))
-        })
+      const cut = await runTrim({
+        input: localIn, output: localOut, start, end,
+        exec: (args) => new Promise((resolve, reject) => {
+          const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
+          // Kept whole, not tailed: the keyframe probe's answer is in the
+          // early lines. The cap only guards against a runaway progress log.
+          let stderr = ''
+          proc.stderr?.on('data', (chunk) => { stderr = (stderr + chunk).slice(-1_000_000) })
+          proc.on('error', reject)
+          proc.on('close', (code) => resolve({ code, stdout: '', stderr }))
+        }),
+        remove: async (target) => rmSync(target, { force: true }),
+        log: (level, msg) => log(level, `${msg} [${label}]`),
       })
+      if (!cut.ok) throw new Error(cut.error)
 
       await new Promise((resolve, reject) => sftp.fastPut(localOut, remoteTmp, (err) => (err ? reject(err) : resolve())))
 
@@ -1921,12 +1925,12 @@ function registerIPC() {
         return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
       }
 
-      log('info', `Video trimmed locally [${label}]: ${path} -> ${outPath} (${(end - start).toFixed(2)}s)`)
+      log('info', `Video trimmed locally [${label}]: ${path} -> ${outPath} (${(end - start).toFixed(2)}s, ${cut.mode} cut)`)
       emitActivity({
         type: 'upload', connectionId,
         payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
       })
-      return { ok: true, outPath }
+      return { ok: true, outPath, exact: !cut.degraded }
     } catch (err) {
       client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
       log('error', `Local video trim failed [${label}]: ${err.message}`)
@@ -1975,15 +1979,18 @@ function registerIPC() {
       const tmp   = `${dir}/.winraid-trim-${Date.now()}${ext}`
 
       const duration = end - start
-      const cmd = ffmpegTrimCommand({ input: path, output: tmp, start, duration })
 
       try {
-        const { code, stderr } = await execWithTimeout(client, cmd, 600_000)
-        if (code !== 0) {
-          const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
-          log('error', `Video trim failed [${label}]: ffmpeg exited ${code} — ${tail}`)
+        const cut = await runTrim({
+          input: path, output: tmp, start, end,
+          exec: (args) => execWithTimeout(client, shellFromArgs(args), 600_000),
+          remove: (target) => new Promise((resolve) => client.exec(`rm -f -- ${shQuote(target)}`, () => resolve())),
+          log: (level, msg) => log(level, `${msg} [${label}]`),
+        })
+        if (!cut.ok) {
+          log('error', `Video trim failed [${label}]: ${cut.error}`)
           client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
-          return { ok: false, error: tail || `ffmpeg exited ${code}` }
+          return { ok: false, error: cut.error }
         }
 
         // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
@@ -1994,7 +2001,154 @@ function registerIPC() {
           return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
         }
 
-        log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s)`)
+        log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s, ${cut.mode} cut)`)
+        emitActivity({
+          type: 'upload', connectionId,
+          payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+        })
+        return { ok: true, outPath, exact: !cut.degraded }
+      } catch (err) {
+        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+        throw err
+      }
+    } catch (err) {
+      log('error', `Video trim failed [${label}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Local-fallback rotate: pull the source down, probe its current rotation
+  // and the local ffmpeg's era with the resolved binary, rewrite it on this
+  // PC, push the result back up, then finalize with the same atomic
+  // sibling-move the server path uses.
+  async function _localRotate({ connectionId, sftp, client, label, path, outPath, degrees }) {
+    const slash = outPath.lastIndexOf('/')
+    const dir   = slash > 0 ? outPath.slice(0, slash) : ''
+    const dot   = outPath.lastIndexOf('.')
+    const ext   = dot > slash ? outPath.slice(dot) : ''
+    const remoteTmp = `${dir}/.winraid-rotate-${Date.now()}${ext}`
+
+    const workDir = join(tmpdir(), 'winraid-rotate')
+    mkdirSync(workDir, { recursive: true })
+    const localIn  = join(workDir, `in-${Date.now()}${ext}`)
+    const localOut = join(workDir, `out-${Date.now()}${ext}`)
+
+    try {
+      await new Promise((resolve, reject) => sftp.fastGet(path, localIn, (err) => (err ? reject(err) : resolve())))
+
+      // ffmpeg -i with no output always exits non-zero; the rotation side
+      // data / metadata we need is in stderr regardless of that exit code.
+      const currentRotation = await new Promise((resolve, reject) => {
+        const proc = spawn(_localFfmpegPath, ['-nostdin', '-hide_banner', '-i', localIn], { windowsHide: true })
+        let errOut = ''
+        proc.stderr?.on('data', (chunk) => { errOut += chunk })
+        proc.on('error', reject)
+        proc.on('close', () => resolve(parseRotation(errOut)))
+      })
+
+      const localProbe = await validateFfmpegBinary(_localFfmpegPath)
+      const modern = supportsDisplayRotation(localProbe.version)
+      const target = combineRotation(currentRotation, degrees)
+
+      const args = ffmpegRotateArgs({ input: localIn, output: localOut, degrees: target, modern })
+      await new Promise((resolve, reject) => {
+        const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
+        let errTail = ''
+        proc.stderr?.on('data', (chunk) => { errTail = (errTail + chunk).slice(-800) })
+        proc.on('error', reject)
+        proc.on('close', (code) => {
+          if (code === 0) return resolve()
+          const tail = errTail.trim().split('\n').slice(-3).join(' ').slice(0, 400)
+          reject(new Error(tail || `ffmpeg exited ${code}`))
+        })
+      })
+
+      await new Promise((resolve, reject) => sftp.fastPut(localOut, remoteTmp, (err) => (err ? reject(err) : resolve())))
+
+      const mv = await execWithTimeout(client, `mv -f -- ${shQuote(remoteTmp)} ${shQuote(outPath)}`, 60_000)
+      if (mv.code !== 0) {
+        client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
+        return { ok: false, error: (mv.stderr || 'Could not finalize rotated file').trim() }
+      }
+
+      log('info', `Video rotated locally [${label}]: ${path} -> ${outPath} (${degrees}deg)`)
+      emitActivity({
+        type: 'upload', connectionId,
+        payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+      })
+      return { ok: true, outPath }
+    } catch (err) {
+      client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
+      log('error', `Local video rotate failed [${label}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    } finally {
+      rmSync(localIn, { force: true })
+      rmSync(localOut, { force: true })
+    }
+  }
+
+  // -- Remote: rotate a video losslessly (display-matrix rewrite or legacy
+  // metadata tag, chosen by the ffmpeg era) over SSH exec -------------------
+  ipcMain.handle('remote:rotate-video', async (_e, connectionId, opts) => {
+    const { path, outPath, degrees } = opts ?? {}
+    if (!validateRemotePath(path) || !validateRemotePath(outPath)) return { ok: false, error: 'Invalid remote path' }
+    if (degrees !== 90 && degrees !== 180 && degrees !== 270) return { ok: false, error: 'Invalid rotation' }
+    const label = await _connLabel(connectionId)
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Rotation is only available for SFTP connections' }
+
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const client = _sftpPool.get(connectionId)?.client
+      if (!client) return { ok: false, error: 'Connection unavailable' }
+
+      const probe = await _detectFfmpeg(connectionId, client)
+      if (!probe.available) {
+        // No NAS ffmpeg: fall back to rotating on this PC. Join an in-flight
+        // download if the user kicked one off from the trim-entry prompt.
+        if (_ffmpegDownloadPromise) await _ffmpegDownloadPromise
+        const localPath = await _resolveLocalFfmpeg()
+        if (!localPath) return { ok: false, error: 'ffmpeg is not available on the NAS or this PC.' }
+        return await _localRotate({ connectionId, sftp, client, label, path, outPath, degrees })
+      }
+
+      // Output to a temp sibling first — ffmpeg must not write the file it reads,
+      // and a temp lets the final move be atomic.
+      const slash = outPath.lastIndexOf('/')
+      const dir   = slash > 0 ? outPath.slice(0, slash) : ''
+      const dot   = outPath.lastIndexOf('.')
+      const ext   = dot > slash ? outPath.slice(dot) : ''
+      const tmp   = `${dir}/.winraid-rotate-${Date.now()}${ext}`
+
+      try {
+        // ffmpeg -i with no output always exits non-zero; the rotation side
+        // data / metadata we need is in stderr regardless of that exit code.
+        const { stderr: probeStderr } = await execWithTimeout(client, probeRotationCommand(path), 30_000)
+        const currentRotation = parseRotation(probeStderr)
+        const target = combineRotation(currentRotation, degrees)
+        const modern = supportsDisplayRotation(probe.version)
+        const cmd = ffmpegRotateCommand({ input: path, output: tmp, degrees: target, modern })
+
+        const { code, stderr } = await execWithTimeout(client, cmd, 600_000)
+        if (code !== 0) {
+          const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
+          log('error', `Video rotate failed [${label}]: ffmpeg exited ${code} — ${tail}`)
+          client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+          return { ok: false, error: tail || `ffmpeg exited ${code}` }
+        }
+
+        // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
+        // and tmp is a sibling so the move stays on one filesystem (atomic).
+        const mv = await execWithTimeout(client, `mv -f -- ${shQuote(tmp)} ${shQuote(outPath)}`, 60_000)
+        if (mv.code !== 0) {
+          client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+          return { ok: false, error: (mv.stderr || 'Could not finalize rotated file').trim() }
+        }
+
+        log('info', `Video rotated [${label}]: ${path} -> ${outPath} (${degrees}deg)`)
         emitActivity({
           type: 'upload', connectionId,
           payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
@@ -2005,7 +2159,7 @@ function registerIPC() {
         throw err
       }
     } catch (err) {
-      log('error', `Video trim failed [${label}]: ${err.message}`)
+      log('error', `Video rotate failed [${label}]: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })

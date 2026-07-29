@@ -19,14 +19,14 @@ Overwrite), so it is consistent with patterns the user already knows.
 
 - Trim a single in/out range from a video.
 - Run server-side on the NAS; never round-trip the file through the client.
-- Lossless and fast (stream-copy).
+- Fast, and lossless everywhere it can be.
+- Start the cut on the frame the user picked (revised 2026-07-26, see below).
 - Save as a new file or overwrite the original.
 - Consistent with the existing QuickLook crop UX.
 
 ## Non-goals (YAGNI)
 
 - Multi-segment cuts.
-- Re-encode / frame-accurate cuts.
 - Format conversion or transcoding.
 - Audio extraction.
 - SMB connections (no remote exec available).
@@ -34,12 +34,60 @@ Overwrite), so it is consistent with patterns the user already knows.
 ## Execution model
 
 The trim runs `ffmpeg` on the NAS over the existing SSH-exec pool (the same
-mechanism used by the size scan and remote listing). Stream-copy means no
-re-encoding: the operation is near-instant and lossless.
+mechanism used by the size scan and remote listing).
 
-Caveat (accepted): with `-c copy`, the start point snaps to the nearest
-keyframe, so the actual cut may begin up to a second or two before the chosen
-in-point. This is the standard trade-off for a fast, lossless, "simple" trim.
+### Exact cuts (revised 2026-07-26)
+
+The original design accepted that `-c copy` snaps the start back to the previous
+keyframe — up to several seconds before the chosen in-point. In use that reads as
+a bug: the clip does not begin where the user put the handle. A stream copy
+cannot begin anywhere else, so an exact cut re-encodes the *fragment* between the
+cut point and the next keyframe and stream-copies everything after it:
+
+```
+in-point        next keyframe                       out
+   |-- re-encode --|----------- stream copy ---------|
+       (< 1 GOP)                (bulk, untouched)
+```
+
+`electron/video-trim.js` picks one of three modes per cut:
+
+| mode       | when                                          | cost              |
+|------------|-----------------------------------------------|-------------------|
+| `copy`     | the in-point is already on a keyframe, or the source codec has no matching encoder | single stream copy, lossless |
+| `smart`    | a keyframe falls inside the selection         | one sub-second fragment re-encoded, the rest copied |
+| `reencode` | no keyframe inside the selection (< 1 GOP)    | the selection is re-encoded |
+
+Any failure on the exact path (missing encoder, a stream MPEG-TS cannot carry)
+degrades to the plain `copy` cut rather than failing the operation; the IPC
+result carries `exact: false` and the toast says the cut moved to the nearest
+keyframe.
+
+Details that are load-bearing, each verified against real ffmpeg output:
+
+- **Keyframe probe**: `-skip_frame nokey` + `showinfo` demuxes rather than
+  decodes; `-copyts` makes the reported times absolute. Bounded to a 30 s window
+  after the cut point, which also caps how much can be re-encoded.
+- **Exact fragment**: `-ss` before `-i` seeks fast to the preceding keyframe,
+  then `-copyts` plus an output-side `-ss`/`-to` cuts on the exact frame. Input
+  seek alone is *not* enough — copied audio would still start at the keyframe.
+- **The join is MPEG-TS**, not MP4. TS carries codec parameter sets in-band, so
+  the re-encoded fragment and the copied remainder each keep their own. Joined as
+  MP4 the tail decodes against the head's parameter sets: HEVC output loses
+  everything after the seam.
+- **`-noautorotate`** on the re-encode. Without it ffmpeg bakes a rotated file's
+  display matrix into the pixels, transposing the re-encoded fragment only.
+- **Rotation is re-applied** on the final join: a concatenated stream carries no
+  display matrix, so a phone clip would otherwise come out sideways. Reuses
+  `rotationInputArgs` / `rotationOutputArgs` from `video-rotate.js`.
+- **`-output_ts_offset`** places the copied remainder exactly where the fragment
+  ends, so there is no stall at the seam.
+
+Verified end to end against real ffmpeg (h264, HEVC, rotated, on-keyframe and
+sub-GOP selections): the cut starts on the requested frame, the copied region
+decodes bit-identically to the source, and the seam has no gap. On an open-GOP
+HEVC source ffmpeg logs `Could not find ref with POC …` at the seam; the frames
+were confirmed bit-identical, so it is noise, not corruption.
 
 ## Backend
 
@@ -54,7 +102,12 @@ Shared helper for safely embedding a path in a shell command built for SSH exec.
 
 ### `electron/video-trim.js` (new, pure)
 
-- `ffmpegTrimCommand({ input, output, start, duration })` -> command string:
+Command builders return argv arrays; `shellFromArgs(argv)` renders one as an SSH
+exec line, quoting only the tokens that need it (paths via `shQuote`, which
+rejects control characters). The local-fallback path spawns the argv directly, so
+both paths share one source of truth.
+
+- `ffmpegTrimArgs({ input, output, start, duration })` — the plain stream copy:
 
   ```
   ffmpeg -nostdin -y -ss <start> -i '<input>' -t <duration> \
@@ -68,7 +121,15 @@ Shared helper for safely embedding a path in a shell command built for SSH exec.
   - `-c copy` = stream-copy (lossless), `-map 0` = keep all streams
     (video + audio + subtitles), `-nostdin` = do not read the exec channel
     stdin, `-avoid_negative_ts make_zero` = clean copy-cut timestamps.
-  - `input` and `output` are quoted via `shQuote`.
+
+- `ffmpegStreamProbeArgs` / `parseVideoStreamInfo` / `parseKeyframeTimes` /
+  `encoderForCodec` / `planTrim` — the probe-and-decide half. One bare `-i`
+  probe yields codec, pixel format, rotation and ffmpeg version.
+- `ffmpegReencodeArgs` / `ffmpegTailSegmentArgs` / `ffmpegConcatArgs` — the three
+  steps of an exact cut.
+- `runTrim({ input, output, start, end, exec, remove, log })` — the ladder above,
+  with its effects injected so the NAS (SSH exec) and local-fallback (spawn)
+  paths run identical logic. Returns `{ ok, mode, degraded? }`.
 
 - `probeFfmpegCommand()` -> `ffmpeg -version`.
 - `parseFfmpegProbe(stdout)` -> `{ available: boolean, version?: string }`.

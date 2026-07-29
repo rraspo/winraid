@@ -223,6 +223,45 @@
   cursor: default;
 }
 
+/* ── Rotate dialog: direction picker (same active/inactive language as
+   .cropAspectBtn, but includes an icon alongside the label) ── */
+.rotateDirRow {
+  display: flex;
+  gap: var(--space-2);
+  padding: 4px 24px 20px;
+}
+
+.rotateDirBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: 40px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  background: var(--bg-card);
+  transition: color var(--transition), background var(--transition), border-color var(--transition);
+}
+
+.rotateDirBtn:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.rotateDirBtnActive {
+  color: var(--text);
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+}
+
+.rotateDirBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 /* ── Trim mode: actions in the top bar, timeline below the video ── */
 .trimToolbar {
   display: flex;
