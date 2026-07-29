@@ -30,6 +30,8 @@ import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
+import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
+import { isWithinBase } from './path-guard.js'
 import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
@@ -898,12 +900,11 @@ function registerIPC() {
     const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
     if (!conn) return { ok: false, error: 'connection not found' }
     if (!Array.isArray(relPaths)) return { ok: false, error: 'invalid relPaths' }
-    const resolvedBase = resolve(conn.localFolder)
     const q = queue
     for (const rel of relPaths) {
       if (typeof rel !== 'string' || rel.includes('..')) continue
       const filePath = join(localFolder, ...rel.split('/'))
-      if (!resolve(filePath).startsWith(resolvedBase + sep)) continue
+      if (!isWithinBase(conn.localFolder, filePath)) continue
       if (isExtensionBlocked(filePath, conn)) continue
       const relPath  = conn.folderMode === 'flat' ? basename(filePath) : rel
       let fileSize = null
@@ -1171,9 +1172,22 @@ function registerIPC() {
       return { ok: true }
     } catch (err) {
       // Covers validation, the tagged "Cannot read key file: ..." message, and
-      // ssh2 connect errors — all surfaced verbatim as before.
-      return { ok: false, error: err.message }
+      // ssh2 connect errors — all surfaced verbatim as before. `code` lets the
+      // renderer tell a changed host key from an ordinary failure and offer the
+      // one action that resolves it, without matching on the message text.
+      return { ok: false, error: err.message, code: err.code }
     }
+  })
+
+  // -- SSH: drop a pinned host key so the next connect trusts what it finds ---
+  // Deliberate and per host: a changed key is either the admin's own doing or
+  // an attack, and only the user can tell which (WR-07).
+  ipcMain.handle('ssh:forget-host-key', async (_e, host, port) => {
+    if (typeof host !== 'string' || !host.trim()) return { ok: false, error: 'Invalid host' }
+    const { forgetHostKey } = await import('./known-hosts.js')
+    forgetHostKey(host, Number(port) || 22)
+    log('warn', `Pinned SSH host key forgotten for ${host}:${Number(port) || 22} — the next connect will trust the key it is offered`)
+    return { ok: true }
   })
 
   // -- SSH: scan ~/.ssh/config + WSL ------------------------------------------
@@ -1275,11 +1289,16 @@ function registerIPC() {
       _poolTouch(connectionId)
       const { client } = poolEntry
 
-      const safePath = rootPath.replace(/'/g, "'\\''")
       const rootNorm = rootPath.replace(/\/+$/, '') || '/'
-      const noiseFilter = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.@__thumb'`
-      const cmd = `find '${safePath}' -mindepth 1 ${noiseFilter} -not -name '.*'`
-      const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); rel="\${p#${rootNorm}/}"; printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$rel"; done`
+
+      // Throws on characters that cannot be safely put in a command line;
+      // validateRemotePath deliberately stays permissive for navigation.
+      let pipeline
+      try {
+        pipeline = buildRemoteTreeCommand(rootPath)
+      } catch {
+        return { ok: false, error: 'Invalid remote path' }
+      }
 
       let stdout, code
       try {
@@ -1610,7 +1629,7 @@ function registerIPC() {
       for (const rel of relPaths) {
         const abs = join(resolvedLF, rel)
         // Path traversal guard
-        if (!abs.startsWith(resolvedLF + sep)) {
+        if (!isWithinBase(resolvedLF, abs)) {
           errors.push({ file: rel, error: 'Path traversal blocked.' })
           continue
         }
@@ -1735,12 +1754,10 @@ function registerIPC() {
       if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
 
       const remotePath = conn.sftp?.remotePath || '/'
-      // Single-quote the path and escape any literal single quotes inside it
-      const quotedPath = `'${remotePath.replace(/'/g, "'\\''")}'`
 
       let dfOutput
       try {
-        const { stdout } = await execWithTimeout(poolEntry.client, `df -P -k -- ${quotedPath}`, 60_000)
+        const { stdout } = await execWithTimeout(poolEntry.client, `df -P -k -- ${shQuote(remotePath)}`, 60_000)
         dfOutput = stdout
       } catch (err) {
         const label = await _connLabel(connectionId)
@@ -2441,9 +2458,7 @@ function registerIPC() {
           const localPath = join(cfg.localDest, ...relPath.split('/').filter(Boolean))
 
           // Guard against path traversal — resolved path must stay inside localDest
-          const resolvedDest  = resolve(cfg.localDest)
-          const resolvedLocal = resolve(localPath)
-          if (!resolvedLocal.startsWith(resolvedDest + sep)) {
+          if (!isWithinBase(cfg.localDest, localPath)) {
             log('warn', `Backup: blocked path traversal attempt: ${relPath}`)
             stats.errors.push({ file: relPath, error: 'Path outside destination — skipped.' })
             continue

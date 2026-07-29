@@ -61,7 +61,10 @@ async function transfer(cfg, job, onProgress) {
 async function connect(cfg) {
   // Connection setup (config, tilde-expanded key, ready/error) is centralized
   // in ssh-connection.js (WR-36); here we just open the SFTP channel on top.
-  const conn = await createSshConnection(cfg, { readyTimeout: 10_000 })
+  // pinHostKeys: false — this runs in the transfer worker, which must not write
+  // the config (see createSshConnection). A key already pinned by the main
+  // process is still enforced here.
+  const conn = await createSshConnection(cfg, { readyTimeout: 10_000, pinHostKeys: false })
 
   return new Promise((resolve, reject) => {
     conn.sftp((err, sftp) => {

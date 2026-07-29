@@ -58,10 +58,24 @@ export default function ConnectionModal({ existing, onSave, onClose }) {
         password: conn.sftp.password || undefined,
         keyPath:  conn.sftp.keyPath  || undefined,
       })
-      setTestStatus(result?.ok ? 'ok' : { error: result?.error ?? 'Connection failed' })
+      setTestStatus(result?.ok ? 'ok' : { error: result?.error ?? 'Connection failed', code: result?.code })
     } catch (err) {
       setTestStatus({ error: err.message })
     }
+  }
+
+  // A pinned host key that no longer matches is either the NAS being rebuilt or
+  // someone answering in its place, so dropping the pin stays an explicit act:
+  // one button, on the connection whose key changed, followed by a fresh test
+  // that pins whatever is really there now.
+  async function handleForgetHostKey() {
+    setTestStatus('testing')
+    const result = await window.winraid?.ssh.forgetHostKey(conn.sftp.host, Number(conn.sftp.port) || 22)
+    if (!result?.ok) {
+      setTestStatus({ error: result?.error ?? 'Could not forget the saved key' })
+      return
+    }
+    await handleTest()
   }
 
   async function handleSave() {
@@ -192,6 +206,11 @@ export default function ConnectionModal({ existing, onSave, onClose }) {
               </button>
               {testStatus === 'ok' && <span className={styles.testOk}>Connected</span>}
               {testStatus?.error && <span className={styles.testErr}>{testStatus.error}</span>}
+              {testStatus?.code === 'HOST_KEY_CHANGED' && (
+                <button className={styles.testBtn} onClick={handleForgetHostKey}>
+                  Forget saved key
+                </button>
+              )}
             </div>
           </>}
 

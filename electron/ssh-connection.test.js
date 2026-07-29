@@ -28,13 +28,22 @@ const { ClientMock, lastClient } = vi.hoisted(() => {
 })
 vi.mock('ssh2', () => ({ Client: ClientMock }))
 
-import { expandKeyPath, getConnConfig, createSshConnection } from './ssh-connection.js'
+const { getPinnedMock, pinMock } = vi.hoisted(() => ({ getPinnedMock: vi.fn(), pinMock: vi.fn() }))
+vi.mock('./known-hosts.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  getPinnedHostKey: getPinnedMock,
+  pinHostKey: pinMock,
+}))
+vi.mock('./config.js', () => ({ getConfig: vi.fn(), setConfig: vi.fn() }))
+
+import { expandKeyPath, getConnConfig, createSshConnection, hostKeyFingerprint } from './ssh-connection.js'
 
 const flush = () => new Promise((resolve) => setImmediate(resolve))
 
 beforeEach(() => {
   vi.clearAllMocks()
   lastClient.current = null
+  getPinnedMock.mockReturnValue(undefined)
 })
 
 describe('expandKeyPath', () => {
@@ -120,5 +129,105 @@ describe('createSshConnection', () => {
     await expect(createSshConnection({ host: 'h', username: 'u', keyPath: '~/k' }))
       .rejects.toMatchObject({ code: 'KEY_READ_FAILED' })
     expect(ClientMock).not.toHaveBeenCalled()
+  })
+})
+
+// WR-07: every connect used to accept any host key, so anything on the LAN
+// could answer as the NAS and collect the credentials.
+describe('host key verification', () => {
+  const cfg = { host: 'nas.local', port: 22, username: 'u', password: 'p' }
+  const HOST_KEY = Buffer.from('ssh-ed25519 AAAA-the-real-nas')
+  const OTHER_KEY = Buffer.from('ssh-ed25519 AAAA-an-impostor')
+
+  async function connectWith(key, connCfg = cfg) {
+    const promise = createSshConnection(connCfg)
+    await flush()
+    const accepted = lastClient.current.connectConfig.hostVerifier(key)
+    return { promise, accepted }
+  }
+
+  it('formats a fingerprint the way OpenSSH prints one', () => {
+    const fp = hostKeyFingerprint(HOST_KEY)
+    expect(fp).toMatch(/^SHA256:[A-Za-z0-9+/]+$/)   // base64, padding stripped
+    expect(fp).not.toMatch(/=$/)
+    expect(hostKeyFingerprint(HOST_KEY)).toBe(fp)   // stable
+    expect(hostKeyFingerprint(OTHER_KEY)).not.toBe(fp)
+  })
+
+  it('always installs a verifier — an unset one means auto-accept', async () => {
+    createSshConnection(cfg)
+    await flush()
+    expect(typeof lastClient.current.connectConfig.hostVerifier).toBe('function')
+    expect(lastClient.current.connectConfig.hostHash).toBeUndefined()  // verifier must get the raw key
+  })
+
+  it('pins the key on first connect and accepts it', async () => {
+    const { accepted } = await connectWith(HOST_KEY)
+    expect(accepted).toBe(true)
+    expect(pinMock).toHaveBeenCalledWith('nas.local', 22, hostKeyFingerprint(HOST_KEY))
+  })
+
+  it('accepts a later connect presenting the pinned key, and does not re-pin', async () => {
+    getPinnedMock.mockReturnValue(hostKeyFingerprint(HOST_KEY))
+    const { accepted } = await connectWith(HOST_KEY)
+    expect(accepted).toBe(true)
+    expect(pinMock).not.toHaveBeenCalled()
+  })
+
+  it('rejects a different key and never overwrites the pin', async () => {
+    getPinnedMock.mockReturnValue(hostKeyFingerprint(HOST_KEY))
+    const { accepted } = await connectWith(OTHER_KEY)
+    expect(accepted).toBe(false)
+    expect(pinMock).not.toHaveBeenCalled()
+  })
+
+  it('reports a changed host key distinctly, not as a generic handshake failure', async () => {
+    getPinnedMock.mockReturnValue(hostKeyFingerprint(HOST_KEY))
+    const { promise } = await connectWith(OTHER_KEY)
+    lastClient.current.emit('error', new Error('Handshake failed'))
+    await expect(promise).rejects.toMatchObject({ code: 'HOST_KEY_CHANGED' })
+    await expect(promise).rejects.toThrow(/nas\.local/)
+    await expect(promise).rejects.toThrow(/host key/i)
+  })
+
+  it('leaves an unrelated connection error alone', async () => {
+    const promise = createSshConnection(cfg)
+    await flush()
+    lastClient.current.emit('error', new Error('ECONNREFUSED'))
+    await expect(promise).rejects.toThrow('ECONNREFUSED')
+    await expect(promise).rejects.not.toMatchObject({ code: 'HOST_KEY_CHANGED' })
+  })
+
+  it('pins per host and port, so a different port is its own trust decision', async () => {
+    await connectWith(HOST_KEY, { ...cfg, port: 2222 })
+    expect(getPinnedMock).toHaveBeenCalledWith('nas.local', 2222)
+    expect(pinMock).toHaveBeenCalledWith('nas.local', 2222, hostKeyFingerprint(HOST_KEY))
+  })
+
+  // The transfer worker must not write the config: setConfig persists a
+  // whole per-process cache, so a write from there can clobber the main
+  // process. It still has to enforce a pin that already exists.
+  it('with pinning off, trusts an unpinned host without recording it', async () => {
+    const promise = createSshConnection(cfg, { pinHostKeys: false })
+    await flush()
+    expect(lastClient.current.connectConfig.hostVerifier(HOST_KEY)).toBe(true)
+    expect(pinMock).not.toHaveBeenCalled()
+    lastClient.current.emit('ready')
+    await promise
+  })
+
+  it('with pinning off, still rejects a key that contradicts the pin', async () => {
+    getPinnedMock.mockReturnValue(hostKeyFingerprint(HOST_KEY))
+    const promise = createSshConnection(cfg, { pinHostKeys: false })
+    await flush()
+    expect(lastClient.current.connectConfig.hostVerifier(OTHER_KEY)).toBe(false)
+    lastClient.current.emit('error', new Error('Handshake failed'))
+    await expect(promise).rejects.toMatchObject({ code: 'HOST_KEY_CHANGED' })
+  })
+
+  it('treats a missing port as 22 on both read and write', async () => {
+    await connectWith(HOST_KEY, { host: 'nas.local', username: 'u', password: 'p' })
+    expect(getPinnedMock).toHaveBeenCalledWith('nas.local', 22)
+    expect(pinMock).toHaveBeenCalledWith('nas.local', 22, expect.any(String))
   })
 })

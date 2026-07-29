@@ -15,6 +15,14 @@ const state = vi.hoisted(() => ({
   fastPut:   null, // vi.fn per test, records upload attempts
 }))
 
+// The SSH layer pins host keys (WR-07), and the pin store reads the app
+// config, which imports electron. This backend runs in the transfer worker,
+// where electron exists at runtime but not under vitest.
+vi.mock('electron', () => ({
+  app: { getPath: () => '/tmp/winraid-test' },
+  safeStorage: { isEncryptionAvailable: () => false },
+}))
+
 vi.mock('ssh2', async () => {
   const { EventEmitter } = await import('events')
   class Client extends EventEmitter {
