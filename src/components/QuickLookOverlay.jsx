@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, Loader, Camera, Scissors, Play, Pause, AlertCircle } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, RotateCcw, Loader, Camera, Scissors, Play, Pause, AlertCircle } from 'lucide-react'
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
@@ -8,7 +8,7 @@ import PdfPreview from './PdfPreview'
 import styles from './QuickLookOverlay.module.css'
 import modalStyles from './modals/modals.module.css'
 import { formatSize, formatDate } from '../utils/format'
-import { fileType, getExt } from '../utils/fileTypes'
+import { fileType, getExt, isRotatableVideo } from '../utils/fileTypes'
 import { nasStreamUrl } from '../utils/nasStream'
 import { computePan } from '../utils/panMath'
 import * as remoteFS from '../services/remoteFS'
@@ -32,6 +32,10 @@ const CROP_ASPECTS = [
   { label: '3:2',    value: 3 / 2 },
   { label: '16:9',   value: 16 / 9 },
 ]
+
+// Relative clockwise rotation, in degrees, for each direction the rotate
+// dialog offers.
+const ROTATE_DEGREES = { left: 270, right: 90, '180': 180 }
 
 // Format a duration in seconds as HH-MM-SS for filenames (no colons).
 function formatVideoTimestamp(seconds) {
@@ -444,6 +448,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitCropMode() }
         return
       }
+      // While the rotate dialog is open, lock everything except Escape
+      if (latestRef.current.rotating) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitRotateMode() }
+        return
+      }
       if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev(); return }
       if (e.key === 'ArrowRight') { e.preventDefault(); handleNext(); return }
       if (e.key === ' ' && mediaRef.current?.tagName === 'VIDEO') {
@@ -485,6 +494,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimPlaying, setTrimPlaying] = useState(false)
   const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', canLocalTrim?, pct?, error? }
   const trimLocalAckRef = useRef(false)  // 'Trim locally' chosen once this session
+  const pendingEditIntentRef = useRef('trim')  // 'trim' | 'rotate' — which feature the engine gate should open once ready
+  const [rotating,     setRotating]     = useState(false)
+  const [rotateFile,   setRotateFile]   = useState(null)
+  const [rotateDirection, setRotateDirection] = useState('right')  // 'left' | 'right' | '180'
+  const [rotateSaving, setRotateSaving] = useState(false)
   const [snapMsg, setSnapMsg] = useState(null)
   const snapMsgTimerRef = useRef(null)
   const cropImgRef     = useRef(null)
@@ -499,7 +513,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const trimDragRef       = useRef(null)   // 'start' | 'end' | null while dragging a handle
   const trimRangeRef      = useRef({ in: 0, out: 0 })  // current selection for stable listeners
   const type = file ? fileType(file.name) : 'unknown'
-  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, type }
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, rotating, type }
 
 
   function handleLoopChange(v) {
@@ -544,27 +558,39 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setTrimming(true)
   }
 
-  // Gate on an available trim engine before letting the user pick a range —
-  // otherwise the failure would only surface at save time. Without NAS
-  // ffmpeg a dialog offers the choices (trim locally / locate / download);
-  // "trim locally" is remembered for the rest of the session.
-  async function enterTrimMode() {
+  // Gate on an available trim/rotate engine before letting the user pick a
+  // range or direction — otherwise the failure would only surface at save
+  // time. Both features share the same NAS ffmpeg capability: without it, a
+  // dialog offers the choices (trim locally / locate / download); "trim
+  // locally" is remembered for the rest of the session. pendingEditIntentRef
+  // tracks which feature to open once the engine is ready.
+  async function runEngineGate() {
     const cap = await window.winraid?.remote.trimCapability?.(connectionId)
     if (!cap?.ok) {
       toast.show({ msg: cap?.error ?? 'Could not check trim support', type: 'error' })
       return
     }
     if (cap.mode === 'server' || (cap.mode === 'local' && trimLocalAckRef.current)) {
-      beginTrim()
+      proceedWithPendingIntent()
       return
     }
     setTrimSetup({ phase: 'prompt', canLocalTrim: cap.mode === 'local' })
   }
 
+  function proceedWithPendingIntent() {
+    if (pendingEditIntentRef.current === 'rotate') beginRotate()
+    else beginTrim()
+  }
+
+  async function enterTrimMode() {
+    pendingEditIntentRef.current = 'trim'
+    await runEngineGate()
+  }
+
   function handleLocalTrimChoice() {
     trimLocalAckRef.current = true
     setTrimSetup(null)
-    beginTrim()
+    proceedWithPendingIntent()
   }
 
   async function handleFfmpegDownload() {
@@ -579,7 +605,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       trimLocalAckRef.current = true
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg ready — trims will run on your PC', type: 'success' })
-      beginTrim()
+      proceedWithPendingIntent()
     } else if (res?.canceled) {
       setTrimSetup({ phase: 'prompt', canLocalTrim })
     } else {
@@ -594,7 +620,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       trimLocalAckRef.current = true
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg found — trims will run on your PC', type: 'success' })
-      beginTrim()
+      proceedWithPendingIntent()
     } else {
       setTrimSetup((prev) => ({ phase: 'prompt', canLocalTrim: prev?.canLocalTrim ?? false, error: res?.error ?? 'That file did not work' }))
     }
@@ -785,6 +811,71 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     } catch (err) {
       toast.show({ msg: err.message, type: 'error' })
       setTrimSaving(false)
+    }
+  }
+
+  // ── Rotate handlers ────────────────────────────────────────────────────────
+  // Lossless rotate shares the trim feature's ffmpeg engine gate (see
+  // runEngineGate). Entry is initiated via enterRotateMode above the gate.
+  function beginRotate() {
+    setRotateFile(file)
+    setRotateDirection('right')
+    setRotating(true)
+  }
+
+  async function enterRotateMode() {
+    pendingEditIntentRef.current = 'rotate'
+    await runEngineGate()
+  }
+
+  function exitRotateMode() {
+    setRotating(false)
+    setRotateFile(null)
+    setRotateSaving(false)
+  }
+
+  async function handleRotateSave(overwrite) {
+    if (!rotateFile) return
+    setRotateSaving(true)
+    try {
+      let dest
+      if (overwrite) {
+        dest = rotateFile.path
+      } else {
+        const slash = rotateFile.path.lastIndexOf('/')
+        const dir   = slash > 0 ? rotateFile.path.slice(0, slash) : '/'
+        const list  = await window.winraid?.remote.list(connectionId, dir)
+        const names = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+        dest = nextAvailableCopyPath(rotateFile.path, names, '_rotated')
+      }
+
+      const degrees = ROTATE_DEGREES[rotateDirection]
+      const res = await window.winraid?.remote.rotateVideo(connectionId, {
+        path: rotateFile.path, outPath: dest, degrees,
+      })
+      if (!res?.ok) throw new Error(res?.error ?? 'Rotate failed')
+
+      await window.winraid?.cache.invalidateFile(connectionId, dest)
+      const slash   = dest.lastIndexOf('/')
+      const destDir = slash > 0 ? dest.slice(0, slash) : '/'
+      remoteFS.invalidate(connectionId, destDir)
+      const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
+
+      toast.show({ msg: overwrite ? 'Video rotated' : 'Rotated copy saved', type: 'success' })
+
+      if (overwrite) {
+        setCacheBust(Date.now())
+        exitRotateMode()
+      } else {
+        const destName = dest.slice(slash + 1)
+        const entry    = refreshed?.find((e) => e.name === destName)
+        const newFile  = entry ? { ...entry, path: dest } : { name: destName, path: dest, size: 0, modified: Date.now(), type: 'file' }
+        exitRotateMode()
+        onNavigate?.(newFile)
+      }
+    } catch (err) {
+      toast.show({ msg: err.message, type: 'error' })
+      setRotateSaving(false)
     }
   }
 
@@ -1213,6 +1304,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             </button>
           </Tooltip>
         )}
+        {type === 'video' && canServerEdit && !trimming && isRotatableVideo(file.name) && (
+          <Tooltip tip="Rotate" side="bottom">
+            <button
+              className={styles.fileMenuBtn}
+              onClick={enterRotateMode}
+              aria-label="Rotate video"
+            >
+              <RotateCw size={16} />
+            </button>
+          </Tooltip>
+        )}
         {cropping && (
           <div className={styles.cropToolbar}>
             <span className={styles.cropToolbarLabel}>Aspect</span>
@@ -1369,6 +1471,68 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Rotate dialog: pick a direction, then save a copy or overwrite */}
+      {rotating && (
+        <div className={modalStyles.modalOverlay} data-testid="rotate-modal">
+          <div className={modalStyles.modal}>
+            <div className={modalStyles.modalHeader}>
+              <span className={modalStyles.modalIconWrap}><RotateCw size={20} /></span>
+              <div>
+                <h2 className={modalStyles.modalTitle}>Rotate video</h2>
+                <p className={modalStyles.modalSubtitle}>
+                  Pick a direction, then save a copy or overwrite the original. The rotation is lossless.
+                </p>
+              </div>
+            </div>
+
+            <div className={styles.rotateDirRow}>
+              <button
+                type="button"
+                className={[styles.rotateDirBtn, rotateDirection === 'left' ? styles.rotateDirBtnActive : ''].filter(Boolean).join(' ')}
+                onClick={() => setRotateDirection('left')}
+                disabled={rotateSaving}
+                aria-label="Rotate left"
+              >
+                <RotateCcw size={18} />
+                <span>Left</span>
+              </button>
+              <button
+                type="button"
+                className={[styles.rotateDirBtn, rotateDirection === 'right' ? styles.rotateDirBtnActive : ''].filter(Boolean).join(' ')}
+                onClick={() => setRotateDirection('right')}
+                disabled={rotateSaving}
+                aria-label="Rotate right"
+              >
+                <RotateCw size={18} />
+                <span>Right</span>
+              </button>
+              <button
+                type="button"
+                className={[styles.rotateDirBtn, rotateDirection === '180' ? styles.rotateDirBtnActive : ''].filter(Boolean).join(' ')}
+                onClick={() => setRotateDirection('180')}
+                disabled={rotateSaving}
+                aria-label="Rotate 180"
+              >
+                <RotateCw size={18} />
+                <span>180°</span>
+              </button>
+            </div>
+
+            <div className={modalStyles.modalActions}>
+              <button className={modalStyles.modalCancel} onClick={exitRotateMode} disabled={rotateSaving}>
+                Cancel
+              </button>
+              <button className={modalStyles.modalSecondary} onClick={() => handleRotateSave(false)} disabled={rotateSaving}>
+                {rotateSaving ? <Loader size={13} /> : null} Save as new
+              </button>
+              <button className={modalStyles.modalConfirmAccent} onClick={() => handleRotateSave(true)} disabled={rotateSaving}>
+                {rotateSaving ? <Loader size={13} /> : null} Overwrite
+              </button>
+            </div>
           </div>
         </div>
       )}
