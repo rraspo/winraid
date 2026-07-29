@@ -1171,9 +1171,22 @@ function registerIPC() {
       return { ok: true }
     } catch (err) {
       // Covers validation, the tagged "Cannot read key file: ..." message, and
-      // ssh2 connect errors — all surfaced verbatim as before.
-      return { ok: false, error: err.message }
+      // ssh2 connect errors — all surfaced verbatim as before. `code` lets the
+      // renderer tell a changed host key from an ordinary failure and offer the
+      // one action that resolves it, without matching on the message text.
+      return { ok: false, error: err.message, code: err.code }
     }
+  })
+
+  // -- SSH: drop a pinned host key so the next connect trusts what it finds ---
+  // Deliberate and per host: a changed key is either the admin's own doing or
+  // an attack, and only the user can tell which (WR-07).
+  ipcMain.handle('ssh:forget-host-key', async (_e, host, port) => {
+    if (typeof host !== 'string' || !host.trim()) return { ok: false, error: 'Invalid host' }
+    const { forgetHostKey } = await import('./known-hosts.js')
+    forgetHostKey(host, Number(port) || 22)
+    log('warn', `Pinned SSH host key forgotten for ${host}:${Number(port) || 22} — the next connect will trust the key it is offered`)
+    return { ok: true }
   })
 
   // -- SSH: scan ~/.ssh/config + WSL ------------------------------------------

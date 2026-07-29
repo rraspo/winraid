@@ -147,6 +147,8 @@ contextBridge.exposeInMainWorld('winraid', {
   ssh: {
     /** Test an SFTP connection. Returns { ok: true } or { ok: false, error: string }. */
     test: (cfg) => ipcRenderer.invoke('ssh:test', cfg),
+    /** Drop the pinned host key for a host, so the next connect pins afresh. */
+    forgetHostKey: (host, port) => ipcRenderer.invoke('ssh:forget-host-key', host, port),
     /** Scan ~/.ssh/config (and WSL equivalents). Returns array of host entries. */
     scanConfigs: () => ipcRenderer.invoke('ssh:scan-configs'),
     /** List a remote directory. Returns { ok, entries: [{ name, type }] } or { ok: false, error }. */

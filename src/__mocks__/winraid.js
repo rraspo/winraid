@@ -75,6 +75,7 @@ export function createWinraidMock(overrides = {}) {
 
     ssh: {
       test: vi.fn().mockResolvedValue({ ok: true }),
+      forgetHostKey: vi.fn().mockResolvedValue({ ok: true }),
       scanConfigs: vi.fn().mockResolvedValue([]),
       listDir: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
       ...overrides.ssh,
