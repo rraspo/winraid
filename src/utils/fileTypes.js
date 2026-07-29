@@ -2,6 +2,9 @@ export const IMAGE_EXTENSIONS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 's
 export const VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'webm', 'mov', 'mkv'])
 export const AUDIO_EXTENSIONS = new Set(['mp3', 'flac', 'wav', 'aac', 'ogg', 'm4a', 'opus'])
 export const PDF_EXTENSIONS   = new Set(['pdf'])
+// Only the QuickTime/MP4 family carries display-matrix rotation metadata that
+// a lossless rotate can rewrite, hence the narrower subset of VIDEO_EXTENSIONS.
+export const ROTATABLE_VIDEO_EXTENSIONS = new Set(['mp4', 'm4v', 'mov'])
 export const TEXT_EXTENSIONS  = new Set([
   'json', 'yml', 'yaml', 'sh', 'bash', 'zsh',
   'conf', 'ini', 'env', 'toml', 'txt', 'xml', 'lua', 'py', 'nginx',
@@ -37,6 +40,7 @@ export function getExt(name) {
 
 export function isImageFile(name)    { return IMAGE_EXTENSIONS.has(getExt(name)) }
 export function isVideoFile(name)    { return VIDEO_EXTENSIONS.has(getExt(name)) }
+export function isRotatableVideo(name) { return ROTATABLE_VIDEO_EXTENSIONS.has(getExt(name)) }
 export function isEditableFile(name) { return !BINARY_EXTENSIONS.has(getExt(name)) }
 
 export function fileType(name) {
