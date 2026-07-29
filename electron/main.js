@@ -31,6 +31,7 @@ import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
 import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
+import { isWithinBase } from './path-guard.js'
 import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
@@ -898,12 +899,11 @@ function registerIPC() {
     const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
     if (!conn) return { ok: false, error: 'connection not found' }
     if (!Array.isArray(relPaths)) return { ok: false, error: 'invalid relPaths' }
-    const resolvedBase = resolve(conn.localFolder)
     const q = queue
     for (const rel of relPaths) {
       if (typeof rel !== 'string' || rel.includes('..')) continue
       const filePath = join(localFolder, ...rel.split('/'))
-      if (!resolve(filePath).startsWith(resolvedBase + sep)) continue
+      if (!isWithinBase(conn.localFolder, filePath)) continue
       if (isExtensionBlocked(filePath, conn)) continue
       const relPath  = conn.folderMode === 'flat' ? basename(filePath) : rel
       let fileSize = null
@@ -1615,7 +1615,7 @@ function registerIPC() {
       for (const rel of relPaths) {
         const abs = join(resolvedLF, rel)
         // Path traversal guard
-        if (!abs.startsWith(resolvedLF + sep)) {
+        if (!isWithinBase(resolvedLF, abs)) {
           errors.push({ file: rel, error: 'Path traversal blocked.' })
           continue
         }
@@ -2291,9 +2291,7 @@ function registerIPC() {
           const localPath = join(cfg.localDest, ...relPath.split('/').filter(Boolean))
 
           // Guard against path traversal — resolved path must stay inside localDest
-          const resolvedDest  = resolve(cfg.localDest)
-          const resolvedLocal = resolve(localPath)
-          if (!resolvedLocal.startsWith(resolvedDest + sep)) {
+          if (!isWithinBase(cfg.localDest, localPath)) {
             log('warn', `Backup: blocked path traversal attempt: ${relPath}`)
             stats.errors.push({ file: relPath, error: 'Path outside destination — skipped.' })
             continue
