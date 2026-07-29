@@ -30,6 +30,7 @@ import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
+import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
@@ -1274,11 +1275,16 @@ function registerIPC() {
       _poolTouch(connectionId)
       const { client } = poolEntry
 
-      const safePath = rootPath.replace(/'/g, "'\\''")
       const rootNorm = rootPath.replace(/\/+$/, '') || '/'
-      const noiseFilter = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.@__thumb'`
-      const cmd = `find '${safePath}' -mindepth 1 ${noiseFilter} -not -name '.*'`
-      const pipeline = cmd + ` | while IFS= read -r p; do t=$([ -d "$p" ] && echo d || echo f); s=$(stat -c '%s' "$p" 2>/dev/null || echo 0); m=$(stat -c '%Y' "$p" 2>/dev/null || echo 0); rel="\${p#${rootNorm}/}"; printf '%s\\t%s\\t%s\\t%s\\n' "$t" "$s" "$m" "$rel"; done`
+
+      // Throws on characters that cannot be safely put in a command line;
+      // validateRemotePath deliberately stays permissive for navigation.
+      let pipeline
+      try {
+        pipeline = buildRemoteTreeCommand(rootPath)
+      } catch {
+        return { ok: false, error: 'Invalid remote path' }
+      }
 
       let stdout, code
       try {
@@ -1734,12 +1740,10 @@ function registerIPC() {
       if (!poolEntry) return { ok: false, error: 'Connection unavailable' }
 
       const remotePath = conn.sftp?.remotePath || '/'
-      // Single-quote the path and escape any literal single quotes inside it
-      const quotedPath = `'${remotePath.replace(/'/g, "'\\''")}'`
 
       let dfOutput
       try {
-        const { stdout } = await execWithTimeout(poolEntry.client, `df -P -k -- ${quotedPath}`, 60_000)
+        const { stdout } = await execWithTimeout(poolEntry.client, `df -P -k -- ${shQuote(remotePath)}`, 60_000)
         dfOutput = stdout
       } catch (err) {
         const label = await _connLabel(connectionId)
