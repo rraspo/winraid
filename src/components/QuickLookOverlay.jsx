@@ -796,7 +796,13 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       remoteFS.invalidate(connectionId, destDir)
       const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
 
-      toast.show({ msg: overwrite ? 'Video trimmed' : 'Trimmed clip saved', type: 'success' })
+      // res.exact === false means ffmpeg could not cut on the chosen frame and
+      // fell back to the nearest keyframe — say so rather than imply precision.
+      const saved = overwrite ? 'Video trimmed' : 'Trimmed clip saved'
+      toast.show({
+        msg: res.exact === false ? `${saved} — cut moved to the nearest keyframe` : saved,
+        type: 'success',
+      })
 
       if (overwrite) {
         setCacheBust(Date.now())

@@ -30,7 +30,7 @@ import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
-import { ffmpegTrimCommand, ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
@@ -1884,18 +1884,21 @@ function registerIPC() {
     try {
       await new Promise((resolve, reject) => sftp.fastGet(path, localIn, (err) => (err ? reject(err) : resolve())))
 
-      const args = ffmpegTrimArgs({ input: localIn, output: localOut, start, duration: end - start })
-      await new Promise((resolve, reject) => {
-        const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
-        let errTail = ''
-        proc.stderr?.on('data', (chunk) => { errTail = (errTail + chunk).slice(-800) })
-        proc.on('error', reject)
-        proc.on('close', (code) => {
-          if (code === 0) return resolve()
-          const tail = errTail.trim().split('\n').slice(-3).join(' ').slice(0, 400)
-          reject(new Error(tail || `ffmpeg exited ${code}`))
-        })
+      const cut = await runTrim({
+        input: localIn, output: localOut, start, end,
+        exec: (args) => new Promise((resolve, reject) => {
+          const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
+          // Kept whole, not tailed: the keyframe probe's answer is in the
+          // early lines. The cap only guards against a runaway progress log.
+          let stderr = ''
+          proc.stderr?.on('data', (chunk) => { stderr = (stderr + chunk).slice(-1_000_000) })
+          proc.on('error', reject)
+          proc.on('close', (code) => resolve({ code, stdout: '', stderr }))
+        }),
+        remove: async (target) => rmSync(target, { force: true }),
+        log: (level, msg) => log(level, `${msg} [${label}]`),
       })
+      if (!cut.ok) throw new Error(cut.error)
 
       await new Promise((resolve, reject) => sftp.fastPut(localOut, remoteTmp, (err) => (err ? reject(err) : resolve())))
 
@@ -1905,12 +1908,12 @@ function registerIPC() {
         return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
       }
 
-      log('info', `Video trimmed locally [${label}]: ${path} -> ${outPath} (${(end - start).toFixed(2)}s)`)
+      log('info', `Video trimmed locally [${label}]: ${path} -> ${outPath} (${(end - start).toFixed(2)}s, ${cut.mode} cut)`)
       emitActivity({
         type: 'upload', connectionId,
         payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
       })
-      return { ok: true, outPath }
+      return { ok: true, outPath, exact: !cut.degraded }
     } catch (err) {
       client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
       log('error', `Local video trim failed [${label}]: ${err.message}`)
@@ -1960,15 +1963,17 @@ function registerIPC() {
 
       const duration = end - start
 
-      const cmd = ffmpegTrimCommand({ input: path, output: tmp, start, duration })
-
       try {
-        const { code, stderr } = await execWithTimeout(client, cmd, 600_000)
-        if (code !== 0) {
-          const tail = (stderr || '').trim().split('\n').slice(-3).join(' ').slice(0, 400)
-          log('error', `Video trim failed [${label}]: ffmpeg exited ${code} — ${tail}`)
+        const cut = await runTrim({
+          input: path, output: tmp, start, end,
+          exec: (args) => execWithTimeout(client, shellFromArgs(args), 600_000),
+          remove: (target) => new Promise((resolve) => client.exec(`rm -f -- ${shQuote(target)}`, () => resolve())),
+          log: (level, msg) => log(level, `${msg} [${label}]`),
+        })
+        if (!cut.ok) {
+          log('error', `Video trim failed [${label}]: ${cut.error}`)
           client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
-          return { ok: false, error: tail || `ffmpeg exited ${code}` }
+          return { ok: false, error: cut.error }
         }
 
         // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
@@ -1979,12 +1984,12 @@ function registerIPC() {
           return { ok: false, error: (mv.stderr || 'Could not finalize trimmed file').trim() }
         }
 
-        log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s)`)
+        log('info', `Video trimmed [${label}]: ${path} -> ${outPath} (${duration.toFixed(2)}s, ${cut.mode} cut)`)
         emitActivity({
           type: 'upload', connectionId,
           payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
         })
-        return { ok: true, outPath }
+        return { ok: true, outPath, exact: !cut.degraded }
       } catch (err) {
         client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
         throw err

@@ -49,22 +49,37 @@ export function probeRotationCommand(path) {
   return `ffmpeg -nostdin -hide_banner -i ${shQuote(path)}`
 }
 
-// Rewrite the file's absolute clockwise rotation losslessly (stream copy, no
-// re-encode). Modern ffmpeg writes the display matrix via -display_rotation,
-// which takes a CCW angle and must precede -i since it applies to the input;
-// pre-5.1 ffmpeg instead stamps the legacy per-stream rotate metadata tag.
-export function ffmpegRotateCommand({ input, output, degrees, modern }) {
+// Stamping an absolute clockwise rotation on an output splits over the two
+// sides of the command: modern ffmpeg writes the display matrix via
+// -display_rotation, which takes a CCW angle and must precede -i since it
+// applies to the input; pre-5.1 ffmpeg instead stamps the legacy per-stream
+// rotate metadata tag, which belongs with the output.
+export function rotationInputArgs({ degrees, modern }) {
   assertValidDegrees(degrees)
-  return modern
-    ? `ffmpeg -nostdin -y -display_rotation ${normalize(360 - degrees)} -i ${shQuote(input)} -c copy -map 0 ${shQuote(output)}`
-    : `ffmpeg -nostdin -y -i ${shQuote(input)} -c copy -map 0 -metadata:s:v:0 rotate=${degrees} ${shQuote(output)}`
+  return modern ? ['-display_rotation', String(normalize(360 - degrees))] : []
+}
+
+export function rotationOutputArgs({ degrees, modern }) {
+  assertValidDegrees(degrees)
+  return modern ? [] : ['-metadata:s:v:0', `rotate=${degrees}`]
+}
+
+// Rewrite the file's absolute clockwise rotation losslessly (stream copy, no
+// re-encode).
+export function ffmpegRotateCommand({ input, output, degrees, modern }) {
+  const args = ffmpegRotateArgs({ input, output, degrees, modern })
+  return `ffmpeg ${args.map((arg) => (arg === input || arg === output ? shQuote(arg) : arg)).join(' ')}`
 }
 
 // Same rotation as ffmpegRotateCommand but as an argv array for a local
 // spawn — no shell, so paths need no quoting.
 export function ffmpegRotateArgs({ input, output, degrees, modern }) {
-  assertValidDegrees(degrees)
-  return modern
-    ? ['-nostdin', '-y', '-display_rotation', String(normalize(360 - degrees)), '-i', input, '-c', 'copy', '-map', '0', output]
-    : ['-nostdin', '-y', '-i', input, '-c', 'copy', '-map', '0', '-metadata:s:v:0', `rotate=${degrees}`, output]
+  return [
+    '-nostdin', '-y',
+    ...rotationInputArgs({ degrees, modern }),
+    '-i', input,
+    '-c', 'copy', '-map', '0',
+    ...rotationOutputArgs({ degrees, modern }),
+    output,
+  ]
 }

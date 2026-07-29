@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import * as remoteFS from '../services/remoteFS'
+import * as toast from '../services/toast'
 import QuickLookOverlay from './QuickLookOverlay'
 
 // react-image-crop renders a div wrapper; we don't need its full behavior in tests.
@@ -541,6 +542,43 @@ describe('QuickLookOverlay trim save', () => {
     await waitFor(() => expect(trimVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
       path: '/v/clip.mp4', outPath: '/v/clip.mp4', start: 0, end: 8,
     })))
+  })
+
+  // The exact cut can degrade to a keyframe-snapped one (no encoder for the
+  // codec, a stream MPEG-TS cannot carry). The toast must not imply precision
+  // the file does not have.
+  async function saveTrimWith(result) {
+    window.winraid = createWinraidMock({
+      remote: {
+        list: vi.fn().mockResolvedValue({ ok: true, entries: [{ name: 'clip.mp4', type: 'file' }] }),
+        trimVideo: vi.fn().mockResolvedValue(result),
+      },
+    })
+    render(
+      <QuickLookOverlay
+        file={videoFile} connectionId="c1" remoteBasePath="/v" files={[videoFile]}
+        onNavigate={() => {}} onClose={() => {}} onDelete={() => {}} canServerEdit
+      />
+    )
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: 12 })
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Save as new' }))
+  }
+
+  it('says so when the cut could not start on the chosen frame', async () => {
+    const show = vi.spyOn(toast, 'show')
+    await saveTrimWith({ ok: true, outPath: '/v/clip_trimmed.mp4', exact: false })
+    await waitFor(() => expect(show).toHaveBeenCalledWith(
+      expect.objectContaining({ msg: expect.stringMatching(/cut moved to the nearest keyframe/i), type: 'success' })
+    ))
+  })
+
+  it('reports a plain success when the cut landed on the chosen frame', async () => {
+    const show = vi.spyOn(toast, 'show')
+    await saveTrimWith({ ok: true, outPath: '/v/clip_trimmed.mp4', exact: true })
+    await waitFor(() => expect(show).toHaveBeenCalledWith({ msg: 'Trimmed clip saved', type: 'success' }))
   })
 })
 
