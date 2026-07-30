@@ -266,6 +266,26 @@ describe('crash recovery', () => {
 })
 
 // -------------------------------------------------------------------------
+// 6b. targetRelPath — remote target committed by the backend before upload
+// -------------------------------------------------------------------------
+describe('updateJob targetRelPath', () => {
+  it('persists targetRelPath so a retry after a crash resumes the same remote target', async () => {
+    const queue = await loadQueue()
+    const jobId = queue.enqueue('/media/movie.mkv', { connectionId: 'conn-1' })
+
+    // The backend commits its resolved target (possibly a "name (n)" duplicate)
+    // just before writing the first byte.
+    queue.updateJob(jobId, { targetRelPath: 'movie (1).mkv' })
+    vi.advanceTimersByTime(200)
+    expect(findJob(readQueueFile().jobs, jobId).targetRelPath).toBe('movie (1).mkv')
+
+    // Simulated restart: the reloaded job still carries the committed target.
+    const reloaded = await loadQueue()
+    expect(findJob(reloaded.listJobs(), jobId).targetRelPath).toBe('movie (1).mkv')
+  })
+})
+
+// -------------------------------------------------------------------------
 // 7. corrupt / missing queue file
 // -------------------------------------------------------------------------
 describe('resilient load', () => {

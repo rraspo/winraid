@@ -158,7 +158,7 @@ export function getNextPending() {
  * Partial update — only the fields you pass are written.
  *
  * @param {string} id
- * @param {{ status?: string, progress?: number, errorMsg?: string, errorAt?: number|null, retries?: number }} fields
+ * @param {{ status?: string, progress?: number, errorMsg?: string, errorAt?: number|null, retries?: number, targetRelPath?: string }} fields
  */
 export function updateJob(id, fields) {
   const job = jobs().find((j) => j.id === id)
@@ -168,7 +168,7 @@ export function updateJob(id, fields) {
   if (fields.status === STATUS.DONE && job.status !== STATUS.DONE) {
     _lifetimeCompleted += 1
   }
-  for (const key of ['status', 'progress', 'errorMsg', 'errorAt', 'retries']) {
+  for (const key of ['status', 'progress', 'errorMsg', 'errorAt', 'retries', 'targetRelPath']) {
     if (fields[key] !== undefined) job[key] = fields[key]
   }
   persist()

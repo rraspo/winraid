@@ -39,6 +39,7 @@ import { createWindowOpenHandler, createWillNavigateHandler } from './window-gua
 import { init as initIpcBridge, sendToRenderer, notify } from './ipc-bridge.js'
 import * as watcher from './watcher.js'
 import * as queue from './queue.js'
+import { deletesLocalAfterUpload } from './folder-mode.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -2638,27 +2639,34 @@ function makeFileDetectedCallback(connectionId) {
 
     // During the initial folder scan, skip files that are already in the
     // local queue OR already present on the remote (covers wiped queues).
+    // The remote-exists shortcut only applies to connections that keep their
+    // local files: on a delete-local connection (move / mirror_clean) a
+    // surviving local file is by definition NOT one we transferred, so a
+    // same-named remote file is a conflict the worker must surface (or rename
+    // past), never a reason to silently leave the file behind.
     if (isInitial) {
       if (q.shouldSkipOnRescan(filePath, connectionId)) return
 
-      // Open remote checker once per scan (lazy, per-connection)
-      if (_checker === undefined) {
-        _checker = await openRemoteCheckerForConn(conn)
-        const { setWatcherChecker } = await import('./watcher.js')
-        setWatcherChecker(connectionId, _checker ?? null)
-      }
-      if (_checker) {
-        try {
-          if (await _checker.exists(relPath)) {
-            log('info', `Skipping (exists on remote) [${connectionId}]: ${relPath}`)
-            return
-          }
-        } catch {
-          // Connection dropped mid-scan — stop checking, let files queue normally
-          _checker.close()
-          _checker = null
+      if (!deletesLocalAfterUpload(conn)) {
+        // Open remote checker once per scan (lazy, per-connection)
+        if (_checker === undefined) {
+          _checker = await openRemoteCheckerForConn(conn)
           const { setWatcherChecker } = await import('./watcher.js')
-          setWatcherChecker(connectionId, null)
+          setWatcherChecker(connectionId, _checker ?? null)
+        }
+        if (_checker) {
+          try {
+            if (await _checker.exists(relPath)) {
+              log('info', `Skipping (exists on remote) [${connectionId}]: ${relPath}`)
+              return
+            }
+          } catch {
+            // Connection dropped mid-scan — stop checking, let files queue normally
+            _checker.close()
+            _checker = null
+            const { setWatcherChecker } = await import('./watcher.js')
+            setWatcherChecker(connectionId, null)
+          }
         }
       }
     } else if (_checker) {

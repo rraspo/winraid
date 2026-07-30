@@ -61,6 +61,7 @@ Each connection can be tuned with:
 
 - **Transfer mode** — copy (keep local) or move (delete after upload)
 - **Folder mode** — flat, mirror, or mirror + clean local
+- **Rename duplicates** — for move / mirror + clean, upload name conflicts as `name (1).ext` so every file lands; when off, conflicting files stay local and the transfer is reported as an error (nothing is ever silently overwritten or dropped)
 - **Extension filter** — optional whitelist by file type
 
 ## Building from source

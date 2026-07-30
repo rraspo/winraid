@@ -4,7 +4,7 @@ import { sendToRenderer, notify } from './ipc-bridge.js'
 import { log } from './logger.js'
 import { pushActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
-import { shouldPruneEmptyDirs } from './folder-mode.js'
+import { shouldPruneEmptyDirs, deletesLocalAfterUpload } from './folder-mode.js'
 import { unlink } from 'fs/promises'
 
 // Remote directory a job's file lands in (for the upload activity's nav target).
@@ -112,25 +112,44 @@ async function processJob(job) {
   }
 
   try {
-    const result = await backend.transfer(job, makeProgressHandler(job))
+    const result = await backend.transfer(job, makeProgressHandler(job), {
+      // Delete-local connections must never skip past or overwrite a remote
+      // file this job did not write — the local source is about to be destroyed.
+      protectPreexisting: deletesLocalAfterUpload(conn),
+      renameDuplicates:   !!conn.renameDuplicates,
+      // The backend commits its resolved target (possibly a "name (n)"
+      // duplicate) before the first byte, so a retry resumes the same path
+      // instead of treating its own partial upload as a foreign duplicate.
+      onUploadStart: (targetRelPath) => updateJob(job.id, { targetRelPath }),
+    })
+
+    if (result?.conflict) {
+      const conflictMsg = 'Already exists on remote — local file kept'
+      markError(job, conflictMsg)
+      notify('Transfer failed', `${job.filename}: ${conflictMsg}`)
+      log('warn', `Duplicate name on remote (not uploaded): ${job.filename} [${conn.name ?? job.connectionId?.slice(0, 8)}]`)
+      pushActivity({ type: 'upload', level: 'error', connectionId: job.connectionId, title: failureTitle('upload'), detail: conflictMsg, nav: null })
+      return
+    }
 
     markDone(job)
     if (result?.skipped) {
       log('info', `Skipped (already on remote): ${job.filename}`)
     } else {
-      notify('Transfer complete', job.filename)
-      log('info', `Done: ${job.filename}`)
-      const { title, detail, nav } = describeActivity('upload', { name: job.filename, destDir: uploadDestDir(conn, job) })
+      // A renamed upload landed under "name (n).ext" — report that name.
+      const landedName = result?.renamedTo?.split('/').pop() ?? job.filename
+      notify('Transfer complete', landedName)
+      log('info', `Done: ${job.filename}${landedName !== job.filename ? ` (as ${landedName})` : ''}`)
+      const { title, detail, nav } = describeActivity('upload', { name: landedName, destDir: uploadDestDir(conn, job) })
       pushActivity({ type: 'upload', level: 'info', connectionId: job.connectionId, title, detail, nav })
     }
 
-    // Delete the local source file when:
-    //  - operation is 'move' (explicit move-and-delete), OR
-    //  - folderMode is 'mirror_clean' (copy-then-clean-local, regardless of operation)
+    // Delete the local source file when the connection is a delete-local flow
+    // (move operation, or mirror_clean's copy-then-clean-local).
     // A skipped transfer moved nothing this run, so it must never delete the
     // source — the remote copy was not written by us and may be a stale stub.
     // NOTE: mirror_clean NEVER touches remote files — it only cleans the local side.
-    const shouldDeleteLocal = !result?.skipped && (conn.operation === 'move' || conn.folderMode === 'mirror_clean')
+    const shouldDeleteLocal = !result?.skipped && deletesLocalAfterUpload(conn)
     if (shouldDeleteLocal) {
       await unlink(job.srcPath).catch((err) =>
         log('warn', `Could not delete local source after transfer: ${err.message}`)
