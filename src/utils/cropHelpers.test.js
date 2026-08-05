@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   cropMimeType, cropCopyPath, nextAvailableCopyPath,
   fullImageCrop, centeredAspectCrop,
-  applyCropToImage, rotateCropImage,
+  applyCropToImage, rotateCropImage, scaleDisplayCropToSource,
 } from './cropHelpers'
 
 // ---------------------------------------------------------------------------
@@ -259,5 +259,52 @@ describe('nextAvailableCopyPath', () => {
   it('accepts an array of names instead of a Set', () => {
     expect(nextAvailableCopyPath('/photos/img.jpg', ['img_cropped.jpg']))
       .toBe('/photos/img_cropped_2.jpg')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// scaleDisplayCropToSource — maps a CSS-pixel crop selection on the rendered
+// video element to source pixels for ffmpeg's crop filter. All coordinates in
+// the result are even (yuv420 chroma subsampling requires even dimensions, and
+// even offsets keep chroma aligned). Returns null when no valid crop can be
+// produced — the caller keeps Save disabled rather than sending garbage.
+// ---------------------------------------------------------------------------
+
+describe('scaleDisplayCropToSource', () => {
+  it('maps a display selection to source pixels at 2x scale', () => {
+    expect(scaleDisplayCropToSource({ x: 10, y: 10, width: 100, height: 50 }, 960, 540, 1920, 1080))
+      .toEqual({ x: 20, y: 20, width: 200, height: 100 })
+  })
+
+  it('returns the full frame for a full-frame selection at 1:1', () => {
+    expect(scaleDisplayCropToSource({ x: 0, y: 0, width: 960, height: 540 }, 960, 540, 960, 540))
+      .toEqual({ x: 0, y: 0, width: 960, height: 540 })
+  })
+
+  it('floors odd results to even values', () => {
+    expect(scaleDisplayCropToSource({ x: 11, y: 7, width: 101, height: 51 }, 960, 540, 960, 540))
+      .toEqual({ x: 10, y: 6, width: 100, height: 50 })
+  })
+
+  it('clamps a selection that spills past the source edge', () => {
+    expect(scaleDisplayCropToSource({ x: 900, y: 500, width: 100, height: 80 }, 960, 540, 960, 540))
+      .toEqual({ x: 900, y: 500, width: 60, height: 40 })
+  })
+
+  it('rounds an odd-dimensioned source frame down to even output', () => {
+    expect(scaleDisplayCropToSource({ x: 0, y: 0, width: 1279, height: 719 }, 1279, 719, 1279, 719))
+      .toEqual({ x: 0, y: 0, width: 1278, height: 718 })
+  })
+
+  it('returns null when the display size is unknown', () => {
+    expect(scaleDisplayCropToSource({ x: 0, y: 0, width: 100, height: 100 }, 0, 0, 1920, 1080)).toBeNull()
+  })
+
+  it('returns null when there is no selection', () => {
+    expect(scaleDisplayCropToSource(null, 960, 540, 1920, 1080)).toBeNull()
+  })
+
+  it('returns null when the selection is too small to encode', () => {
+    expect(scaleDisplayCropToSource({ x: 0, y: 0, width: 1, height: 300 }, 960, 540, 960, 540)).toBeNull()
   })
 })
