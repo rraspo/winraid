@@ -268,6 +268,8 @@ contextBridge.exposeInMainWorld('winraid', {
     trimVideo: (connId, opts) => ipcRenderer.invoke('remote:trim-video', connId, opts),
     /** Rotate a video losslessly on the NAS. degrees is a relative clockwise delta: 90 | 180 | 270. */
     rotateVideo: (connId, opts) => ipcRenderer.invoke('remote:rotate-video', connId, opts),
+    /** Crop a video spatially on the NAS via ffmpeg re-encode. rect is { x, y, width, height } in source pixels. */
+    cropVideo: (connId, opts) => ipcRenderer.invoke('remote:crop-video', connId, opts),
     /** Where a trim can run: { mode: 'server' | 'local' | 'none' }. Cached probes. */
     trimCapability: (connId) => ipcRenderer.invoke('trim:capability', connId),
     /** One-time download of a static ffmpeg for local trims. */

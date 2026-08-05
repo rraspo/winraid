@@ -34,6 +34,7 @@ import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { isWithinBase } from './path-guard.js'
 import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
 import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
+import { runCrop } from './video-crop.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
 import { init as initIpcBridge, sendToRenderer, notify } from './ipc-bridge.js'
@@ -2161,6 +2162,141 @@ function registerIPC() {
       }
     } catch (err) {
       log('error', `Video rotate failed [${label}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // A crop rect is only ever built from a paused video frame's own dimensions,
+  // so anything else (negative, non-integer, too small to encode) is a bug on
+  // the caller's side, not a user mistake worth a nuanced message.
+  function validCropRect(rect) {
+    if (!rect || typeof rect !== 'object') return false
+    const { x, y, width, height } = rect
+    return [x, y, width, height].every((n) => Number.isInteger(n) && n >= 0) && width >= 2 && height >= 2
+  }
+
+  // Local-fallback crop: pull the source down, re-encode with the crop filter
+  // on this PC with the resolved local ffmpeg, push the result back up, then
+  // finalize with the same atomic sibling-move the server path uses.
+  async function _localCrop({ connectionId, sftp, client, label, path, outPath, rect }) {
+    const slash = outPath.lastIndexOf('/')
+    const dir   = slash > 0 ? outPath.slice(0, slash) : ''
+    const dot   = outPath.lastIndexOf('.')
+    const ext   = dot > slash ? outPath.slice(dot) : ''
+    const remoteTmp = `${dir}/.winraid-crop-${Date.now()}${ext}`
+
+    const workDir = join(tmpdir(), 'winraid-crop')
+    mkdirSync(workDir, { recursive: true })
+    const localIn  = join(workDir, `in-${Date.now()}${ext}`)
+    const localOut = join(workDir, `out-${Date.now()}${ext}`)
+
+    try {
+      await new Promise((resolve, reject) => sftp.fastGet(path, localIn, (err) => (err ? reject(err) : resolve())))
+
+      const cropped = await runCrop({
+        input: localIn, output: localOut, rect,
+        exec: (args) => new Promise((resolve, reject) => {
+          const proc = spawn(_localFfmpegPath, args, { windowsHide: true })
+          let stderr = ''
+          proc.stderr?.on('data', (chunk) => { stderr = (stderr + chunk).slice(-1_000_000) })
+          proc.on('error', reject)
+          proc.on('close', (code) => resolve({ code, stdout: '', stderr }))
+        }),
+        log: (level, msg) => log(level, `${msg} [${label}]`),
+      })
+      if (!cropped.ok) throw new Error(cropped.error)
+
+      await new Promise((resolve, reject) => sftp.fastPut(localOut, remoteTmp, (err) => (err ? reject(err) : resolve())))
+
+      const mv = await execWithTimeout(client, `mv -f -- ${shQuote(remoteTmp)} ${shQuote(outPath)}`, 60_000)
+      if (mv.code !== 0) {
+        client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
+        return { ok: false, error: (mv.stderr || 'Could not finalize cropped file').trim() }
+      }
+
+      log('info', `Video cropped locally [${label}]: ${path} -> ${outPath} (${rect.width}x${rect.height})`)
+      emitActivity({
+        type: 'upload', connectionId,
+        payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+      })
+      return { ok: true, outPath }
+    } catch (err) {
+      client.exec(`rm -f -- ${shQuote(remoteTmp)}`, () => {})
+      log('error', `Local video crop failed [${label}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    } finally {
+      rmSync(localIn, { force: true })
+      rmSync(localOut, { force: true })
+    }
+  }
+
+  // -- Remote: crop a video spatially via ffmpeg re-encode over SSH exec ----
+  ipcMain.handle('remote:crop-video', async (_e, connectionId, opts) => {
+    const { path, outPath, rect } = opts ?? {}
+    if (!validateRemotePath(path) || !validateRemotePath(outPath)) return { ok: false, error: 'Invalid remote path' }
+    if (!validCropRect(rect)) return { ok: false, error: 'Invalid crop rectangle' }
+    const label = await _connLabel(connectionId)
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Crop is only available for SFTP connections' }
+
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const client = _sftpPool.get(connectionId)?.client
+      if (!client) return { ok: false, error: 'Connection unavailable' }
+
+      const probe = await _detectFfmpeg(connectionId, client)
+      if (!probe.available) {
+        // No NAS ffmpeg: fall back to cropping on this PC. Join an in-flight
+        // download if the user kicked one off from the trim-entry prompt.
+        if (_ffmpegDownloadPromise) await _ffmpegDownloadPromise
+        const localPath = await _resolveLocalFfmpeg()
+        if (!localPath) return { ok: false, error: 'ffmpeg is not available on the NAS or this PC.' }
+        return await _localCrop({ connectionId, sftp, client, label, path, outPath, rect })
+      }
+
+      // Output to a temp sibling first — ffmpeg must not write the file it reads,
+      // and a temp lets the final move be atomic.
+      const slash = outPath.lastIndexOf('/')
+      const dir   = slash > 0 ? outPath.slice(0, slash) : ''
+      const dot   = outPath.lastIndexOf('.')
+      const ext   = dot > slash ? outPath.slice(dot) : ''
+      const tmp   = `${dir}/.winraid-crop-${Date.now()}${ext}`
+
+      try {
+        const cropped = await runCrop({
+          input: path, output: tmp, rect,
+          exec: (args) => execWithTimeout(client, shellFromArgs(args), 600_000),
+          log: (level, msg) => log(level, `${msg} [${label}]`),
+        })
+        if (!cropped.ok) {
+          log('error', `Video crop failed [${label}]: ${cropped.error}`)
+          client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+          return { ok: false, error: cropped.error }
+        }
+
+        // Move temp -> final. mv -f overwrites (SFTP rename does not, by spec),
+        // and tmp is a sibling so the move stays on one filesystem (atomic).
+        const mv = await execWithTimeout(client, `mv -f -- ${shQuote(tmp)} ${shQuote(outPath)}`, 60_000)
+        if (mv.code !== 0) {
+          client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+          return { ok: false, error: (mv.stderr || 'Could not finalize cropped file').trim() }
+        }
+
+        log('info', `Video cropped [${label}]: ${path} -> ${outPath} (${rect.width}x${rect.height})`)
+        emitActivity({
+          type: 'upload', connectionId,
+          payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
+        })
+        return { ok: true, outPath }
+      } catch (err) {
+        client.exec(`rm -f -- ${shQuote(tmp)}`, () => {})
+        throw err
+      }
+    } catch (err) {
+      log('error', `Video crop failed [${label}]: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
