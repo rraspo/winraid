@@ -15,6 +15,10 @@ export default defineConfig({
     setupFiles: ['./src/test-setup.js'],
     include: ['src/**/*.test.{js,jsx}', 'electron/**/*.test.js', 'scripts/**/*.test.js'],
     exclude: ['src/**/*.layout.test.*', 'node_modules'],
+    // Cap the worker pool instead of letting vitest size it from the
+    // machine's full core count.
+    maxWorkers: 4,
+    minWorkers: 1,
     css: {
       modules: {
         classNameStrategy: 'non-scoped',
