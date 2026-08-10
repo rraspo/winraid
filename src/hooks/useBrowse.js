@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSelection } from './useSelection'
 import { useDragDrop } from './useDragDrop'
 import { useDirFetch } from './useDirFetch'
+import { useEntryView } from './useEntryView'
 import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
 import { extractDragUrls } from '../utils/dragUrl'
-import { sortEntries } from '../utils/sortEntries'
-import { resolveSortMode, saveSortMode } from '../utils/sortPersistence'
 
 // ---------------------------------------------------------------------------
 // Module-level helpers (no JSX, no external deps)
@@ -61,16 +60,11 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // by the active view on unmount so the other view can restore the same
   // scroll position when the user toggles between list and grid mid-scroll.
   const [scrollAnchor,    setScrollAnchor]    = useState(null)
-  // Live name-substring filter scoped to the current directory's loaded
-  // entries (no IPC — entries are already in memory). Cleared on
-  // navigation so it doesn't carry into the next folder.
-  const [searchQuery,     setSearchQuery]     = useState('')
   // Entry name currently targeted by type-to-jump. Distinct from
   // highlightFile (which is a slow shimmer used for things like
   // just-uploaded files); the cursor snaps with a solid accent tint
   // and is meant to keep up with rapid keystrokes.
   const [cursorEntry,     setCursorEntry]     = useState(null)
-  const [sortMode,        setSortModeRaw]     = useState('nameAsc')
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
   const [downloadProgress, setDownloadProgress] = useState(null)
@@ -167,14 +161,13 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     onBrowseRestoreConsumed?.()
   }, [browseRestore]) // token on browseRestore ensures this fires even if path is same
 
-  // ── Clear highlight + scroll anchor + search + cursor on navigation ────
+  // ── Clear highlight + scroll anchor + cursor on navigation ────────────
+  // The search query and the sort mode are reset by useEntryView, which owns them.
   useEffect(() => {
     if (prevPath.current !== path) {
       if (!browseRestore?.highlightFile) setHighlightFile(null)
       setScrollAnchor(null)
-      setSearchQuery('')
       setCursorEntry(null)
-      setSortModeRaw(resolveSortMode(path, sortPersistRef.current))
     }
     prevPath.current = path
   }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -255,34 +248,15 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     return result
   }, [path])
 
-  // Apply the search filter as a single source for downstream derivations,
-  // including selection bookkeeping — the views pass row indexes into the
+  // ── Sub-hook composition: sort, search, and the lists the views render ─────
+  // Sits above useSelection because the views pass row indexes into the
   // filtered list, so useSelection must resolve them against the same list.
-  // The `selected` Set is keyed by name, so prior selections survive a
-  // filter change naturally (names not in the visible list stay selected
-  // but invisible).
-  const filteredEntries = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    const filtered = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
-    return sortEntries(filtered, sortMode, dirsFirstRef.current)
-  }, [entries, searchQuery, sortMode])
-
-  const setSortMode = useCallback((mode) => {
-    setSortModeRaw(mode)
-    saveSortMode(path, mode, sortPersistRef.current)
-  }, [path])
-
-  const fileEntries = useMemo(
-    () => filteredEntries
-      .filter((e) => e.type !== 'dir')
-      .map((e) => ({ ...e, path: joinRemote(path, e.name) })),
-    [filteredEntries, path],
-  )
-
-  const entriesWithPaths = useMemo(
-    () => filteredEntries.map((e) => ({ ...e, entryPath: joinRemote(path, e.name) })),
-    [filteredEntries, path],
-  )
+  const {
+    sortMode, setSortMode,
+    searchQuery, setSearchQuery,
+    filteredEntries, fileEntries, entriesWithPaths,
+    dirCount, fileCount,
+  } = useEntryView({ entries, path, dirsFirstRef, sortPersistRef })
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -821,9 +795,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   }, [path, selectedId])
 
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
-  const dirCount  = useMemo(() => filteredEntries.filter((e) => e.type === 'dir').length, [filteredEntries])
-  const fileCount = filteredEntries.length - dirCount
-
   const busy     = opInFlight || !!dragDrop.moveInFlight
   const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
 
