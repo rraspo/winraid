@@ -4,6 +4,7 @@ import { useBrowse } from './useBrowse'
 
 vi.mock('../services/remoteFS')
 import * as remoteFS from '../services/remoteFS'
+import * as toast from '../services/toast'
 
 const CONNECTIONS = [{
   id: 'conn1', name: 'NAS', type: 'sftp', icon: 'server',
@@ -21,6 +22,7 @@ afterEach(() => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  toast.clearAll()
   remoteFS.getSnapshot.mockReturnValue(null)
   remoteFS.subscribe.mockReturnValue(() => {})
   remoteFS.list.mockResolvedValue([])
@@ -132,7 +134,7 @@ describe('handleMove', () => {
 })
 
 describe('handleCreateFolder', () => {
-  it('calls remoteFS.update to add the new folder to cache', async () => {
+  it('calls remoteFS.update to add the new folder to cache and does not invalidate on success', async () => {
     const { result, unmount } = renderHook(() =>
       useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
     )
@@ -141,6 +143,7 @@ describe('handleCreateFolder', () => {
     await act(async () => result.current.setNewFolderName('NewAlbum'))
     await act(() => result.current.handleCreateFolder())
     expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
+    expect(remoteFS.invalidate).not.toHaveBeenCalled()
   })
 
   it('calls remoteFS.invalidate on folder creation failure', async () => {
@@ -150,9 +153,14 @@ describe('handleCreateFolder', () => {
     )
     cleanup = unmount
     await waitFor(() => expect(result.current.selectedId).toBe('conn1'))
+    const currentPath = result.current.path
+    const listCallsBeforeFailure = remoteFS.list.mock.calls.length
     await act(async () => result.current.setNewFolderName('BadFolder'))
     await act(() => result.current.handleCreateFolder())
-    expect(remoteFS.invalidate).not.toHaveBeenCalled()
+    expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', currentPath)
+    expect(remoteFS.list.mock.calls.length).toBeGreaterThan(listCallsBeforeFailure)
+    expect(remoteFS.list).toHaveBeenLastCalledWith('conn1', currentPath)
+    expect(toast.getSnapshot().some((t) => t.msg === 'mkdir failed')).toBe(true)
   })
 })
 
