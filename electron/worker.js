@@ -133,6 +133,18 @@ async function processJob(job) {
     }
 
     markDone(job)
+
+    // markDone already declined to overwrite a terminal ERROR status above,
+    // meaning the job was cancelled while this transfer was still running.
+    // Bytes already written to the remote stay there (no mid-transfer abort),
+    // but the local source must survive: skip the completion notification,
+    // activity entry, local-source unlink, and empty-dir prune below.
+    const cancelledInFlight = listJobs().find((j) => j.id === job.id)?.status === STATUS.ERROR
+    if (cancelledInFlight) {
+      log('warn', `Local source kept: transfer for ${job.filename} was cancelled while in flight.`)
+      return
+    }
+
     if (result?.skipped) {
       log('info', `Skipped (already on remote): ${job.filename}`)
     } else {

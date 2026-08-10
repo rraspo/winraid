@@ -4,9 +4,11 @@
 // file merely exists on the remote is silent data loss.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-const { unlinkMock, transferMock } = vi.hoisted(() => ({
+const { unlinkMock, transferMock, readdirMock, rmdirMock } = vi.hoisted(() => ({
   unlinkMock: vi.fn(() => Promise.resolve()),
   transferMock: vi.fn(),
+  readdirMock: vi.fn(() => Promise.resolve([])),
+  rmdirMock: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('./queue.js', () => ({
@@ -27,13 +29,16 @@ vi.mock('./folder-mode.js', () => ({
   shouldPruneEmptyDirs: vi.fn(() => false),
   deletesLocalAfterUpload: vi.fn((conn) => conn.operation === 'move' || conn.folderMode === 'mirror_clean'),
 }))
-vi.mock('fs/promises', () => ({ unlink: unlinkMock }))
+vi.mock('fs/promises', () => ({ unlink: unlinkMock, readdir: readdirMock, rmdir: rmdirMock }))
 vi.mock('./backends/sftp.js', () => ({
   createSftpBackend: vi.fn(() => ({ transfer: transferMock })),
 }))
 
-import { getNextPending } from './queue.js'
+import { getNextPending, listJobs } from './queue.js'
 import { getConfig } from './config.js'
+import { notify } from './ipc-bridge.js'
+import { pushActivity } from './activity.js'
+import { shouldPruneEmptyDirs } from './folder-mode.js'
 import { ensureWorkerRunning, stopWorker } from './worker.js'
 
 const JOB = {
@@ -46,8 +51,12 @@ const JOB = {
 }
 
 // Run exactly one worker tick against a connection shaped by `connFields`,
-// with the backend resolving `transferResult`.
-async function runOneJob(connFields, transferResult) {
+// with the backend resolving `transferResult`. `jobStoreOverrides`, when
+// given, is what listJobs() returns for this job once the transfer resolves
+// — used to simulate the store having moved to a terminal status (e.g. a
+// cancel) while the upload was in flight. `jobFields`, when given, overrides
+// the fields of the job actually dequeued and transferred.
+async function runOneJob(connFields, transferResult, jobStoreOverrides = null, jobFields = null) {
   getConfig.mockReturnValue({
     connections: [{
       id: 'conn-1',
@@ -57,8 +66,10 @@ async function runOneJob(connFields, transferResult) {
       ...connFields,
     }],
   })
-  getNextPending.mockReturnValueOnce({ ...JOB }).mockReturnValue(null)
+  const job = jobFields ? { ...JOB, ...jobFields } : { ...JOB }
+  getNextPending.mockReturnValueOnce(job).mockReturnValue(null)
   transferMock.mockResolvedValue(transferResult)
+  listJobs.mockReturnValue(jobStoreOverrides ? [{ ...JOB, ...jobStoreOverrides }] : [])
 
   ensureWorkerRunning()
   await vi.advanceTimersByTimeAsync(1000)
@@ -99,5 +110,51 @@ describe('worker delete safety (WR-01)', () => {
   it('does NOT delete the local source when a mirror_clean transfer was skipped', async () => {
     await runOneJob({ operation: 'copy', folderMode: 'mirror_clean' }, { skipped: true })
     expect(unlinkMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('worker delete safety — cancelled while the transfer was in flight', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    stopWorker()
+    vi.useRealTimers()
+    vi.clearAllMocks()
+  })
+
+  it('does NOT delete the local source when a move transfer was cancelled mid-flight', async () => {
+    // The upload resolves normally, but the store already recorded the job
+    // as cancelled (terminal ERROR) while it was in flight.
+    await runOneJob({ operation: 'move' }, {}, { status: 'ERROR', errorMsg: 'Cancelled' })
+    expect(unlinkMock).not.toHaveBeenCalled()
+  })
+
+  it('does NOT delete the local source when a mirror_clean transfer was cancelled mid-flight', async () => {
+    await runOneJob({ operation: 'copy', folderMode: 'mirror_clean' }, {}, { status: 'ERROR', errorMsg: 'Cancelled' })
+    expect(unlinkMock).not.toHaveBeenCalled()
+  })
+
+  it('does NOT prune empty ancestor directories when the transfer was cancelled mid-flight', async () => {
+    shouldPruneEmptyDirs.mockReturnValueOnce(true)
+    // A nested relative path so removeEmptyDirs has an ancestor dir between
+    // the file and the watch root to actually consider pruning.
+    await runOneJob(
+      { operation: 'copy', folderMode: 'mirror_clean', localFolder: '/watch' },
+      {},
+      { status: 'ERROR', errorMsg: 'Cancelled' },
+      { srcPath: '/watch/sub/movie.mkv', relPath: 'sub/movie.mkv' }
+    )
+    expect(readdirMock).not.toHaveBeenCalled()
+    expect(rmdirMock).not.toHaveBeenCalled()
+  })
+
+  it('shows no completion notification and pushes no success activity entry when cancelled mid-flight', async () => {
+    await runOneJob({ operation: 'move' }, {}, { status: 'ERROR', errorMsg: 'Cancelled' })
+    expect(notify).not.toHaveBeenCalledWith('Transfer complete', expect.anything())
+    expect(pushActivity).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'upload', level: 'info' })
+    )
   })
 })
