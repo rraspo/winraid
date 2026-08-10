@@ -77,7 +77,6 @@ export function useBrowseMutations({
 
   const doCheckout = useCallback(async (remotePath, clearFirst = false, targetFolder = localFolder, newSyncRoot = null) => {
     setOpInFlight(true)
-    setStatus(null)
     if (clearFirst) {
       const clearRes = await window.winraid?.local.clearFolder(targetFolder)
       if (!clearRes?.ok) {
@@ -118,7 +117,6 @@ export function useBrowseMutations({
     const localPath = await window.winraid?.selectDownloadPath(entryName, isDir)
     if (!localPath) return
     setOpInFlight(true)
-    setStatus(null)
     setDownloadProgress(null)
     const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
     setDownloadProgress(null)
@@ -150,7 +148,6 @@ export function useBrowseMutations({
   const handleDelete = useCallback(async (target) => {
     setDeleteTarget(null)
     setOpInFlight(true)
-    setStatus(null)
     let res
     try {
       res = await window.winraid?.remote.delete(selectedId, target.path, target.isDir)
@@ -175,7 +172,6 @@ export function useBrowseMutations({
   const handleMove = useCallback(async (srcPath, dstPath) => {
     setMoveTarget(null)
     setOpInFlight(true)
-    setStatus(null)
     let res
     try {
       res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
@@ -229,7 +225,6 @@ export function useBrowseMutations({
     if (!name || !selectedId) return
     setNewFolderName(null)
     setOpInFlight(true)
-    setStatus(null)
     const folderPath = joinRemote(path, name)
     const res = await window.winraid?.remote.mkdir(selectedId, folderPath)
     setOpInFlight(false)
@@ -264,7 +259,6 @@ export function useBrowseMutations({
   const handleBulkDelete = useCallback(async () => {
     setBulkAction(null)
     setOpInFlight(true)
-    setStatus(null)
     const targets = selectedEntries
     selection.clearSelection()
     let ok = 0, fail = 0
@@ -301,7 +295,6 @@ export function useBrowseMutations({
     setBulkAction(null)
     setBulkMoveDest('')
     setOpInFlight(true)
-    setStatus(null)
     const targets = selectedEntries
     selection.clearSelection()
     let ok = 0, fail = 0
@@ -344,7 +337,6 @@ export function useBrowseMutations({
     if (!folder) return  // user cancelled
 
     setOpInFlight(true)
-    setStatus(null)
     setDownloadProgress(null)
     selection.clearSelection()
     let ok = 0, fail = 0

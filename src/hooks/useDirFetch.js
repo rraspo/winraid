@@ -5,9 +5,9 @@ import * as remoteFS from '../services/remoteFS'
 // state, the epoch guard that keeps stale responses from clobbering the view,
 // the cache-mode fast paths, and the effects that drive re-listing.
 //
-// setStatus and setHighlightFile are injected by the composing hook so this
-// module never opens a second toast or highlight path.
-export function useDirFetch({ selectedId, path, connections, cacheModeRef, settingsLoaded, setStatus, setHighlightFile }) {
+// setHighlightFile is injected by the composing hook so this module never
+// opens a second highlight path.
+export function useDirFetch({ selectedId, path, connections, cacheModeRef, settingsLoaded, setHighlightFile }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -50,14 +50,12 @@ export function useDirFetch({ selectedId, path, connections, cacheModeRef, setti
         setEntries(cached)
         setError('')
         setLoading(false)
-        setStatus(null)
         return
       }
     }
 
     setLoading(true)
     setError('')
-    setStatus(null)
     try {
       const entries = await remoteFS.list(selectedId, targetPath)
       if (!isCurrent()) return
@@ -69,7 +67,7 @@ export function useDirFetch({ selectedId, path, connections, cacheModeRef, setti
       setError(err.message || 'Failed to list directory')
       setEntries([])
     }
-  }, [selectedId, cacheModeRef, setStatus])
+  }, [selectedId, cacheModeRef])
 
   useEffect(() => {
     if (selectedId) fetchDir(path)

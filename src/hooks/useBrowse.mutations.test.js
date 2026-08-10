@@ -379,9 +379,8 @@ describe('bulk operation cancellation clears the busy flag', () => {
     expect(result.current.opInFlight).toBe(false)
     expect(window.winraid.remote.delete).toHaveBeenCalledTimes(1)
     expect(remoteFS.update).not.toHaveBeenCalled()
-    // setStatus(null) at the top of the handler (clearing any prior toast) is
-    // expected on every run, cancelled or not; only a truthy summary status
-    // — the toast this card says a cancelled run must not show — is checked.
+    // A cancelled run returns before the summary toast fires, so setStatus
+    // should never be called with a truthy msg here.
     expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
   })
 
@@ -412,9 +411,8 @@ describe('bulk operation cancellation clears the busy flag', () => {
     expect(result.current.opInFlight).toBe(false)
     expect(window.winraid.remote.move).toHaveBeenCalledTimes(1)
     expect(remoteFS.update).not.toHaveBeenCalled()
-    // setStatus(null) at the top of the handler (clearing any prior toast) is
-    // expected on every run, cancelled or not; only a truthy summary status
-    // — the toast this card says a cancelled run must not show — is checked.
+    // A cancelled run returns before the summary toast fires, so setStatus
+    // should never be called with a truthy msg here.
     expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
   })
 
@@ -443,9 +441,8 @@ describe('bulk operation cancellation clears the busy flag', () => {
 
     expect(result.current.opInFlight).toBe(false)
     expect(window.winraid.remote.download).toHaveBeenCalledTimes(1)
-    // setStatus(null) at the top of the handler (clearing any prior toast) is
-    // expected on every run, cancelled or not; only a truthy summary status
-    // — the toast this card says a cancelled run must not show — is checked.
+    // A cancelled run returns before the summary toast fires, so setStatus
+    // should never be called with a truthy msg here.
     expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
   })
 })
