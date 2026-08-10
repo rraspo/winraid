@@ -506,6 +506,12 @@
   display: block;
 }
 
+/* Image rotate mode: the pixel source for rotateImage stays off-screen — the
+   visible preview is a separate <img> pointed at the rotated blob. */
+.rotateSourceImage {
+  display: none;
+}
+
 /* Crop mode: ReactCrop's wrapper hugs the image so the crop overlay matches
    the image's bounds exactly. The img's max-width/max-height are set inline
    in pixels by JS (via ResizeObserver on mediaWrap) so the chain doesn't

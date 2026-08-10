@@ -857,3 +857,240 @@ describe('QuickLookOverlay video crop flow', () => {
     expect(onClose).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Image rotate — a peer top-bar operation for images, reachable without
+// entering crop. The in-crop rotate control (tested below, unchanged) keeps
+// serving crop's own workflow.
+// ---------------------------------------------------------------------------
+
+const unknownFile = { name: 'archive.zip', path: '/media/archive.zip', size: 100, modified: 0 }
+
+describe('QuickLookOverlay image rotate icon', () => {
+  it('renders the Rotate button for image files, reachable without entering crop', async () => {
+    render(<QuickLookOverlay {...baseProps} file={imageFile} />)
+    await act(async () => {})
+    expect(screen.getByLabelText('Rotate image')).toBeInTheDocument()
+    expect(screen.queryByText('Aspect')).not.toBeInTheDocument()
+  })
+
+  it('does not render the Rotate button for audio files', async () => {
+    render(<QuickLookOverlay {...baseProps} file={audioFile} />)
+    await act(async () => {})
+    expect(screen.queryByLabelText('Rotate image')).not.toBeInTheDocument()
+  })
+
+  it('does not render the Rotate button for text files', async () => {
+    render(<QuickLookOverlay {...baseProps} file={textFile} />)
+    await act(async () => {})
+    expect(screen.queryByLabelText('Rotate image')).not.toBeInTheDocument()
+  })
+
+  it('does not render the Rotate button for unknown file types', async () => {
+    render(<QuickLookOverlay {...baseProps} file={unknownFile} />)
+    await act(async () => {})
+    expect(screen.queryByLabelText('Rotate image')).not.toBeInTheDocument()
+  })
+})
+
+describe('QuickLookOverlay image rotate mode isolation', () => {
+  it('enters rotate mode without entering crop: no aspect controls, no Crop button, no react-crop wrapper', async () => {
+    render(<QuickLookOverlay {...baseProps} file={imageFile} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByLabelText('Rotate image'))
+    expect(screen.queryByText('Aspect')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Crop image')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('react-crop')).not.toBeInTheDocument()
+  })
+
+  it('disables Prev/Next while rotating', async () => {
+    const files = [
+      { name: 'a.jpg', path: '/media/a.jpg', size: 100, modified: 0 },
+      { name: 'b.jpg', path: '/media/b.jpg', size: 100, modified: 0 },
+    ]
+    render(<QuickLookOverlay {...baseProps} files={files} file={files[0]} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByLabelText('Rotate image'))
+    expect(screen.getByLabelText('Next file')).toBeDisabled()
+    expect(screen.getByLabelText('Previous file')).toBeDisabled()
+  })
+
+  it('hides the Rotate button while cropping, and the Crop button while rotating', async () => {
+    render(<QuickLookOverlay {...baseProps} file={imageFile} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByLabelText('Crop image'))
+    expect(screen.queryByLabelText('Rotate image')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByText('Cancel'))
+    fireEvent.click(screen.getByLabelText('Rotate image'))
+    expect(screen.queryByLabelText('Crop image')).not.toBeInTheDocument()
+  })
+
+  it('Escape exits rotate mode instead of closing the overlay', async () => {
+    const onClose = vi.fn()
+    render(<QuickLookOverlay {...baseProps} file={imageFile} onClose={onClose} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByLabelText('Rotate image'))
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByLabelText('Rotate right')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('Rotate image')).toBeInTheDocument()
+  })
+})
+
+describe('QuickLookOverlay image rotate flow', () => {
+  let canvasMock, origCreateElement, createObjectURL, revokeObjectURL
+
+  beforeEach(() => {
+    const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() }
+    canvasMock = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ctx),
+      toBlob: vi.fn((cb, mime) => cb(new Blob(['pixels'], { type: mime ?? 'image/jpeg' }))),
+      _ctx: ctx,
+    }
+    origCreateElement = document.createElement.bind(document)
+    document.createElement = (tag) => (tag === 'canvas' ? canvasMock : origCreateElement(tag))
+
+    createObjectURL = vi.fn(() => 'blob:rotated')
+    revokeObjectURL = vi.fn()
+    Object.defineProperty(globalThis, 'URL', {
+      configurable: true,
+      value: { ...globalThis.URL, createObjectURL, revokeObjectURL },
+    })
+  })
+
+  afterEach(() => {
+    document.createElement = origCreateElement
+  })
+
+  // Enters rotate mode and gives the hidden source image known native pixel
+  // dimensions, so rotateImage has something real to compute from.
+  async function enterImageRotate(props) {
+    render(<QuickLookOverlay {...baseProps} file={imageFile} {...props} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByLabelText('Rotate image'))
+    await act(async () => {})
+    const sourceImg = document.querySelector('.rotateSourceImage')
+    Object.defineProperty(sourceImg, 'naturalWidth',  { configurable: true, value: 800 })
+    Object.defineProperty(sourceImg, 'naturalHeight', { configurable: true, value: 600 })
+    return sourceImg
+  }
+
+  it('re-renders the preview from a rotated blob when a direction is chosen', async () => {
+    await enterImageRotate()
+    fireEvent.click(screen.getByLabelText('Rotate right'))
+    await act(async () => {})
+    expect(createObjectURL).toHaveBeenCalled()
+    const previewImg = document.querySelector('.previewImage')
+    expect(previewImg.src).toContain('blob:rotated')
+  })
+
+  it('lets the direction change again before saving', async () => {
+    await enterImageRotate()
+    fireEvent.click(screen.getByLabelText('Rotate right'))
+    await act(async () => {})
+    createObjectURL.mockReturnValue('blob:rotated-180')
+    fireEvent.click(screen.getByLabelText('Rotate 180'))
+    await act(async () => {})
+    const previewImg = document.querySelector('.previewImage')
+    expect(previewImg.src).toContain('blob:rotated-180')
+  })
+
+  it('Save copy writes via writeFileBinary to the next free _rotated name', async () => {
+    const writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+    window.winraid = createWinraidMock({
+      remote: {
+        list: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
+        writeFileBinary,
+      },
+    })
+    await enterImageRotate()
+    fireEvent.click(screen.getByLabelText('Rotate right'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(writeFileBinary).toHaveBeenCalledWith(
+      'c1', '/media/photo_rotated.jpg', expect.anything(), { atomic: false },
+    ))
+  })
+
+  it('picks the next free _rotated name when one already exists', async () => {
+    const writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+    window.winraid = createWinraidMock({
+      remote: {
+        list: vi.fn().mockResolvedValue({ ok: true, entries: [{ name: 'photo_rotated.jpg', type: 'file' }] }),
+        writeFileBinary,
+      },
+    })
+    await enterImageRotate()
+    fireEvent.click(screen.getByLabelText('Rotate right'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(writeFileBinary).toHaveBeenCalledWith(
+      'c1', '/media/photo_rotated_2.jpg', expect.anything(), { atomic: false },
+    ))
+  })
+
+  it('Overwrite writes to the original path with the atomic flag and refreshes the image', async () => {
+    const writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+    window.winraid = createWinraidMock({ remote: { writeFileBinary } })
+    await enterImageRotate()
+    fireEvent.click(screen.getByLabelText('Rotate right'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
+    await waitFor(() => expect(writeFileBinary).toHaveBeenCalledWith(
+      'c1', '/media/photo.jpg', expect.anything(), { atomic: true },
+    ))
+    // Exits rotate mode and re-renders the plain preview with a cache-busted src
+    await waitFor(() => expect(screen.getByLabelText('Rotate image')).toBeInTheDocument())
+    const img = document.querySelector('.previewImage')
+    expect(img.src).toContain('bust=')
+  })
+
+  it('shows an actionable error and stays in rotate mode when the write fails', async () => {
+    const writeFileBinary = vi.fn().mockResolvedValue({ ok: false, error: 'Disk full' })
+    window.winraid = createWinraidMock({ remote: { writeFileBinary } })
+    await enterImageRotate()
+    fireEvent.click(screen.getByLabelText('Rotate right'))
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(screen.getByText('Disk full')).toBeInTheDocument())
+    expect(screen.getByLabelText('Rotate right')).toBeInTheDocument()
+  })
+})
+
+describe('QuickLookOverlay crop-mode rotate control (unchanged by image rotate mode)', () => {
+  let canvasMock, origCreateElement
+
+  beforeEach(() => {
+    const ctx = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() }
+    canvasMock = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => ctx),
+      toBlob: vi.fn((cb, mime) => cb(new Blob(['x'], { type: mime ?? 'image/jpeg' }))),
+    }
+    origCreateElement = document.createElement.bind(document)
+    document.createElement = (tag) => (tag === 'canvas' ? canvasMock : origCreateElement(tag))
+    Object.defineProperty(globalThis, 'URL', {
+      configurable: true,
+      value: { ...globalThis.URL, createObjectURL: vi.fn(() => 'blob:crop-rotated'), revokeObjectURL: vi.fn() },
+    })
+  })
+
+  afterEach(() => {
+    document.createElement = origCreateElement
+  })
+
+  it('still rotates the crop source image via the in-crop rotate control', async () => {
+    render(<QuickLookOverlay {...baseProps} file={imageFile} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByLabelText('Crop image'))
+    const cropImg = screen.getByTestId('react-crop').querySelector('img')
+    Object.defineProperty(cropImg, 'naturalWidth',  { configurable: true, value: 800 })
+    Object.defineProperty(cropImg, 'naturalHeight', { configurable: true, value: 600 })
+    fireEvent.click(screen.getByLabelText('Rotate 90 degrees'))
+    await act(async () => {})
+    expect(cropImg.src).toContain('blob:crop-rotated')
+  })
+})
