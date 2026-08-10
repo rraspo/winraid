@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import DashboardView from './DashboardView'
 
@@ -63,5 +63,23 @@ describe('DashboardView Completed stat + Verify & clean', () => {
     render(<DashboardView connections={[]} watcherStatus={{}} />)
     await waitFor(() => expect(screen.getByText('Completed')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /verify & clean/i })).toBeNull()
+  })
+})
+
+describe('DashboardView progress guard', () => {
+  it('a progress tick cannot resurrect a terminal status back into the active transfer list', async () => {
+    let progressCb
+    window.winraid.queue.list = vi.fn().mockResolvedValue([
+      { id: 'j1', filename: 'done.mp4', status: 'DONE', progress: 1, srcPath: '/local/done.mp4' },
+    ])
+    window.winraid.queue.onProgress = vi.fn((cb) => { progressCb = cb; return () => {} })
+
+    render(<DashboardView connections={CONNECTIONS} watcherStatus={{}} />)
+    await waitFor(() => expect(screen.getByText('Queue is empty')).toBeInTheDocument())
+
+    act(() => { progressCb({ jobId: 'j1', percent: 77 }) })
+
+    expect(screen.getByText('Queue is empty')).toBeInTheDocument()
+    expect(screen.queryByText('77% complete')).toBeNull()
   })
 })

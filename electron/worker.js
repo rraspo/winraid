@@ -219,9 +219,15 @@ function markTransferring(job) {
 }
 
 function markDone(job) {
-  // If the job was cancelled while the transfer was in flight, respect the cancel.
+  // If the job was cancelled while the transfer was in flight, respect the
+  // cancel: do not overwrite the store's terminal status with DONE, but still
+  // tell the renderer the job's real current state so it converges instead
+  // of being stranded on the last progress tick it received.
   const current = listJobs().find((j) => j.id === job.id)
-  if (current?.status === STATUS.ERROR) return
+  if (current?.status === STATUS.ERROR) {
+    sendToRenderer('queue:updated', { type: 'updated', job: current })
+    return
+  }
   updateJob(job.id, { status: STATUS.DONE, progress: 1 })
   sendToRenderer('queue:updated', {
     type: 'updated',
