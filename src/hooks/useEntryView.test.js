@@ -139,15 +139,24 @@ describe('useEntryView — search', () => {
     expect(result.current.filteredEntries).toHaveLength(4)
   })
 
-  // Current behaviour: the filter lowercases but does not fold diacritics, so an
-  // unaccented query misses an accented name. Pinned as-is to keep this hook's
-  // extraction behaviour-preserving.
-  it('matches an accented name only when the query carries the same diacritics', () => {
+  it('matches an accented name from an unaccented query, accent-insensitively', () => {
     const accented = [{ name: 'Andrés.txt', type: 'file', size: 1, modified: 0 }]
     const { result } = renderHook(() => useEntryView(makeArgs({ entries: accented })))
-    act(() => result.current.setSearchQuery('andré'))
+    act(() => result.current.setSearchQuery('andre'))
     expect(names(result.current.filteredEntries)).toEqual(['Andrés.txt'])
-    act(() => result.current.setSearchQuery('andres'))
+  })
+
+  it('matches an accented name when the query also carries diacritics', () => {
+    const accented = [{ name: 'Andrés.txt', type: 'file', size: 1, modified: 0 }]
+    const { result } = renderHook(() => useEntryView(makeArgs({ entries: accented })))
+    act(() => result.current.setSearchQuery('Andrés'))
+    expect(names(result.current.filteredEntries)).toEqual(['Andrés.txt'])
+  })
+
+  it('finds nothing for a query that matches no entry', () => {
+    const accented = [{ name: 'Andrés.txt', type: 'file', size: 1, modified: 0 }]
+    const { result } = renderHook(() => useEntryView(makeArgs({ entries: accented })))
+    act(() => result.current.setSearchQuery('xyz'))
     expect(result.current.filteredEntries).toEqual([])
   })
 
