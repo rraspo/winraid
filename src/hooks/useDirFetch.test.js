@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
+import { useState, useEffect, useRef } from 'react'
 import { useDirFetch } from './useDirFetch'
 
 vi.mock('../services/remoteFS')
@@ -19,16 +20,44 @@ let cacheModeRef
 // the values useBrowse holds at mount so each test only states what it varies.
 // cacheModeRef is a per-test singleton because useBrowse passes a useRef whose
 // identity is stable across renders — a fresh object here would churn fetchDir.
+// settingsLoaded defaults to true because these cases inject cacheModeRef
+// already populated, i.e. they model the state after browse settings resolved.
 function makeArgs(overrides = {}) {
   return {
     selectedId:       'conn1',
     path:             '/media',
     connections:      CONNECTIONS,
     cacheModeRef,
+    settingsLoaded:   true,
     setStatus:        setStatusSpy,
     setHighlightFile: setHighlightFileSpy,
     ...overrides,
   }
+}
+
+// Reproduces the ordering the real composition produces at mount: cacheModeRef
+// starts on the 'stale' default and is only filled when the browse-settings
+// promise resolves, one render after the first. Tests drive that promise by
+// hand, so the gap is deterministic rather than timing-dependent.
+function useDeferredSettings(overrides = {}) {
+  const modeRef = useRef('stale')
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  useEffect(() => {
+    window.winraid.config.get('browse').then((browse) => {
+      if (browse?.cacheMode) modeRef.current = browse.cacheMode
+      setSettingsLoaded(true)
+    }).catch(() => {})
+  }, [])
+  return useDirFetch(makeArgs({ cacheModeRef: modeRef, settingsLoaded, ...overrides }))
+}
+
+// Hands back the promise plus its resolver so a test can render, assert on the
+// unresolved state, then release the settings at the exact moment it chooses.
+function deferSettings() {
+  let resolveSettings
+  const promise = new Promise((resolve) => { resolveSettings = resolve })
+  window.winraid.config = { get: vi.fn().mockReturnValue(promise) }
+  return { resolveSettings }
 }
 
 beforeEach(() => {
@@ -169,5 +198,70 @@ describe('useDirFetch — cache mode tree', () => {
     renderHook(() => useDirFetch(makeArgs()))
 
     await waitFor(() => expect(remoteFS.tree).toHaveBeenCalledWith('conn1', '/media'))
+  })
+})
+
+describe('useDirFetch — prewalk when browse settings resolve after mount', () => {
+  it('walks the tree once the settings promise resolves to tree mode', async () => {
+    const { resolveSettings } = deferSettings()
+    remoteFS.getSnapshot.mockReturnValue([])
+
+    renderHook(() => useDeferredSettings())
+
+    // Settings are still in flight: the mode the hook can see is the 'stale'
+    // default, so nothing may be walked yet.
+    expect(remoteFS.tree).not.toHaveBeenCalled()
+
+    await act(async () => { resolveSettings({ cacheMode: 'tree' }) })
+
+    await waitFor(() => expect(remoteFS.tree).toHaveBeenCalledWith('conn1', '/media'))
+    expect(remoteFS.tree).toHaveBeenCalledTimes(1)
+    expect(window.winraid.config.get).toHaveBeenCalledTimes(1)
+    expect(window.winraid.config.get).toHaveBeenCalledWith('browse')
+  })
+
+  it('does not walk again on a re-render or a fresh connections array holding the same connection', async () => {
+    const { resolveSettings } = deferSettings()
+    remoteFS.getSnapshot.mockReturnValue([])
+
+    const { rerender } = renderHook(
+      ({ connections }) => useDeferredSettings({ connections }),
+      { initialProps: { connections: CONNECTIONS } },
+    )
+
+    await act(async () => { resolveSettings({ cacheMode: 'tree' }) })
+    await waitFor(() => expect(remoteFS.tree).toHaveBeenCalledTimes(1))
+
+    rerender({ connections: CONNECTIONS })
+    rerender({ connections: [{ ...CONNECTIONS[0], sftp: { ...CONNECTIONS[0].sftp } }] })
+
+    expect(remoteFS.tree).toHaveBeenCalledTimes(1)
+  })
+
+  it('never walks when the settings resolve to stale mode', async () => {
+    const { resolveSettings } = deferSettings()
+    remoteFS.getSnapshot.mockReturnValue(null)
+
+    renderHook(() => useDeferredSettings())
+
+    await act(async () => { resolveSettings({ cacheMode: 'stale' }) })
+
+    expect(remoteFS.tree).not.toHaveBeenCalled()
+  })
+
+  it('never walks a non-SFTP connection even in tree mode', async () => {
+    const { resolveSettings } = deferSettings()
+    remoteFS.getSnapshot.mockReturnValue([])
+    const smbConnections = [{
+      id: 'conn1', name: 'Atlas', type: 'smb',
+      sftp: { host: '', port: 22, username: '', password: '', keyPath: '', remotePath: '' },
+      smb: { host: 'nas.local', share: 'media', username: 'user', password: '', remotePath: '/media' },
+    }]
+
+    renderHook(() => useDeferredSettings({ connections: smbConnections }))
+
+    await act(async () => { resolveSettings({ cacheMode: 'tree' }) })
+
+    expect(remoteFS.tree).not.toHaveBeenCalled()
   })
 })

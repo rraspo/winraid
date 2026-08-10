@@ -7,7 +7,7 @@ import * as remoteFS from '../services/remoteFS'
 //
 // setStatus and setHighlightFile are injected by the composing hook so this
 // module never opens a second toast or highlight path.
-export function useDirFetch({ selectedId, path, connections, cacheModeRef, setStatus, setHighlightFile }) {
+export function useDirFetch({ selectedId, path, connections, cacheModeRef, settingsLoaded, setStatus, setHighlightFile }) {
   const [entries, setEntries] = useState([])
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState('')
@@ -75,15 +75,29 @@ export function useDirFetch({ selectedId, path, connections, cacheModeRef, setSt
     if (selectedId) fetchDir(path)
   }, [selectedId, path, fetchDir])
 
+  // Root the prewalk would start from, or null when this connection has none to
+  // walk (SMB, or no configured remote path). Derived here rather than inside the
+  // effect so the effect can depend on the string: the connections array is
+  // rebuilt on every parent sync, and depending on its identity re-walked the
+  // whole tree each time even though the selected connection had not changed.
+  const selectedConn = connections.find((c) => c.id === selectedId)
+  const treeRootPath = selectedConn?.type === 'sftp' && selectedConn?.sftp?.remotePath
+    ? selectedConn.sftp.remotePath.replace(/\/+$/, '') || '/'
+    : null
+
   // When cacheMode is 'tree', walk the full remote tree via SSH exec on connection.
   // SFTP-only — SMB connections are silently skipped.
+  //
+  // settingsLoaded is what keeps this correct at app start: cacheModeRef holds
+  // the 'stale' default until the composing hook's browse-settings promise
+  // resolves, and filling a ref does not re-render. Without the flag in the
+  // dependency array the mount pass reads the default, returns, and the walk
+  // only ever happens if the user later changes connection.
   useEffect(() => {
-    if (!selectedId || cacheModeRef.current !== 'tree') return
-    const conn = connections.find((c) => c.id === selectedId)
-    if (conn?.type !== 'sftp' || !conn?.sftp?.remotePath) return
-    const rootPath = conn.sftp.remotePath.replace(/\/+$/, '') || '/'
-    remoteFS.tree(selectedId, rootPath).catch(() => {})
-  }, [selectedId, connections, cacheModeRef])
+    if (!settingsLoaded || !selectedId || cacheModeRef.current !== 'tree') return
+    if (!treeRootPath) return
+    remoteFS.tree(selectedId, treeRootPath).catch(() => {})
+  }, [selectedId, treeRootPath, settingsLoaded, cacheModeRef])
 
   // Stable ref so the queue:updated subscription never needs to re-create just
   // because fetchDir changed — avoids missing the DONE event during re-renders.
