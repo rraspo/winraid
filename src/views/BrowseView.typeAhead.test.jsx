@@ -112,4 +112,37 @@ describe('BrowseView — type-to-jump respects the filtered/sorted view', () => 
     await waitFor(() => expect(fileBRow.className).toContain('cursor'))
     expect(fileARow.className).not.toContain('cursor')
   })
+
+  it('jumps to an accented row when the typed prefix carries no diacritics', async () => {
+    window.winraid = createWinraidMock({
+      config: {
+        get: vi.fn().mockImplementation((key) => {
+          if (key === 'connections') return Promise.resolve(TEST_CONNECTIONS)
+          if (key === 'activeConnectionId') return Promise.resolve('conn-1')
+          return Promise.resolve({
+            connections: TEST_CONNECTIONS,
+            activeConnectionId: 'conn-1',
+          })
+        }),
+      },
+      remote: {
+        list: vi.fn().mockResolvedValue({
+          ok: true,
+          entries: [{ name: 'Ándale.txt', type: 'file', size: 1, modified: Date.now() }],
+        }),
+      },
+    })
+
+    render(<BrowseView onHistoryPush={() => {}} />)
+
+    await screen.findByText('Ándale.txt')
+
+    // The accent sits on the very first letter, so an unaccented prefix only
+    // jumps here if the type-ahead buffer is folded before matching.
+    fireEvent.keyDown(document, { key: 'a' })
+    fireEvent.keyDown(document, { key: 'n' })
+
+    const andaleRow = screen.getByText('Ándale.txt').closest('.row')
+    await waitFor(() => expect(andaleRow.className).toContain('cursor'))
+  })
 })

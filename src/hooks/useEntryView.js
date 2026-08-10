@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { sortEntries } from '../utils/sortEntries'
 import { resolveSortMode, saveSortMode } from '../utils/sortPersistence'
+import { normalizeForSearch } from '../utils/normalizeForSearch'
 
 function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
@@ -37,8 +38,8 @@ export function useEntryView({ entries, path, dirsFirstRef, sortPersistRef }) {
   // filter change naturally (names not in the visible list stay selected
   // but invisible).
   const filteredEntries = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
-    const filtered = q ? entries.filter((e) => e.name.toLowerCase().includes(q)) : entries
+    const q = normalizeForSearch(searchQuery.trim())
+    const filtered = q ? entries.filter((e) => normalizeForSearch(e.name).includes(q)) : entries
     return sortEntries(filtered, sortMode, dirsFirstRef.current)
   }, [entries, searchQuery, sortMode]) // eslint-disable-line react-hooks/exhaustive-deps -- dirsFirstRef is a ref
 

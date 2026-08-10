@@ -5,6 +5,7 @@ import {
   Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
 } from 'lucide-react'
 import { isFavorite } from '../utils/favorites'
+import { normalizeForSearch } from '../utils/normalizeForSearch'
 import { isEditableFile } from '../utils/fileTypes'
 import { localMirrorPath } from '../utils/mirrorPath'
 import styles from './BrowseView.module.css'
@@ -187,7 +188,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste) return
       if (browse.entriesWithPaths.length === 0) return
 
-      typeAheadBufRef.current += e.key.toLowerCase()
+      typeAheadBufRef.current += normalizeForSearch(e.key)
       clearTimeout(bufResetTimerRef.current)
       bufResetTimerRef.current = setTimeout(() => { typeAheadBufRef.current = '' }, 700)
 
@@ -195,7 +196,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       // Search the same filtered+sorted list the view renders — jumping
       // against the raw `entries` array could land the cursor on a row
       // hidden by the active search filter.
-      const match = browse.entriesWithPaths.find((entry) => entry.name.toLowerCase().startsWith(buf))
+      const match = browse.entriesWithPaths.find((entry) => normalizeForSearch(entry.name).startsWith(buf))
       if (match) {
         e.preventDefault()
         setCursorEntry(match.name)
