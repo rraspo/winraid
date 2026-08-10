@@ -67,14 +67,13 @@ function hasAcceptableDragData(e) {
 // root itself lands the file on an arbitrary branch. Detection is a
 // per-connection read of /proc/mounts, cached, re-evaluated on navigation.
 //
-// setStatus, setEntries, setHighlightFile, setOpInFlight, and fetchDir are
-// injected by the composing hook so this module never opens a second toast,
-// listing, or busy-flag path.
+// setStatus, setEntries, setHighlightFile, and setOpInFlight are injected by
+// the composing hook so this module never opens a second toast, listing, or
+// busy-flag path.
 export function usePasteDrop({
   selectedId,
   selectedConn,
   path,
-  fetchDir,
   setEntries,
   setOpInFlight,
   setStatus,
@@ -152,8 +151,16 @@ export function usePasteDrop({
       }
     }
 
+    // Invalidating the captured directory's cache is always correct — the
+    // user dropped files there, so its cache must not serve stale data on
+    // the next visit. Painting the on-screen listing is a different concern:
+    // if the user has navigated away while the fetches were in flight, `dir`
+    // is no longer what's on screen, and pushing its listing into view would
+    // silently jump the browser back to a folder the user already left.
+    // Mirrors handleConfirmPaste's guard below.
     remoteFS.invalidate(selectedId, dir)
-    await fetchDir(dir)
+    const fresh = await remoteFS.list(selectedId, dir).catch(() => null)
+    if (fresh && dir === pathRef.current) setEntries(fresh)
 
     if (success > 0 && !lastFailMsg) {
       setStatus({ ok: true, msg: `Uploaded ${success} ${success === 1 ? 'file' : 'files'}` })
@@ -162,7 +169,7 @@ export function usePasteDrop({
     } else {
       setStatus({ ok: false, msg: lastFailMsg || 'Failed to upload' })
     }
-  }, [selectedId, mergerfsWarning, fetchDir, setStatus])
+  }, [selectedId, mergerfsWarning, setEntries, setStatus])
 
   const handleExternalDrop = useCallback(async (e) => {
     if (isInternalDrag(e)) return
