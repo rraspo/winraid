@@ -269,16 +269,19 @@ export function useBrowseMutations({
     selection.clearSelection()
     let ok = 0, fail = 0
     const deletedNames = new Set()
-    for (const entry of targets) {
-      if (cancelledRef.current) break
-      const entryPath = joinRemote(path, entry.name)
-      const isDir = entry.type === 'dir'
-      const res = await window.winraid?.remote.delete(selectedId, entryPath, isDir)
-      if (res?.ok) { ok++; deletedNames.add(entry.name) }
-      else fail++
+    try {
+      for (const entry of targets) {
+        if (cancelledRef.current) break
+        const entryPath = joinRemote(path, entry.name)
+        const isDir = entry.type === 'dir'
+        const res = await window.winraid?.remote.delete(selectedId, entryPath, isDir)
+        if (res?.ok) { ok++; deletedNames.add(entry.name) }
+        else fail++
+      }
+    } finally {
+      setOpInFlight(false)
     }
     if (cancelledRef.current) return
-    setOpInFlight(false)
     if (cacheMutRef.current === 'update') {
       setEntries((prev) => prev.filter((e) => !deletedNames.has(e.name)))
       remoteFS.update(selectedId, path, (entries) => entries.filter((e) => !deletedNames.has(e.name)))
@@ -303,17 +306,20 @@ export function useBrowseMutations({
     selection.clearSelection()
     let ok = 0, fail = 0
     const movedNames = new Set()
-    for (const entry of targets) {
-      if (cancelledRef.current) break
-      const srcPath = joinRemote(path, entry.name)
-      const dstPath = joinRemote(dest, entry.name)
-      if (srcPath === dstPath) continue
-      const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
-      if (res?.ok) { ok++; movedNames.add(entry.name) }
-      else fail++
+    try {
+      for (const entry of targets) {
+        if (cancelledRef.current) break
+        const srcPath = joinRemote(path, entry.name)
+        const dstPath = joinRemote(dest, entry.name)
+        if (srcPath === dstPath) continue
+        const res = await window.winraid?.remote.move(selectedId, srcPath, dstPath)
+        if (res?.ok) { ok++; movedNames.add(entry.name) }
+        else fail++
+      }
+    } finally {
+      setOpInFlight(false)
     }
     if (cancelledRef.current) return
-    setOpInFlight(false)
     if (cacheMutRef.current === 'update') {
       setEntries((prev) => prev.filter((e) => !movedNames.has(e.name)))
       remoteFS.update(selectedId, path, (entries) => entries.filter((e) => !movedNames.has(e.name)))
@@ -343,20 +349,23 @@ export function useBrowseMutations({
     selection.clearSelection()
     let ok = 0, fail = 0
     let lastError = null
-    for (const entry of targets) {
-      if (cancelledRef.current) break
-      const remotePath = joinRemote(path, entry.name)
-      const isDir = entry.type === 'dir'
-      // For directories the backend appends `basename(remotePath)` to the
-      // local path itself, so we pass the chosen folder unchanged; for
-      // files we have to spell out the destination filename.
-      const localPath = isDir ? folder : joinLocalPath(folder, entry.name)
-      const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
-      if (res?.ok) ok++
-      else { fail++; if (!lastError) lastError = res?.error }
+    try {
+      for (const entry of targets) {
+        if (cancelledRef.current) break
+        const remotePath = joinRemote(path, entry.name)
+        const isDir = entry.type === 'dir'
+        // For directories the backend appends `basename(remotePath)` to the
+        // local path itself, so we pass the chosen folder unchanged; for
+        // files we have to spell out the destination filename.
+        const localPath = isDir ? folder : joinLocalPath(folder, entry.name)
+        const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
+        if (res?.ok) ok++
+        else { fail++; if (!lastError) lastError = res?.error }
+      }
+    } finally {
+      setOpInFlight(false)
     }
     if (cancelledRef.current) return
-    setOpInFlight(false)
     setDownloadProgress(null)
     if (fail === 0) {
       setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''} to ${folder}` })

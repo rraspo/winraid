@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import React, { useState, useRef, useEffect } from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { useBrowse } from './useBrowse'
+import { useBrowseMutations } from './useBrowseMutations'
+import { useSelection } from './useSelection'
 
 vi.mock('../services/remoteFS')
 import * as remoteFS from '../services/remoteFS'
@@ -300,6 +303,178 @@ describe('selection clearing after bulk operations', () => {
     await waitFor(() => expect(result.current.selected.size).toBe(1))
     await act(() => result.current.handleBulkCheckout())
     expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/subdir', 'C:\\Users\\test\\Downloads', true)
+  })
+})
+
+// Minimal harness around useBrowseMutations that gives the test direct control
+// over cancelledRef and cacheMutRef, instead of going through the full
+// useBrowse composition (whose cancelledRef is an internal, unexposed ref).
+// Both are accepted as plain mutable objects rather than real refs — the
+// hook only ever reads/writes `.current`, so a test-owned object works
+// identically and lets the mocked per-entry operation flip it mid-loop.
+function useMutationsHarness({ initialEntries, cacheMutRef, cancelledRef, fetchDir, setStatus, bulkMoveDest: initialBulkMoveDest }) {
+  const [entries, setEntries] = useState(initialEntries)
+  const entriesRef = useRef(entries)
+  useEffect(() => { entriesRef.current = entries }, [entries])
+  const selection = useSelection({ entries, path: '/media' })
+  const [bulkMoveDest, setBulkMoveDest] = useState(initialBulkMoveDest ?? '')
+
+  const mutations = useBrowseMutations({
+    selectedId: 'conn1',
+    selectedConn: CONNECTIONS[0],
+    connections: CONNECTIONS,
+    setConnections: () => {},
+    cfgRemotePath: '/media',
+    localFolder: 'C:\\sync',
+    path: '/media',
+    entries,
+    entriesRef,
+    setEntries,
+    fetchDir,
+    selection,
+    cacheMutRef,
+    cancelledRef,
+    setStatus,
+    setHighlightFile: () => {},
+    setConfirmTarget: () => {},
+    setDeleteTarget: () => {},
+    setMoveTarget: () => {},
+    newFolderName: null,
+    setNewFolderName: () => {},
+    setBulkAction: () => {},
+    bulkMoveDest,
+    setBulkMoveDest,
+  })
+
+  return { ...mutations, selection }
+}
+
+describe('bulk operation cancellation clears the busy flag', () => {
+  it('handleBulkDelete clears opInFlight when cancelled mid-run, and skips reconciliation + toast', async () => {
+    const cancelledRef = { current: false }
+    const setStatus = vi.fn()
+    window.winraid.remote.delete.mockImplementation(async (_id, entryPath) => {
+      // Simulate a cancel signal arriving while the first entry's delete is
+      // still in flight — the loop should honor it before touching the rest.
+      if (entryPath === '/media/a.jpg') cancelledRef.current = true
+      return { ok: true }
+    })
+
+    const { result, unmount } = renderHook(() => useMutationsHarness({
+      initialEntries: [
+        { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+        { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+        { name: 'c.jpg', type: 'file', size: 300, modified: 0 },
+      ],
+      cacheMutRef: { current: 'update' },
+      cancelledRef,
+      fetchDir: vi.fn().mockResolvedValue(undefined),
+      setStatus,
+    }))
+    cleanup = unmount
+
+    await act(async () => result.current.selection.toggleSelectAll())
+    await act(() => result.current.handleBulkDelete())
+
+    expect(result.current.opInFlight).toBe(false)
+    expect(window.winraid.remote.delete).toHaveBeenCalledTimes(1)
+    expect(remoteFS.update).not.toHaveBeenCalled()
+    // setStatus(null) at the top of the handler (clearing any prior toast) is
+    // expected on every run, cancelled or not; only a truthy summary status
+    // — the toast this card says a cancelled run must not show — is checked.
+    expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
+  })
+
+  it('handleBulkMove clears opInFlight when cancelled mid-run, and skips reconciliation + toast', async () => {
+    const cancelledRef = { current: false }
+    const setStatus = vi.fn()
+    window.winraid.remote.move.mockImplementation(async (_id, srcPath) => {
+      if (srcPath === '/media/a.jpg') cancelledRef.current = true
+      return { ok: true }
+    })
+
+    const { result, unmount } = renderHook(() => useMutationsHarness({
+      initialEntries: [
+        { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+        { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+      ],
+      cacheMutRef: { current: 'update' },
+      cancelledRef,
+      fetchDir: vi.fn().mockResolvedValue(undefined),
+      setStatus,
+      bulkMoveDest: '/media/archive',
+    }))
+    cleanup = unmount
+
+    await act(async () => result.current.selection.toggleSelectAll())
+    await act(() => result.current.handleBulkMove())
+
+    expect(result.current.opInFlight).toBe(false)
+    expect(window.winraid.remote.move).toHaveBeenCalledTimes(1)
+    expect(remoteFS.update).not.toHaveBeenCalled()
+    // setStatus(null) at the top of the handler (clearing any prior toast) is
+    // expected on every run, cancelled or not; only a truthy summary status
+    // — the toast this card says a cancelled run must not show — is checked.
+    expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
+  })
+
+  it('handleBulkCheckout clears opInFlight when cancelled mid-run, and skips the summary toast', async () => {
+    const cancelledRef = { current: false }
+    const setStatus = vi.fn()
+    window.winraid.remote.download.mockImplementation(async (_id, remotePath) => {
+      if (remotePath === '/media/a.jpg') cancelledRef.current = true
+      return { ok: true, count: 1 }
+    })
+
+    const { result, unmount } = renderHook(() => useMutationsHarness({
+      initialEntries: [
+        { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+        { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+      ],
+      cacheMutRef: { current: 'update' },
+      cancelledRef,
+      fetchDir: vi.fn().mockResolvedValue(undefined),
+      setStatus,
+    }))
+    cleanup = unmount
+
+    await act(async () => result.current.selection.toggleSelectAll())
+    await act(() => result.current.handleBulkCheckout())
+
+    expect(result.current.opInFlight).toBe(false)
+    expect(window.winraid.remote.download).toHaveBeenCalledTimes(1)
+    // setStatus(null) at the top of the handler (clearing any prior toast) is
+    // expected on every run, cancelled or not; only a truthy summary status
+    // — the toast this card says a cancelled run must not show — is checked.
+    expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
+  })
+})
+
+describe('cancelledRef mount-reset defense', () => {
+  it('a StrictMode remount does not leave cancelledRef stuck true — a fresh bulk op still runs to completion', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+      { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+    ])
+    const { result, unmount } = renderHook(
+      () => useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' }),
+      { wrapper: ({ children }) => React.createElement(React.StrictMode, null, children) }
+    )
+    cleanup = unmount
+    await waitFor(() => {
+      expect(result.current.selectedId).toBe('conn1')
+      expect(result.current.entries).toHaveLength(2)
+    })
+    await act(async () => result.current.toggleSelectAll())
+    await waitFor(() => expect(result.current.selected.size).toBe(2))
+    await act(() => result.current.handleBulkDelete())
+
+    // If cancelledRef had been left stuck true by StrictMode's phantom
+    // mount/cleanup/mount, the loop would break before the first entry and
+    // opInFlight would never even need clearing. Both entries completing
+    // proves the mount-reset effect did its job.
+    expect(window.winraid.remote.delete).toHaveBeenCalledTimes(2)
+    expect(result.current.opInFlight).toBe(false)
   })
 })
 
