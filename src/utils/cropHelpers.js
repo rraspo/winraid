@@ -63,3 +63,27 @@ export async function applyCropToImage(imgEl, displayCrop, mime) {
   canvas.getContext('2d').drawImage(imgEl, x, y, w, h, 0, 0, w, h)
   return new Promise((resolve) => canvas.toBlob(resolve, mime, 0.92))
 }
+
+// Maps a crop selection drawn in CSS pixels over the displayed video element
+// to source pixels for ffmpeg's crop filter. The selection is clamped inside
+// the source frame, then each coordinate is floored to an even value: yuv420
+// chroma subsampling needs even width/height, and even offsets keep chroma
+// aligned to the pixel grid. Returns null when no valid crop can be produced
+// (missing display size, missing selection, or a too-small result) so the
+// caller can keep Save disabled rather than send ffmpeg garbage.
+export function scaleDisplayCropToSource(displayCrop, displayW, displayH, sourceW, sourceH) {
+  if (!displayCrop || !displayW || !displayH) return null
+
+  const scaleX = sourceW / displayW
+  const scaleY = sourceH / displayH
+  const clamp     = (value, max) => Math.min(Math.max(value, 0), max)
+  const floorEven = (value) => Math.floor(value / 2) * 2
+
+  const x = clamp(displayCrop.x * scaleX, sourceW)
+  const y = clamp(displayCrop.y * scaleY, sourceH)
+  const width  = clamp(displayCrop.width  * scaleX, sourceW - x)
+  const height = clamp(displayCrop.height * scaleY, sourceH - y)
+
+  const rect = { x: floorEven(x), y: floorEven(y), width: floorEven(width), height: floorEven(height) }
+  return rect.width < 2 || rect.height < 2 ? null : rect
+}

@@ -115,7 +115,7 @@ describe('SFTP mkdirpRemote — tolerates "already exists" SFTP error codes', ()
   it.each([4, 11])('resolves without throwing when mkdir fails with code %i (dir already exists)', async (code) => {
     state.mkdirImpl = () => { throw Object.assign(new Error('Failure'), { code }) }
 
-    await expect(createSftpBackend(CFG).transfer(job, vi.fn())).resolves.toBeUndefined()
+    await expect(createSftpBackend(CFG).transfer(job, vi.fn())).resolves.toEqual({})
     expect(state.fastPut).toHaveBeenCalledTimes(1)
   })
 

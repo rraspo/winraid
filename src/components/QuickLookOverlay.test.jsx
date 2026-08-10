@@ -5,9 +5,15 @@ import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
 import QuickLookOverlay from './QuickLookOverlay'
 
-// react-image-crop renders a div wrapper; we don't need its full behavior in tests.
+// react-image-crop renders a div wrapper; we don't need its full behavior in
+// tests. Clicking the wrapper simulates the user finishing a drag: it fires
+// onComplete with a fixed CSS-pixel selection.
 vi.mock('react-image-crop', () => ({
-  default: ({ children }) => <div data-testid="react-crop">{children}</div>,
+  default: ({ children, onComplete }) => (
+    <div data-testid="react-crop" onClick={() => onComplete?.({ unit: 'px', x: 10, y: 10, width: 100, height: 50 })}>
+      {children}
+    </div>
+  ),
 }))
 vi.mock('react-image-crop/dist/ReactCrop.css', () => ({}))
 
@@ -706,5 +712,148 @@ describe('QuickLookOverlay rotate flow', () => {
     expect(screen.queryByTestId('rotate-modal')).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: 'Trim locally' }))
     expect(screen.getByTestId('rotate-modal')).toBeInTheDocument()
+  })
+})
+
+describe('QuickLookOverlay video crop icon', () => {
+  it('shows the Crop icon for an SFTP video', () => {
+    renderOverlay()
+    expect(screen.getByLabelText('Crop video')).toBeInTheDocument()
+  })
+
+  it('hides the Crop icon when the connection cannot server-edit (SMB)', () => {
+    renderOverlay({ canServerEdit: false })
+    expect(screen.queryByLabelText('Crop video')).toBeNull()
+  })
+
+  it('hides the Crop icon while trimming', async () => {
+    renderOverlay()
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: 10 })
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.queryByLabelText('Crop video')).toBeNull()
+  })
+})
+
+describe('QuickLookOverlay video crop flow', () => {
+  // Enter video crop mode; entry is gated on the same ffmpeg capability probe
+  // the trim and rotate features use.
+  async function openVideoCrop(overrides, props) {
+    if (overrides) window.winraid = createWinraidMock(overrides)
+    renderOverlay(props)
+    fireEvent.click(screen.getByLabelText('Crop video'))
+    await act(async () => {})
+  }
+
+  // Give the (possibly remounted) crop-mode video element known dimensions:
+  // source 1920x1080 rendered at 960x540, so display->source scale is 2x.
+  function sizeVideo() {
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'videoWidth',   { configurable: true, value: 1920 })
+    Object.defineProperty(video, 'videoHeight',  { configurable: true, value: 1080 })
+    Object.defineProperty(video, 'clientWidth',  { configurable: true, value: 960 })
+    Object.defineProperty(video, 'clientHeight', { configurable: true, value: 540 })
+    return video
+  }
+
+  // The mocked ReactCrop fires onComplete({x:10, y:10, width:100, height:50})
+  // on click — a finished drag selection in CSS pixels.
+  async function selectRegion() {
+    sizeVideo()
+    fireEvent.click(screen.getByTestId('react-crop'))
+    await act(async () => {})
+  }
+
+  it('checks the ffmpeg capability and enters crop mode around the video', async () => {
+    await openVideoCrop()
+    expect(window.winraid.remote.trimCapability).toHaveBeenCalledWith('c1')
+    const wrapper = screen.getByTestId('react-crop')
+    expect(wrapper).toBeInTheDocument()
+    expect(wrapper.querySelector('video')).not.toBeNull()
+    expect(screen.getByText('Save copy')).toBeInTheDocument()
+    expect(screen.getByText('Overwrite')).toBeInTheDocument()
+    expect(screen.getByText('Cancel')).toBeInTheDocument()
+  })
+
+  it('shows the ffmpeg setup dialog when no engine exists', async () => {
+    await openVideoCrop({
+      remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
+    })
+    expect(screen.queryByTestId('react-crop')).toBeNull()
+    expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
+  })
+
+  it('disables Save until a selection is made', async () => {
+    await openVideoCrop()
+    expect(screen.getByRole('button', { name: 'Save copy' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Overwrite' })).toBeDisabled()
+    await selectRegion()
+    expect(screen.getByRole('button', { name: 'Save copy' })).not.toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Overwrite' })).not.toBeDisabled()
+  })
+
+  it('saves a copy with the selection scaled to source pixels', async () => {
+    await openVideoCrop()
+    await selectRegion()
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(window.winraid.remote.cropVideo).toHaveBeenCalledWith('c1', {
+      path: '/v/clip.mp4',
+      outPath: '/v/clip_cropped.mp4',
+      rect: { x: 20, y: 20, width: 200, height: 100 },
+    }))
+  })
+
+  it('picks the next free _cropped name when one already exists', async () => {
+    await openVideoCrop({
+      remote: { list: vi.fn().mockResolvedValue({ ok: true, entries: [{ name: 'clip_cropped.mp4', type: 'file' }] }) },
+    })
+    await selectRegion()
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(window.winraid.remote.cropVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      outPath: '/v/clip_cropped_2.mp4',
+    })))
+  })
+
+  it('passes the original path as outPath for Overwrite', async () => {
+    await openVideoCrop()
+    await selectRegion()
+    fireEvent.click(screen.getByRole('button', { name: 'Overwrite' }))
+    await waitFor(() => expect(window.winraid.remote.cropVideo).toHaveBeenCalledWith('c1', expect.objectContaining({
+      path: '/v/clip.mp4', outPath: '/v/clip.mp4',
+    })))
+  })
+
+  it('navigates to the new copy after a successful save', async () => {
+    const onNavigate = vi.fn()
+    await openVideoCrop(undefined, { onNavigate })
+    await selectRegion()
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(expect.objectContaining({ path: '/v/clip_cropped.mp4' })))
+  })
+
+  it('stays in crop mode when the crop fails', async () => {
+    await openVideoCrop({
+      remote: { cropVideo: vi.fn().mockResolvedValue({ ok: false, error: 'ffmpeg exited 1' }) },
+    })
+    await selectRegion()
+    fireEvent.click(screen.getByRole('button', { name: 'Save copy' }))
+    await waitFor(() => expect(window.winraid.remote.cropVideo).toHaveBeenCalled())
+    expect(screen.getByTestId('react-crop')).toBeInTheDocument()
+  })
+
+  it('cancel exits crop mode without cropping', async () => {
+    await openVideoCrop()
+    fireEvent.click(screen.getByText('Cancel'))
+    expect(screen.queryByTestId('react-crop')).toBeNull()
+    expect(window.winraid.remote.cropVideo).not.toHaveBeenCalled()
+  })
+
+  it('Escape exits crop mode rather than closing the overlay', async () => {
+    const onClose = vi.fn()
+    await openVideoCrop(undefined, { onClose })
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(screen.queryByTestId('react-crop')).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
   })
 })

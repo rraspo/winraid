@@ -21,6 +21,7 @@ import {
   centeredAspectCrop,
   rotateCropImage,
   applyCropToImage,
+  scaleDisplayCropToSource,
 } from '../utils/cropHelpers'
 import { resolveSnapshotFormat } from '../utils/snapshotFormats'
 // Removed: ImageCropModal — crop is now inline in this overlay
@@ -220,6 +221,19 @@ function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onL
           style={imgStyle}
           onContextMenu={onContextMenu}
         />
+      </ReactCrop>
+    </div>
+  )
+}
+
+// Spatial video crop: ReactCrop wraps a paused, controls-less video element so
+// the user can drag a selection rect over the current frame the same way the
+// image crop mode drags one over an <img>.
+function CropVideoPreview({ src, crop, onChange, onComplete, videoRef }) {
+  return (
+    <div className={styles.mediaWrap}>
+      <ReactCrop crop={crop} onChange={onChange} onComplete={onComplete}>
+        <video ref={videoRef} src={src} className={styles.previewVideo} />
       </ReactCrop>
     </div>
   )
@@ -448,6 +462,12 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitCropMode() }
         return
       }
+      // While cropping a video, lock everything except Escape (which exits
+      // crop mode)
+      if (latestRef.current.videoCropping) {
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitVideoCropMode() }
+        return
+      }
       // While the rotate dialog is open, lock everything except Escape
       if (latestRef.current.rotating) {
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitRotateMode() }
@@ -484,6 +504,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [cropSaving,  setCropSaving]  = useState(false)
   const [cropError,   setCropError]   = useState(null)
   const [cropRotating, setCropRotating] = useState(false)
+
+  // Video crop mode (inline — no modal, same shape as image crop above but
+  // for a spatial crop of the video frame). Snapshot the file at entry so a
+  // stray navigation cannot retarget the save to a different path.
+  const [videoCropping,       setVideoCropping]       = useState(false)
+  const [videoCropFile,       setVideoCropFile]       = useState(null)
+  const [videoCrop,           setVideoCrop]           = useState()
+  const [videoCropSelection,  setVideoCropSelection]  = useState(null)
+  const [videoCropSaving,     setVideoCropSaving]     = useState(false)
+  const videoCropRef = useRef(null)
+
   const [trimming,   setTrimming]   = useState(false)
   const [trimFile,   setTrimFile]   = useState(null)
   const [trimIn,     setTrimIn]     = useState(0)
@@ -494,7 +525,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimPlaying, setTrimPlaying] = useState(false)
   const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', canLocalTrim?, pct?, error? }
   const trimLocalAckRef = useRef(false)  // 'Trim locally' chosen once this session
-  const pendingEditIntentRef = useRef('trim')  // 'trim' | 'rotate' — which feature the engine gate should open once ready
+  const pendingEditIntentRef = useRef('trim')  // 'trim' | 'rotate' | 'crop' — which feature the engine gate should open once ready
   const [rotating,     setRotating]     = useState(false)
   const [rotateFile,   setRotateFile]   = useState(null)
   const [rotateDirection, setRotateDirection] = useState('right')  // 'left' | 'right' | '180'
@@ -513,7 +544,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const trimDragRef       = useRef(null)   // 'start' | 'end' | null while dragging a handle
   const trimRangeRef      = useRef({ in: 0, out: 0 })  // current selection for stable listeners
   const type = file ? fileType(file.name) : 'unknown'
-  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, rotating, type }
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, rotating, videoCropping, type }
 
 
   function handleLoopChange(v) {
@@ -579,6 +610,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
   function proceedWithPendingIntent() {
     if (pendingEditIntentRef.current === 'rotate') beginRotate()
+    else if (pendingEditIntentRef.current === 'crop') beginVideoCrop()
     else beginTrim()
   }
 
@@ -885,6 +917,78 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
   }
 
+  // ── Video crop handlers ────────────────────────────────────────────────────
+  // Spatial crop shares the trim/rotate feature's ffmpeg engine gate (see
+  // runEngineGate). Entry is initiated via enterVideoCropMode above the gate.
+  function beginVideoCrop() {
+    mediaRef.current?.pause?.()
+    setVideoCropFile(file)
+    setVideoCrop(undefined)
+    setVideoCropSelection(null)
+    setVideoCropping(true)
+  }
+
+  async function enterVideoCropMode() {
+    pendingEditIntentRef.current = 'crop'
+    await runEngineGate()
+  }
+
+  function exitVideoCropMode() {
+    setVideoCropping(false)
+    setVideoCropFile(null)
+    setVideoCrop(undefined)
+    setVideoCropSelection(null)
+    setVideoCropSaving(false)
+  }
+
+  async function handleVideoCropSave(overwrite) {
+    const video = videoCropRef.current
+    if (!video || !videoCropSelection || !videoCropFile) return
+    const rect = scaleDisplayCropToSource(videoCropSelection, video.clientWidth, video.clientHeight, video.videoWidth, video.videoHeight)
+    if (!rect) return
+
+    setVideoCropSaving(true)
+    try {
+      let dest
+      if (overwrite) {
+        dest = videoCropFile.path
+      } else {
+        const slash = videoCropFile.path.lastIndexOf('/')
+        const dir   = slash > 0 ? videoCropFile.path.slice(0, slash) : '/'
+        const list  = await window.winraid?.remote.list(connectionId, dir)
+        const names = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
+        dest = nextAvailableCopyPath(videoCropFile.path, names)
+      }
+
+      const res = await window.winraid?.remote.cropVideo(connectionId, {
+        path: videoCropFile.path, outPath: dest, rect,
+      })
+      if (!res?.ok) throw new Error(res?.error ?? 'Crop failed')
+
+      await window.winraid?.cache.invalidateFile(connectionId, dest)
+      const slash   = dest.lastIndexOf('/')
+      const destDir = slash > 0 ? dest.slice(0, slash) : '/'
+      remoteFS.invalidate(connectionId, destDir)
+      const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
+
+      toast.show({ msg: overwrite ? 'Video cropped' : 'Cropped copy saved', type: 'success' })
+
+      if (overwrite) {
+        setCacheBust(Date.now())
+        exitVideoCropMode()
+      } else {
+        const destName = dest.slice(slash + 1)
+        const entry    = refreshed?.find((e) => e.name === destName)
+        const newFile  = entry ? { ...entry, path: dest } : { name: destName, path: dest, size: 0, modified: Date.now(), type: 'file' }
+        exitVideoCropMode()
+        onNavigate?.(newFile)
+      }
+    } catch (err) {
+      toast.show({ msg: err.message, type: 'error' })
+      setVideoCropSaving(false)
+    }
+  }
+
   // ── Crop handlers ──────────────────────────────────────────────────────────
   function enterCropMode() {
     setZoom(1)
@@ -1063,7 +1167,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     if (!el) return
     function onWheel(e) {
       // While cropping, no wheel-based navigation or zoom
-      if (latestRef.current.cropping) return
+      if (latestRef.current.cropping || latestRef.current.videoCropping) return
       // PDFs scroll their own page list — don't hijack the wheel for zoom/nav.
       if (latestRef.current.type === 'pdf') return
       // Horizontal tilt wheel → navigate files (always, regardless of wheel mode)
@@ -1237,6 +1341,17 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         />
       )
     }
+    if (videoCropping && type === 'video') {
+      return (
+        <CropVideoPreview
+          src={src}
+          crop={videoCrop}
+          onChange={(c) => setVideoCrop(c)}
+          onComplete={(c) => setVideoCropSelection(c)}
+          videoRef={videoCropRef}
+        />
+      )
+    }
     switch (type) {
       case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} onContextMenu={handleImageContextMenu} />
       case 'video': return <VideoPreview src={src} loop={loop && !trimming} zoom={zoom} pan={pan} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} />
@@ -1255,7 +1370,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       className={styles.overlay}
       data-theme="dark"
       tabIndex={-1}
-      onClick={(e) => { if (e.target === e.currentTarget && !cropping) onClose() }}
+      onClick={(e) => { if (e.target === e.currentTarget && !cropping && !videoCropping) onClose() }}
       onPointerUp={() => overlayRef.current?.focus()}
       role="dialog"
       aria-modal="true"
@@ -1299,7 +1414,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             </button>
           </Tooltip>
         )}
-        {type === 'video' && canServerEdit && !trimming && (
+        {type === 'video' && canServerEdit && !trimming && !videoCropping && (
           <Tooltip tip="Trim" side="bottom">
             <button
               className={styles.fileMenuBtn}
@@ -1310,7 +1425,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             </button>
           </Tooltip>
         )}
-        {type === 'video' && canServerEdit && !trimming && isRotatableVideo(file.name) && (
+        {type === 'video' && canServerEdit && !trimming && !videoCropping && isRotatableVideo(file.name) && (
           <Tooltip tip="Rotate" side="bottom">
             <button
               className={styles.fileMenuBtn}
@@ -1320,6 +1435,32 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
               <RotateCw size={16} />
             </button>
           </Tooltip>
+        )}
+        {type === 'video' && canServerEdit && !trimming && !rotating && !videoCropping && (
+          <Tooltip tip="Crop" side="bottom">
+            <button
+              className={styles.fileMenuBtn}
+              onClick={enterVideoCropMode}
+              aria-label="Crop video"
+            >
+              <Crop size={16} />
+            </button>
+          </Tooltip>
+        )}
+        {videoCropping && (
+          <div className={styles.cropToolbar}>
+            <button className={styles.cropCancelBtn} onClick={exitVideoCropMode} disabled={videoCropSaving}>
+              Cancel
+            </button>
+            <button className={styles.cropSaveBtn} onClick={() => handleVideoCropSave(false)} disabled={videoCropSaving || !videoCropSelection}>
+              {videoCropSaving ? <Loader size={13} /> : null}
+              Save copy
+            </button>
+            <button className={styles.cropOverwriteBtn} onClick={() => handleVideoCropSave(true)} disabled={videoCropSaving || !videoCropSelection}>
+              {videoCropSaving ? <Loader size={13} /> : null}
+              Overwrite
+            </button>
+          </div>
         )}
         {cropping && (
           <div className={styles.cropToolbar}>
@@ -1384,7 +1525,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnLeft].join(' ')}
             onClick={handlePrev}
-            disabled={!hasPrev || cropping || trimming}
+            disabled={!hasPrev || cropping || trimming || videoCropping}
             aria-label="Previous file"
           >
             <ChevronLeft size={22} />
@@ -1408,7 +1549,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnRight].join(' ')}
             onClick={handleNext}
-            disabled={!hasNext || cropping || trimming}
+            disabled={!hasNext || cropping || trimming || videoCropping}
             aria-label="Next file"
           >
             <ChevronRight size={22} />

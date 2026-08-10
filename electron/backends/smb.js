@@ -3,6 +3,7 @@ import { access, mkdir, stat, utimes } from 'fs/promises'
 import { win32, dirname } from 'path'
 import { spawnSync } from 'child_process'
 import { log } from '../logger.js'
+import { findAvailableRelPath } from '../duplicate-names.js'
 
 // ---------------------------------------------------------------------------
 // Factory
@@ -10,17 +11,27 @@ import { log } from '../logger.js'
 
 /**
  * @param {{ host, share, username, password, remotePath }} cfg
- * @returns {{ transfer(job, onProgress): Promise<void> }}
+ * @returns {{ transfer(job, onProgress, opts): Promise<object> }}
  */
 export function createSmbBackend(cfg) {
-  return { transfer: (job, onProgress) => transfer(cfg, job, onProgress) }
+  return { transfer: (job, onProgress, opts) => transfer(cfg, job, onProgress, opts) }
 }
 
 // ---------------------------------------------------------------------------
 // Transfer entry point
 // ---------------------------------------------------------------------------
 
-async function transfer(cfg, job, onProgress) {
+/**
+ * @param {object} job
+ * @param {(bytes: number, total: number) => void} onProgress
+ * @param {{
+ *   protectPreexisting?: boolean,  // delete-local connection: never skip past or overwrite a remote file this job didn't write
+ *   renameDuplicates?: boolean,    // resolve name conflicts as "name (n).ext" instead of reporting them
+ *   onUploadStart?: (targetRelPath: string) => void|Promise<void>,  // called with the final rel path before the first byte is written
+ * }} [opts]
+ * @returns {Promise<{ skipped?: true, conflict?: true, renamedTo?: string }>}
+ */
+async function transfer(cfg, job, onProgress, opts = {}) {
   const uncShare = `\\\\${cfg.host}\\${cfg.share}`
 
   // Authenticate if credentials are supplied.
@@ -29,31 +40,55 @@ async function transfer(cfg, job, onProgress) {
     netUse(uncShare, cfg.username, cfg.password)
   }
 
-  // Build full destination path: \\host\share\remotePath\relPath
-  const subPath  = win32.join(job.remoteDest ?? cfg.remotePath, job.relPath.replace(/\//g, '\\'))
-  const destPath = win32.join(uncShare, subPath)
+  // Full destination path: \\host\share\remotePath\relPath
+  const remoteBase = job.remoteDest ?? cfg.remotePath
+  const toDestPath = (rel) => win32.join(uncShare, win32.join(remoteBase, rel.replace(/\//g, '\\')))
+
+  // A persisted targetRelPath means this job already began a copy there —
+  // whatever sits at that path is ours to resume, not a foreign duplicate.
+  const attempted = job.targetRelPath != null
+  let targetRel   = job.targetRelPath ?? job.relPath
+  let destPath    = toDestPath(targetRel)
 
   // Stat the source up front — needed for the skip check below and reused for
   // the copy size and timestamp preservation, so we never stat it twice.
   const localStat = await stat(job.srcPath)
 
-  // Skip only when the destination already holds a same-size copy. Existence
-  // alone is not proof of a completed transfer: a truncated or zero-byte
-  // leftover from an aborted copy would otherwise count as done and, under
-  // move / mirror_clean, cost us the only good local copy. Size equality is
-  // the integrity rule (no checksum — we own both ends and never partial-resume).
+  let remoteStat = null
   try {
     await access(destPath)
-    const remoteStat = await stat(destPath)
-    if (remoteStat.size === localStat.size) {
-      log('info', `SMB skip (already transferred): ${job.filename} → ${destPath}`)
-      return { skipped: true }
-    }
-    log('info', `SMB size mismatch, re-copying: ${job.filename} (local ${localStat.size} vs remote ${remoteStat.size})`)
+    remoteStat = await stat(destPath)
   } catch {
     // Absent destination — proceed with copy
   }
 
+  if (remoteStat) {
+    if (attempted || !opts.protectPreexisting) {
+      // Skip only when the destination already holds a same-size copy.
+      // Existence alone is not proof of a completed transfer: a truncated
+      // leftover from an aborted copy would otherwise count as done. Size
+      // equality is the integrity rule (no checksum — we own both ends and
+      // never partial-resume).
+      if (remoteStat.size === localStat.size) {
+        log('info', `SMB skip (already transferred): ${job.filename} → ${destPath}`)
+        return { skipped: true }
+      }
+      log('info', `SMB size mismatch, re-copying: ${job.filename} (local ${localStat.size} vs remote ${remoteStat.size})`)
+    } else if (opts.renameDuplicates) {
+      // Fresh job on a delete-local connection: the destination file is not
+      // ours, regardless of size — land next to it under a free "name (n).ext".
+      targetRel = await findAvailableRelPath(targetRel, async (rel) => {
+        try { await access(toDestPath(rel)); return true } catch { return false }
+      })
+      destPath = toDestPath(targetRel)
+      log('info', `SMB duplicate name, copying as: ${targetRel}`)
+    } else {
+      log('info', `SMB duplicate name conflict (not copying): ${job.filename} → ${destPath}`)
+      return { conflict: true }
+    }
+  }
+
+  await opts.onUploadStart?.(targetRel)
   const destDir = dirname(destPath)
   await mkdir(destDir, { recursive: true })
 
@@ -68,6 +103,7 @@ async function transfer(cfg, job, onProgress) {
   }
 
   log('info', `SMB transfer complete: ${job.filename} → ${destPath}`)
+  return targetRel !== job.relPath ? { renamedTo: targetRel } : {}
 }
 
 // ---------------------------------------------------------------------------

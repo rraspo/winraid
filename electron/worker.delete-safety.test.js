@@ -23,7 +23,10 @@ vi.mock('./activity-format.js', () => ({
   describeActivity: vi.fn(() => ({ title: 't', detail: 'd', nav: null })),
   failureTitle: vi.fn(() => 'failed'),
 }))
-vi.mock('./folder-mode.js', () => ({ shouldPruneEmptyDirs: vi.fn(() => false) }))
+vi.mock('./folder-mode.js', () => ({
+  shouldPruneEmptyDirs: vi.fn(() => false),
+  deletesLocalAfterUpload: vi.fn((conn) => conn.operation === 'move' || conn.folderMode === 'mirror_clean'),
+}))
 vi.mock('fs/promises', () => ({ unlink: unlinkMock }))
 vi.mock('./backends/sftp.js', () => ({
   createSftpBackend: vi.fn(() => ({ transfer: transferMock })),

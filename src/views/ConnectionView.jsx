@@ -60,6 +60,7 @@ const HINTS = {
   modeMirror:    'Recreates the local subfolder tree at the destination on the NAS.',
   modeMirrorClean: 'Same as Mirror, but also deletes the local source file after it\'s successfully copied to the NAS. Remote files are never deleted.',
   keepEmptyDirs: 'Delete uploaded files but leave the folder tree in place — prevents removing folders a running download client still expects.',
+  renameDuplicates: 'When a file with the same name already exists on the NAS, upload it as "name (1).ext" so every file still lands. When off, the conflicting file stays on this PC and the transfer shows as an error instead.',
   extensions:          'Restrict transfers to specific file types. Leave empty to transfer every file.',
   ignoredExtensions:   'Skip files with these extensions. Applied after the whitelist.',
   verifyClean:   'Walk the local watch folder and check each file against the NAS over SFTP. Results are shown in a dialog where you can enqueue missing files, delete confirmed local copies, or ignore either group.',
@@ -77,6 +78,10 @@ export default function ConnectionView({ existing, onSave, onClose }) {
   const [verifyError,        setVerifyError]        = useState(null)
   const [showVerifyConfirm,  setShowVerifyConfirm]  = useState(false)
   const [folderOverlapError, setFolderOverlapError] = useState(null)
+
+  // Move and Mirror + clean delete the local file after upload — the flows
+  // where the duplicate-name options apply.
+  const deletesLocal = conn.folderMode === 'mirror_clean' || conn.operation === 'move'
 
   function setTop(key, value) {
     setConn((c) => ({ ...c, [key]: value }))
@@ -419,28 +424,46 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                   </Field>
 
                   {/* Slides down from behind the folder-structure controls when
-                      Mirror + clean is active; collapses and disables otherwise.
+                      the connection deletes local files after upload (move or
+                      Mirror + clean); collapses and disables otherwise.
                       Kept mounted so both directions animate. */}
                   <div
-                    className={[styles.keepEmptyReveal, conn.folderMode === 'mirror_clean' ? styles.keepEmptyOpen : '']
+                    className={[styles.keepEmptyReveal, deletesLocal ? styles.keepEmptyOpen : '']
                       .filter(Boolean).join(' ')}
-                    aria-hidden={conn.folderMode !== 'mirror_clean'}
+                    aria-hidden={!deletesLocal}
                   >
                     <div className={styles.keepEmptyClip}>
                       <div className={styles.keepEmptyInner}>
-                        <label className={styles.keepEmptyLabel}>
-                          <input
-                            type="checkbox"
-                            checked={!!conn.keepEmptyDirs}
-                            disabled={conn.folderMode !== 'mirror_clean'}
-                            onChange={(e) => setTop('keepEmptyDirs', e.target.checked)}
-                          />
-                          <span className={styles.keepEmptyCheckmark} />
-                          Keep empty folders
-                        </label>
-                        <Tooltip tip={HINTS.keepEmptyDirs}>
-                          <Info size={12} className={styles.hintIcon} />
-                        </Tooltip>
+                        <div className={styles.revealRow}>
+                          <label className={styles.keepEmptyLabel}>
+                            <input
+                              type="checkbox"
+                              checked={!!conn.keepEmptyDirs}
+                              disabled={conn.folderMode !== 'mirror_clean'}
+                              onChange={(e) => setTop('keepEmptyDirs', e.target.checked)}
+                            />
+                            <span className={styles.keepEmptyCheckmark} />
+                            Keep empty folders
+                          </label>
+                          <Tooltip tip={HINTS.keepEmptyDirs}>
+                            <Info size={12} className={styles.hintIcon} />
+                          </Tooltip>
+                        </div>
+                        <div className={styles.revealRow}>
+                          <label className={styles.keepEmptyLabel}>
+                            <input
+                              type="checkbox"
+                              checked={!!conn.renameDuplicates}
+                              disabled={!deletesLocal}
+                              onChange={(e) => setTop('renameDuplicates', e.target.checked)}
+                            />
+                            <span className={styles.keepEmptyCheckmark} />
+                            Rename duplicates
+                          </label>
+                          <Tooltip tip={HINTS.renameDuplicates}>
+                            <Info size={12} className={styles.hintIcon} />
+                          </Tooltip>
+                        </div>
                       </div>
                     </div>
                   </div>
