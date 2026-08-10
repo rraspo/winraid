@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { MAX_CLEARED_ENTRIES } from './queue-data.js'
 
 // queue.js reads/writes queue.json from app.getPath('userData') and registers
 // an app.on('before-quit') flush handler AT IMPORT TIME. vi.mock() factories are
@@ -558,6 +559,119 @@ describe('updateJob edge cases', () => {
     expect(job.connectionId).toBe('conn-1')
     // srcPath is not in the whitelist, so it cannot be overwritten.
     expect(job.srcPath).toBe('/media/a.mkv')
+  })
+})
+
+// -------------------------------------------------------------------------
+// 15. clearDone tombstones — a rescan after clearDone must not re-treat a
+// cleared DONE file as never-uploaded.
+// -------------------------------------------------------------------------
+describe('clearDone tombstones', () => {
+  it('shouldSkipOnRescan returns true for a path cleared after completion (the regression)', async () => {
+    const queue = await loadQueue()
+    const srcPath = '/media/movie.mkv'
+    const jobId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(jobId, { status: queue.STATUS.DONE })
+
+    queue.clearDone()
+
+    expect(queue.shouldSkipOnRescan(srcPath, 'conn-1')).toBe(true)
+  })
+
+  it('scopes the tombstone to its connectionId: the same path on another connection is not skipped', async () => {
+    const queue = await loadQueue()
+    const srcPath = '/media/movie.mkv'
+    const jobId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(jobId, { status: queue.STATUS.DONE })
+    queue.clearDone()
+
+    expect(queue.shouldSkipOnRescan(srcPath, 'conn-1')).toBe(true)
+    expect(queue.shouldSkipOnRescan(srcPath, 'conn-2')).toBe(false)
+  })
+
+  it('does not tombstone ERROR jobs removed by clearStale, so the file is re-detected', async () => {
+    const queue = await loadQueue()
+    const srcPath = '/media/failed.mkv'
+    const jobId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(jobId, { status: queue.STATUS.ERROR })
+
+    queue.clearStale(() => false)
+
+    expect(queue.shouldSkipOnRescan(srcPath, 'conn-1')).toBe(false)
+  })
+
+  it('dedupes repeated clears of the same path+connection into a single tombstone', async () => {
+    const queue = await loadQueue()
+    const srcPath = '/media/movie.mkv'
+
+    const firstId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(firstId, { status: queue.STATUS.DONE })
+    queue.clearDone()
+
+    const secondId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(secondId, { status: queue.STATUS.DONE })
+    queue.clearDone()
+
+    vi.advanceTimersByTime(200)
+    const onDisk = readQueueFile()
+    const matches = onDisk.cleared.filter(
+      (entry) => entry.srcPath === srcPath && entry.connectionId === 'conn-1'
+    )
+    expect(matches).toHaveLength(1)
+  })
+
+  it('caps the tombstone list at MAX_CLEARED_ENTRIES, keeping the newest', async () => {
+    // Seed a queue.json already at the cap with distinct paths, plus one DONE
+    // job about to be cleared past it.
+    const seeded = Array.from({ length: MAX_CLEARED_ENTRIES }, (_, i) => ({
+      srcPath: `/media/seed${i}.mkv`,
+      connectionId: null,
+      clearedAt: i,
+    }))
+    writeFileSync(queueFilePath(), JSON.stringify({
+      jobs: [
+        { id: 'new-done', srcPath: '/media/new.mkv', filename: 'new.mkv', status: 'DONE', createdAt: 1, connectionId: null },
+      ],
+      cleared: seeded,
+    }), 'utf8')
+
+    const queue = await loadQueue()
+    queue.clearDone()
+    vi.advanceTimersByTime(200)
+
+    const onDisk = readQueueFile()
+    expect(onDisk.cleared).toHaveLength(MAX_CLEARED_ENTRIES)
+    // The oldest seeded entry is dropped once the cap is exceeded.
+    expect(onDisk.cleared.some((entry) => entry.srcPath === '/media/seed0.mkv')).toBe(false)
+    // The newly cleared entry survives the trim.
+    expect(onDisk.cleared.some((entry) => entry.srcPath === '/media/new.mkv')).toBe(true)
+  })
+
+  it('survives clearDone and a store reload (same reload pattern as lifetimeCompleted)', async () => {
+    const queue = await loadQueue()
+    const srcPath = '/media/movie.mkv'
+    const jobId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(jobId, { status: queue.STATUS.DONE })
+    queue.clearDone()
+    vi.advanceTimersByTime(200)
+
+    // Simulated restart: fresh module, same file on disk.
+    const restarted = await loadQueue()
+    expect(restarted.shouldSkipOnRescan(srcPath, 'conn-1')).toBe(true)
+  })
+
+  it('does not block a manual re-upload: enqueue never consults the tombstone list', async () => {
+    const queue = await loadQueue()
+    const srcPath = '/media/movie.mkv'
+    const jobId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+    queue.updateJob(jobId, { status: queue.STATUS.DONE })
+    queue.clearDone()
+
+    const manualId = queue.enqueue(srcPath, { connectionId: 'conn-1' })
+
+    const manualJob = findJob(queue.listJobs(), manualId)
+    expect(manualJob).toBeTruthy()
+    expect(manualJob.status).toBe(queue.STATUS.PENDING)
   })
 })
 
