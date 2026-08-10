@@ -1,6 +1,6 @@
 import { getConfig, setConfig } from './config.js'
 
-// Pinned SSH host-key fingerprints, this app's known_hosts (WR-07). Stored in
+// Pinned SSH host-key fingerprints, this app's known_hosts. Stored in
 // the config under `knownHostKeys` as { "host:port": "SHA256:..." }.
 //
 // Keyed by host and port rather than by connection id on purpose: the trust

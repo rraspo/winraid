@@ -1183,7 +1183,7 @@ function registerIPC() {
 
   // -- SSH: drop a pinned host key so the next connect trusts what it finds ---
   // Deliberate and per host: a changed key is either the admin's own doing or
-  // an attack, and only the user can tell which (WR-07).
+  // an attack, and only the user can tell which.
   ipcMain.handle('ssh:forget-host-key', async (_e, host, port) => {
     if (typeof host !== 'string' || !host.trim()) return { ok: false, error: 'Invalid host' }
     const { forgetHostKey } = await import('./known-hosts.js')
@@ -2855,7 +2855,7 @@ async function openRemoteCheckerForConn(conn) {
   return null
 }
 
-// sendToRenderer / notify now live in ipc-bridge.js (WR-28) — imported at the
+// sendToRenderer / notify now live in ipc-bridge.js — imported at the
 // top and re-used by main.js's own IPC handlers. main.js wires the bridge to
 // the BrowserWindow via initIpcBridge() in createWindow().
 

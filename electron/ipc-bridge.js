@@ -3,7 +3,7 @@ import { Notification } from 'electron'
 // ---------------------------------------------------------------------------
 // IPC bridge — the one place business logic reaches the renderer / OS.
 //
-// Extracted from main.js (WR-28) to break the worker.js -> main.js import
+// Extracted from main.js to break the worker.js -> main.js import
 // cycle. Business modules (worker, scan engines, queue callbacks) import from
 // here instead of from the composition root, so they load under test without
 // pulling the entire main.js module. main.js owns the BrowserWindow and hands

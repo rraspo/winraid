@@ -27,9 +27,9 @@ describe('buildRemoteTreeCommand', () => {
     expect(cmd).toContain('.@__thumb')
   })
 
-  // WR-02: the root was interpolated raw into "${p#<root>/}", where command
+  // The root used to be interpolated raw into "${p#<root>/}", where command
   // substitution still expands. A directory anyone can create on the NAS then
-  // runs commands as the SSH user.
+  // ran commands as the SSH user.
   it('never lets a command substitution in the path reach an expandable position', () => {
     const cmd = buildRemoteTreeCommand('/share/x$(reboot)')
     expect(outsideQuotes(cmd)).not.toContain('reboot')

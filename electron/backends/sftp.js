@@ -95,7 +95,7 @@ async function transfer(cfg, job, onProgress, opts = {}) {
 
 async function connect(cfg) {
   // Connection setup (config, tilde-expanded key, ready/error) is centralized
-  // in ssh-connection.js (WR-36); here we just open the SFTP channel on top.
+  // in ssh-connection.js; here we just open the SFTP channel on top.
   // pinHostKeys: false — this runs in the transfer worker, which must not write
   // the config (see createSshConnection). A key already pinned by the main
   // process is still enforced here.

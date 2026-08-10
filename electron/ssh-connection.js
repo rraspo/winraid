@@ -7,10 +7,10 @@ import { getPinnedHostKey, pinHostKey } from './known-hosts.js'
 
 // ---------------------------------------------------------------------------
 // SSH connection setup — the single place a connection to a NAS is configured
-// and established (WR-36). Previously the ssh2 config object and the tilde
+// and established. Previously the ssh2 config object and the tilde
 // expansion of keyPath were written ~6 times across main.js and the SFTP
 // backend, with two divergent tilde-expansion variants. Consolidating them
-// here means a fix — or the WR-07 host-key check — is applied once.
+// here means a fix — or the host-key check — is applied once.
 // ---------------------------------------------------------------------------
 
 /**
@@ -78,7 +78,7 @@ export function hostKeyFingerprint(key) {
  * client is constructed). The single connection primitive used by every SSH
  * consumer; callers perform their own post-`ready` work (sftp, exec, …).
  *
- * Host keys are pinned trust-on-first-use (WR-07): ssh2 auto-accepts any key
+ * Host keys are pinned trust-on-first-use: ssh2 auto-accepts any key
  * when no `hostVerifier` is set, which let anything on the LAN answer as the
  * NAS and collect the credentials. The first connect records the fingerprint;
  * later connects must present the same one.
