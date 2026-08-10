@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import {
   cropMimeType, cropCopyPath, nextAvailableCopyPath,
   fullImageCrop, centeredAspectCrop,
-  applyCropToImage, rotateCropImage, scaleDisplayCropToSource,
+  applyCropToImage, rotateCropImage, rotateImage, scaleDisplayCropToSource,
 } from './cropHelpers'
 
 // ---------------------------------------------------------------------------
@@ -215,6 +215,61 @@ describe('rotateCropImage', () => {
   it('returns a Blob', async () => {
     const result = await rotateCropImage({ naturalWidth: 100, naturalHeight: 100 }, 'image/jpeg')
     expect(result).toBeInstanceOf(Blob)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// rotateImage — generalized rotation used by the standalone image rotate
+// mode (90/180/270), and by rotateCropImage (always 90) below it.
+// ---------------------------------------------------------------------------
+
+describe('rotateImage', () => {
+  it('swaps canvas dimensions for a 90° rotation (landscape -> portrait)', async () => {
+    const img = { naturalWidth: 800, naturalHeight: 600 }
+    await rotateImage(img, 'image/jpeg', 90)
+    expect(canvasMock.width).toBe(600)
+    expect(canvasMock.height).toBe(800)
+  })
+
+  it('swaps canvas dimensions for a 270° rotation', async () => {
+    const img = { naturalWidth: 800, naturalHeight: 600 }
+    await rotateImage(img, 'image/jpeg', 270)
+    expect(canvasMock.width).toBe(600)
+    expect(canvasMock.height).toBe(800)
+  })
+
+  it('preserves canvas dimensions for a 180° rotation', async () => {
+    const img = { naturalWidth: 800, naturalHeight: 600 }
+    await rotateImage(img, 'image/jpeg', 180)
+    expect(canvasMock.width).toBe(800)
+    expect(canvasMock.height).toBe(600)
+  })
+
+  it('rejects an unsupported angle rather than silently acting as 90°', async () => {
+    const img = { naturalWidth: 800, naturalHeight: 600 }
+    await expect(rotateImage(img, 'image/jpeg', 45)).rejects.toThrow()
+    expect(canvasMock.getContext).not.toHaveBeenCalled()
+  })
+
+  it('defaults to a 90° rotation when no degrees argument is given', async () => {
+    const img = { naturalWidth: 400, naturalHeight: 300 }
+    await rotateImage(img, 'image/jpeg')
+    expect(canvasMock.width).toBe(300)
+    expect(canvasMock.height).toBe(400)
+  })
+
+  it('returns a Blob', async () => {
+    const result = await rotateImage({ naturalWidth: 100, naturalHeight: 100 }, 'image/jpeg', 90)
+    expect(result).toBeInstanceOf(Blob)
+  })
+})
+
+describe('rotateCropImage delegates to rotateImage with a fixed 90° default', () => {
+  it('still swaps canvas dimensions the same way rotateImage(img, mime, 90) does', async () => {
+    const img = { naturalWidth: 640, naturalHeight: 480 }
+    await rotateCropImage(img, 'image/png')
+    expect(canvasMock.width).toBe(480)
+    expect(canvasMock.height).toBe(640)
   })
 })
 

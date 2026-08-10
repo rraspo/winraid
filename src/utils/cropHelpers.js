@@ -36,15 +36,29 @@ export function centeredAspectCrop(w, h, aspect) {
   return { unit: 'px', x: Math.round((w - cw) / 2), y: Math.round((h - ch) / 2), width: Math.round(cw), height: Math.round(ch) }
 }
 
-export async function rotateCropImage(imgEl, mime) {
+const ROTATABLE_DEGREES = new Set([90, 180, 270])
+
+// Rotates imgEl clockwise by the given angle onto a canvas sized to match:
+// 90/270 swap width and height, 180 keeps them as-is. Shared by the crop
+// mode's inline rotate control (always 90, via rotateCropImage below) and
+// the standalone image rotate mode (any of the three angles).
+export async function rotateImage(imgEl, mime, degrees = 90) {
+  if (!ROTATABLE_DEGREES.has(degrees)) {
+    throw new Error(`Unsupported rotation angle: ${degrees}`)
+  }
+  const swapped = degrees !== 180
   const canvas = document.createElement('canvas')
-  canvas.width  = imgEl.naturalHeight
-  canvas.height = imgEl.naturalWidth
+  canvas.width  = swapped ? imgEl.naturalHeight : imgEl.naturalWidth
+  canvas.height = swapped ? imgEl.naturalWidth  : imgEl.naturalHeight
   const ctx = canvas.getContext('2d')
   ctx.translate(canvas.width / 2, canvas.height / 2)
-  ctx.rotate(Math.PI / 2)
+  ctx.rotate((degrees * Math.PI) / 180)
   ctx.drawImage(imgEl, -imgEl.naturalWidth / 2, -imgEl.naturalHeight / 2)
   return new Promise((resolve) => canvas.toBlob(resolve, mime, 1))
+}
+
+export async function rotateCropImage(imgEl, mime) {
+  return rotateImage(imgEl, mime, 90)
 }
 
 // displayCrop: crop in CSS pixels from react-image-crop's onComplete callback.
