@@ -47,6 +47,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [cursorEntry,     setCursorEntry]     = useState(null)
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
+  const [settingsLoaded,  setSettingsLoaded]  = useState(false)
   const dirsFirstRef       = useRef(true)
   const sortPersistRef     = useRef('default')
   const cancelledRef       = useRef(false)
@@ -60,14 +61,17 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   browseRestoreRef.current = browseRestore
   pathRef.current          = path
 
-  // Load browse settings once on mount
+  // Load browse settings once on mount. The refs above hold defaults until this
+  // resolves, and filling a ref triggers no render — so settingsLoaded is the
+  // render-visible signal that the real values are in place, for sub-hooks whose
+  // effects must not act on a default they would otherwise never re-read.
   useEffect(() => {
     window.winraid?.config.get('browse').then((browse) => {
       if (browse?.cacheMode)        cacheModeRef.current   = browse.cacheMode
       if (browse?.cacheMutation)    cacheMutRef.current     = browse.cacheMutation
       if (browse?.dirsFirst != null) dirsFirstRef.current   = browse.dirsFirst
       if (browse?.sortPersistence)  sortPersistRef.current  = browse.sortPersistence
-    }).catch(() => {})
+    }).catch(() => {}).finally(() => setSettingsLoaded(true))
   }, [])
 
   // ── Persistence ────────────────────────────────────────────────────────────
@@ -203,6 +207,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     path,
     connections,
     cacheModeRef,
+    settingsLoaded,
     setStatus,
     setHighlightFile,
   })
