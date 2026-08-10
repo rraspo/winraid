@@ -12,7 +12,6 @@ const CONNECTIONS = [{
   smb: { host: '', share: '', username: '', password: '', remotePath: '' },
 }]
 
-let setStatusSpy
 let setHighlightFileSpy
 let cacheModeRef
 
@@ -29,7 +28,6 @@ function makeArgs(overrides = {}) {
     connections:      CONNECTIONS,
     cacheModeRef,
     settingsLoaded:   true,
-    setStatus:        setStatusSpy,
     setHighlightFile: setHighlightFileSpy,
     ...overrides,
   }
@@ -62,7 +60,6 @@ function deferSettings() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  setStatusSpy = vi.fn()
   setHighlightFileSpy = vi.fn()
   cacheModeRef = { current: 'stale' }
   remoteFS.getSnapshot.mockReturnValue(null)

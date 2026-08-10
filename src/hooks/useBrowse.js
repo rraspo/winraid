@@ -111,7 +111,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       setSelectedId(browseRestore.connectionId)
       setEntries([])
       setError('')
-      setStatus(null)
     }
 
     if (browseRestore.path !== path) { // eslint-disable-line react-hooks/exhaustive-deps
@@ -209,7 +208,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     connections,
     cacheModeRef,
     settingsLoaded,
-    setStatus,
     setHighlightFile,
   })
 
@@ -334,7 +332,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     selectedId,
     selectedConn,
     path,
-    fetchDir,
     setEntries,
     setOpInFlight,
     setStatus,

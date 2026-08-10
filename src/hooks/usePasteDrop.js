@@ -244,7 +244,6 @@ export function usePasteDrop({
         suggestedName: res.filename || '',
         sourceUrl:     url,
       })
-      setStatus(null)
     } catch (err) {
       setStatus({ ok: false, msg: err.message || 'Fetch failed' })
     }
@@ -268,7 +267,6 @@ export function usePasteDrop({
     const dest = dir.replace(/\/+$/, '') === '' ? `/${name}` : `${dir.replace(/\/+$/, '')}/${name}`
 
     setOpInFlight(true)
-    setStatus(null)
     try {
       const buf = await pending.blob.arrayBuffer()
       const res = await window.winraid?.remote.writeFileBinary(selectedId, dest, buf)
