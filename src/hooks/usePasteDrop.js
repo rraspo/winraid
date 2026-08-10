@@ -90,10 +90,16 @@ export function usePasteDrop({
   pendingPasteRef.current = pendingPaste
   pathRef.current         = path
 
-  // Counter tracks how many nested dragenter/dragleave pairs are in flight.
-  // relatedTarget can be null when crossing pointer-events:none elements (the
-  // overlay cards), which would falsely trigger deactivation — the counter
-  // approach is immune to that because it counts crossing events, not targets.
+  // Counter approximates how many nested dragenter/dragleave pairs are in
+  // flight. It is deliberately lopsided: enter increments only for acceptable
+  // payloads, but leave decrements for any non-internal drag, because
+  // dragleave events do not reliably carry dataTransfer type info — filtering
+  // them symmetrically would leave the counter stuck (and the drop overlay
+  // visible) when a leave arrives without it. The zero-clamp below absorbs
+  // the resulting underflow. relatedTarget can be null when crossing
+  // pointer-events:none elements (the overlay cards), which would falsely
+  // trigger deactivation — the counter approach is immune to that because it
+  // counts crossing events, not targets.
   const dragCounterRef = useRef(0)
 
   const handleExternalDragEnter = useCallback((e) => {
