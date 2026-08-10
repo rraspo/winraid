@@ -12,6 +12,14 @@ const CONNECTION = {
   smb: { host: '', share: '', username: '', password: '', remotePath: '' },
 }
 
+const CONNECTION2 = {
+  id: 'conn2', name: 'NAS2', type: 'sftp',
+  sftp: { host: 'nas2.local', port: 22, username: 'user', password: '', keyPath: '', remotePath: '/media' },
+  smb: { host: '', share: '', username: '', password: '', remotePath: '' },
+}
+
+const MERGERFS_MOUNTS = 'mergerfs:/mnt/disk* /media fuse.mergerfs allow_other,use_ino 0 0'
+
 // Pinned so the timestamp-derived paste filename is predictable. Only Date is
 // faked — the hook awaits real promises, which fake timers would stall.
 const FROZEN_NOW = new Date(2026, 0, 15, 10, 30, 0)
@@ -252,5 +260,88 @@ describe('usePasteDrop — external URL drop and navigation', () => {
     expect(setEntriesSpy).not.toHaveBeenCalled()
     expect(fetchDirSpy).not.toHaveBeenCalledWith('/a')
     expect(setStatusSpy).toHaveBeenCalledWith({ ok: false, msg: 'Fetch failed: https://example.com/a.png' })
+  })
+})
+
+describe('usePasteDrop — mergerfs root detection', () => {
+  // Native-file drag, the simplest external-drop path — it goes straight to
+  // the upload queue once selectedId/mergerfsWarning admit it.
+  function nativeFileDropEvent() {
+    return makeDragEvent({ types: ['Files'], files: [{ path: 'C:\\fake\\file.png' }] })
+  }
+
+  it('clears the warning when a later connection\'s probe rejects', async () => {
+    window.winraid.remote.readFile = vi.fn((connectionId) => (
+      connectionId === 'conn1'
+        ? Promise.resolve({ ok: true, content: MERGERFS_MOUNTS })
+        : Promise.reject(new Error('read failed'))
+    ))
+
+    const { result, rerender } = renderHook((props) => usePasteDrop(props), {
+      initialProps: makeArgs({ selectedId: 'conn1', selectedConn: CONNECTION, path: '/media' }),
+    })
+
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(true))
+
+    rerender(makeArgs({ selectedId: 'conn2', selectedConn: CONNECTION2, path: '/media' }))
+
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(false))
+  })
+
+  it('permits an external drop again once a failed probe has cleared the warning', async () => {
+    window.winraid.remote.readFile = vi.fn((connectionId) => (
+      connectionId === 'conn1'
+        ? Promise.resolve({ ok: true, content: MERGERFS_MOUNTS })
+        : Promise.reject(new Error('read failed'))
+    ))
+
+    const { result, rerender } = renderHook((props) => usePasteDrop(props), {
+      initialProps: makeArgs({ selectedId: 'conn1', selectedConn: CONNECTION, path: '/media' }),
+    })
+
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(true))
+
+    rerender(makeArgs({ selectedId: 'conn2', selectedConn: CONNECTION2, path: '/media' }))
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(false))
+
+    await act(() => result.current.handleExternalDrop(nativeFileDropEvent()))
+
+    expect(window.winraid.queue.dropUpload).toHaveBeenCalledWith('conn2', '/media', ['C:\\fake\\file.png'])
+  })
+
+  it('still warns and blocks writes for a genuine mergerfs root', async () => {
+    window.winraid.remote.readFile.mockResolvedValue({ ok: true, content: MERGERFS_MOUNTS })
+
+    const { result } = renderHook(() => usePasteDrop(makeArgs({ path: '/media' })))
+
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(true))
+
+    await act(() => result.current.handleExternalDrop(nativeFileDropEvent()))
+
+    expect(window.winraid.queue.dropUpload).not.toHaveBeenCalled()
+  })
+
+  it('probes a connection at most once, reusing the cached result on reselection', async () => {
+    const readFileSpy = vi.fn((connectionId) => (
+      connectionId === 'conn1'
+        ? Promise.resolve({ ok: true, content: MERGERFS_MOUNTS })
+        : Promise.reject(new Error('read failed'))
+    ))
+    window.winraid.remote.readFile = readFileSpy
+
+    const { result, rerender } = renderHook((props) => usePasteDrop(props), {
+      initialProps: makeArgs({ selectedId: 'conn2', selectedConn: CONNECTION2, path: '/media' }),
+    })
+
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(false))
+    expect(readFileSpy.mock.calls.filter(([connectionId]) => connectionId === 'conn2')).toHaveLength(1)
+
+    rerender(makeArgs({ selectedId: 'conn1', selectedConn: CONNECTION, path: '/media' }))
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(true))
+
+    rerender(makeArgs({ selectedId: 'conn2', selectedConn: CONNECTION2, path: '/media' }))
+    await waitFor(() => expect(result.current.mergerfsWarning).toBe(false))
+
+    expect(readFileSpy.mock.calls.filter(([connectionId]) => connectionId === 'conn2')).toHaveLength(1)
   })
 })
