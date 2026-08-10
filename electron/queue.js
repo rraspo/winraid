@@ -3,7 +3,7 @@ import { join } from 'path'
 import { mkdirSync, readFileSync, writeFileSync, renameSync, existsSync } from 'fs'
 import { randomUUID } from 'crypto'
 import { log } from './logger.js'
-import { normalizeQueueData } from './queue-data.js'
+import { normalizeQueueData, MAX_CLEARED_ENTRIES } from './queue-data.js'
 
 // ---------------------------------------------------------------------------
 // Status constants — single source of truth, imported by renderer via IPC
@@ -23,6 +23,11 @@ let _path = null
 // Monotonic lifetime count of transfers that have reached DONE. Persisted in
 // queue.json alongside the jobs; survives clearDone and restarts.
 let _lifetimeCompleted = 0
+// Tombstones for DONE jobs clearDone has removed ({ srcPath, connectionId,
+// clearedAt }), so shouldSkipOnRescan still recognizes the file after the
+// job itself is gone. Persisted in queue.json; survives clearDone and
+// restarts, unlike the DONE jobs themselves.
+let _cleared = []
 
 function queuePath() {
   if (_path) return _path
@@ -45,6 +50,7 @@ function jobs() {
   const data = normalizeQueueData(raw)
   _jobs = data.jobs
   _lifetimeCompleted = data.lifetimeCompleted
+  _cleared = data.cleared
 
   // Any job left in TRANSFERRING means the process died mid-transfer.
   // Reset them to PENDING so the worker picks them up again on this run.
@@ -65,7 +71,7 @@ function _persistNow() {
   if (_jobs === null) return
   const p   = queuePath()
   const tmp = p + '.tmp'
-  const data = { jobs: _jobs, lifetimeCompleted: _lifetimeCompleted }
+  const data = { jobs: _jobs, lifetimeCompleted: _lifetimeCompleted, cleared: _cleared }
   writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8')
   renameSync(tmp, p)
 }
@@ -238,17 +244,28 @@ export function hasActiveJob(srcPath, connectionId = null) {
 /**
  * Returns true if a file should be skipped during an initial (rescan) pass.
  * Skips when any PENDING, TRANSFERRING, or DONE job exists for this path —
- * re-uploading the same file just overwrites, so there is no benefit.
- * ERROR jobs are ignored so the file can be re-detected and retried.
+ * re-uploading the same file just overwrites, so there is no benefit. Also
+ * skips when a tombstone (a DONE job that was later cleared) matches, so
+ * clearing the queue does not make a rescan forget the file was already
+ * transferred. ERROR jobs are ignored so the file can be re-detected and
+ * retried.
  *
  * @param {string}      srcPath
  * @param {string|null} connectionId
  */
 export function shouldSkipOnRescan(srcPath, connectionId = null) {
-  return jobs().some((j) => {
+  const list = jobs()
+  const activeOrDoneMatch = list.some((j) => {
     if (j.srcPath !== srcPath) return false
     if (connectionId !== null && j.connectionId !== connectionId) return false
     return j.status === STATUS.PENDING || j.status === STATUS.TRANSFERRING || j.status === STATUS.DONE
+  })
+  if (activeOrDoneMatch) return true
+
+  return _cleared.some((entry) => {
+    if (entry.srcPath !== srcPath) return false
+    if (connectionId !== null && entry.connectionId !== connectionId) return false
+    return true
   })
 }
 
@@ -262,11 +279,30 @@ export function removeJob(jobId) {
   log('info', `Removed errored job ${jobId} (${job.filename}).`)
 }
 
-/** Remove all DONE jobs from the store. */
+/**
+ * Remove all DONE jobs from the store. Records a tombstone for each one
+ * (deduped by connectionId+srcPath, newest wins) so a later rescan still
+ * recognizes the file as already transferred even though the job is gone.
+ */
 export function clearDone() {
   const list = jobs()
   const before = list.length
+  const removedDone = list.filter((j) => j.status === STATUS.DONE)
   _jobs = list.filter((j) => j.status !== STATUS.DONE)
+
+  if (removedDone.length > 0) {
+    const clearedAt = Date.now()
+    for (const job of removedDone) {
+      _cleared = _cleared.filter(
+        (entry) => !(entry.srcPath === job.srcPath && entry.connectionId === job.connectionId)
+      )
+      _cleared.push({ srcPath: job.srcPath, connectionId: job.connectionId, clearedAt })
+    }
+    if (_cleared.length > MAX_CLEARED_ENTRIES) {
+      _cleared = _cleared.slice(_cleared.length - MAX_CLEARED_ENTRIES)
+    }
+  }
+
   persist()
   log('info', `Cleared ${before - _jobs.length} completed job(s).`)
 }
