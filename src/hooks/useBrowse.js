@@ -81,8 +81,9 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
 
   // ── Cleanup ────────────────────────────────────────────────────────────────
   // Reset on (re-)mount so React 18 StrictMode's double-invocation of cleanup
-  // doesn't leave cancelledRef stuck as true, which would cause all bulk ops
-  // to skip setOpInFlight(false) and leave busy permanently true.
+  // doesn't leave cancelledRef stuck as true, which would cause every bulk op
+  // to break out before touching its first entry (opInFlight still clears via
+  // the handlers' finally blocks, but the op would silently do nothing).
   useEffect(() => {
     cancelledRef.current = false
     return () => {
