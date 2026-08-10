@@ -323,7 +323,10 @@ export function usePasteDrop({
         checkPath(roots)
       })
       ?.catch(() => {
-        if (!cancelled) mergerfsRootsRef.current[selectedId] = new Set()
+        if (cancelled) return
+        const roots = new Set()
+        mergerfsRootsRef.current[selectedId] = roots
+        checkPath(roots)
       })
     return () => { cancelled = true }
   }, [selectedId, selectedConn?.type])
