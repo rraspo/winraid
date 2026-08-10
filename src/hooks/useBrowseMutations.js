@@ -249,7 +249,9 @@ export function useBrowseMutations({
       }
       setStatus({ ok: true, msg: `Created folder ${name}` })
     } else {
+      remoteFS.invalidate(selectedId, path)
       setStatus({ ok: false, msg: res?.error || 'Failed to create folder' })
+      fetchDir(path)
     }
   }, [newFolderName, selectedId, path, fetchDir, setEntries, cacheMutRef, setStatus, setHighlightFile, setNewFolderName])
 
