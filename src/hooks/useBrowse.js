@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useSelection } from './useSelection'
 import { useDragDrop } from './useDragDrop'
+import { useDirFetch } from './useDirFetch'
 import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
 import { extractDragUrls } from '../utils/dragUrl'
@@ -45,9 +46,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [connections,     setConnections]     = useState([])
   const [selectedId,      setSelectedId]      = useState(null)
   const [path,            setPath]            = useState('/')
-  const [entries,         setEntries]         = useState([])
-  const [loading,         setLoading]         = useState(false)
-  const [error,           setError]           = useState('')
   const [opInFlight,      setOpInFlight]      = useState(false)
   const [confirmTarget,   setConfirmTarget]   = useState(null)
   const [editingFile,     setEditingFile]     = useState(null)
@@ -87,17 +85,11 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const prevPath          = useRef(path)
   const initialPushed     = useRef(false)
   const pathRef           = useRef(path)
-  const entriesRef   = useRef([])
-  const fetchEpochRef = useRef(0)
   const cacheModeRef = useRef('stale')
   const cacheMutRef  = useRef('update')
 
   browseRestoreRef.current = browseRestore
   pathRef.current          = path
-
-  // Keep entriesRef in sync so mutation callbacks can read latest entries without
-  // adding entries to their dependency arrays.
-  useEffect(() => { entriesRef.current = entries }, [entries])
 
   // Load browse settings once on mount
   useEffect(() => {
@@ -235,6 +227,18 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [showQuickLook, onHistoryPush, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps -- pathRef is a ref
 
+  // ── Sub-hook composition: directory listing ────────────────────────────────
+  // Sits above the derived values because filteredEntries and every mutation
+  // handler below read entries/setEntries/entriesRef/fetchDir from here.
+  const { entries, setEntries, entriesRef, loading, error, fetchDir } = useDirFetch({
+    selectedId,
+    path,
+    connections,
+    cacheModeRef,
+    setStatus,
+    setHighlightFile,
+  })
+
   // ── Derived values ─────────────────────────────────────────────────────────
   const selectedConn  = connections.find((c) => c.id === selectedId) ?? null
   const cfgRemotePath = selectedConn?.sftp?.remotePath ?? ''
@@ -281,69 +285,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   )
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-  const fetchDir = useCallback(async (targetPath) => {
-    if (!selectedId) return
-    // Each call claims a fresh epoch; only the latest request may write
-    // entries. Without this, a slow listing for a folder the user has already
-    // left resolves late and clobbers the current view (breadcrumb stays put,
-    // contents silently swap a few seconds later).
-    const epoch = ++fetchEpochRef.current
-    const isCurrent = () => fetchEpochRef.current === epoch
-    const mode = cacheModeRef.current
-
-    if (mode === 'stale') {
-      const cached = remoteFS.getSnapshot(selectedId, targetPath)
-      if (cached) {
-        setEntries(cached)
-        setError('')
-        setLoading(false)
-        remoteFS.invalidate(selectedId, targetPath)
-        remoteFS.list(selectedId, targetPath).then((entries) => {
-          if (isCurrent()) setEntries(entries)
-        }).catch(() => {})
-        return
-      }
-    } else if (mode === 'tree') {
-      const cached = remoteFS.getSnapshot(selectedId, targetPath)
-      if (cached) {
-        setEntries(cached)
-        setError('')
-        setLoading(false)
-        setStatus(null)
-        return
-      }
-    }
-
-    setLoading(true)
-    setError('')
-    setStatus(null)
-    try {
-      const entries = await remoteFS.list(selectedId, targetPath)
-      if (!isCurrent()) return
-      setLoading(false)
-      setEntries(entries)
-    } catch (err) {
-      if (!isCurrent()) return
-      setLoading(false)
-      setError(err.message || 'Failed to list directory')
-      setEntries([])
-    }
-  }, [selectedId])
-
-  useEffect(() => {
-    if (selectedId) fetchDir(path)
-  }, [selectedId, path, fetchDir])
-
-  // When cacheMode is 'tree', walk the full remote tree via SSH exec on connection.
-  // SFTP-only — SMB connections are silently skipped.
-  useEffect(() => {
-    if (!selectedId || cacheModeRef.current !== 'tree') return
-    const conn = connections.find((c) => c.id === selectedId)
-    if (conn?.type !== 'sftp' || !conn?.sftp?.remotePath) return
-    const rootPath = conn.sftp.remotePath.replace(/\/+$/, '') || '/'
-    remoteFS.tree(selectedId, rootPath).catch(() => {})
-  }, [selectedId, connections])
-
   useEffect(() => {
     if (!window.winraid) return
     return window.winraid.remote.onDownloadProgress((payload) => {
@@ -485,7 +426,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       setStatus({ ok: false, msg: res?.error || 'Delete failed' })
       fetchDir(path)
     }
-  }, [selectedId, path, fetchDir])
+  }, [selectedId, path, fetchDir, setEntries])
 
   const handleMove = useCallback(async (srcPath, dstPath) => {
     setMoveTarget(null)
@@ -537,7 +478,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       await fetchDir(path)
       setStatus({ ok: false, msg: res?.error || 'Move failed' })
     }
-  }, [selectedId, path, fetchDir])
+  }, [selectedId, path, fetchDir, entriesRef, setEntries])
 
   const handleCreateFolder = useCallback(async () => {
     const name = newFolderName?.trim()
@@ -566,7 +507,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     } else {
       setStatus({ ok: false, msg: res?.error || 'Failed to create folder' })
     }
-  }, [newFolderName, selectedId, path, fetchDir])
+  }, [newFolderName, selectedId, path, fetchDir, setEntries])
 
   // ── Sub-hook composition ───────────────────────────────────────────────────
   const selection = useSelection({ entries: filteredEntries, path })
@@ -833,42 +774,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
   }, [])
 
-  // Stable ref so the queue:updated subscription never needs to re-create just
-  // because fetchDir changed — avoids missing the DONE event during re-renders.
-  const fetchDirRef = useRef(fetchDir)
-  fetchDirRef.current = fetchDir
-  const refreshTimerRef = useRef(null)
-
-  // Refresh the directory listing when an upload completes — but two ways:
-  //  - Skip entirely when the job's known destination folder isn't the one in
-  //    view (drop-uploads carry remoteDest; watcher jobs don't, so they refresh).
-  //  - Debounce, so a burst of completions collapses into ONE re-list instead of
-  //    re-listing the (possibly huge) folder once per file.
-  useEffect(() => {
-    if (!selectedId) return
-    const unsub = window.winraid?.queue.onUpdated((payload) => {
-      const { type, job } = payload
-      if (type !== 'updated' || job?.status !== 'DONE' || job?.connectionId !== selectedId) return
-
-      const cur = pathRef.current.replace(/\/+$/, '')
-      let fileDir = null
-      if (job.remoteDest) {
-        const relPath   = job.relPath ?? ''
-        const lastSlash = relPath.lastIndexOf('/')
-        fileDir = lastSlash === -1
-          ? job.remoteDest.replace(/\/+$/, '')
-          : `${job.remoteDest.replace(/\/+$/, '')}/${relPath.slice(0, lastSlash)}`
-      }
-      // Known to be a different folder → nothing to refresh here.
-      if (fileDir !== null && fileDir !== cur) return
-      if (fileDir === cur) setHighlightFile(job.filename)
-
-      clearTimeout(refreshTimerRef.current)
-      refreshTimerRef.current = setTimeout(() => fetchDirRef.current(pathRef.current), 400)
-    })
-    return () => { unsub?.(); clearTimeout(refreshTimerRef.current) }
-  }, [selectedId])
-
   // ── mergerfs root detection ─────────────────────────────────────────────────
   // Read /proc/mounts once per SFTP connection, cache per connId. Non-SFTP or
   // unreadable mounts are treated as non-mergerfs (no warning, no block).
@@ -957,7 +862,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     } else {
       setStatus({ ok: false, msg: `Deleted ${ok}, failed ${fail}` })
     }
-  }, [selectedEntries, selectedId, path, fetchDir, selection])
+  }, [selectedEntries, selectedId, path, fetchDir, selection, setEntries])
 
   const handleBulkMove = useCallback(async () => {
     const dest = bulkMoveDest.trim()
@@ -992,7 +897,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     } else {
       setStatus({ ok: false, msg: `Moved ${ok}, failed ${fail}` })
     }
-  }, [bulkMoveDest, selectedEntries, selectedId, path, fetchDir, selection])
+  }, [bulkMoveDest, selectedEntries, selectedId, path, fetchDir, selection, setEntries])
 
   const handleBulkCheckout = useCallback(async () => {
     if (!selectedId) return
