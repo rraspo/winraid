@@ -125,20 +125,30 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
             })
           }
           break
-        case 'cleared':
-          setJobs((prev) => prev.filter((j) => j.status !== 'DONE'))
-          break
         case 'removed':
           setJobs((prev) => prev.filter((j) => j.id !== payload.jobId))
+          break
+        case 'cleared':
+          refresh()
+          break
+        default:
+          // Any payload type this view does not special-case (retry, stats,
+          // future additions) converges by refetching instead of drifting.
+          refresh()
           break
       }
     })
 
     const unsubProgress = window.winraid?.queue.onProgress(({ jobId, percent }) => {
       setJobs((prev) =>
-        prev.map((j) =>
-          j.id === jobId ? { ...j, progress: percent / 100, status: 'TRANSFERRING' } : j
-        )
+        prev.map((j) => {
+          if (j.id !== jobId) return j
+          // A terminal status (from retry, cancel, or completion) already
+          // reflects the store's final word on this job — a late progress
+          // tick from the in-flight transfer must not overwrite it.
+          if (j.status === 'DONE' || j.status === 'ERROR') return j
+          return { ...j, progress: percent / 100, status: 'TRANSFERRING' }
+        })
       )
     })
 

@@ -47,7 +47,14 @@ export default function DashboardView({ watcherStatus, onNavigate, connections, 
     const unsubUpdated  = window.winraid?.queue.onUpdated(() => refreshJobs())
     const unsubProgress = window.winraid?.queue.onProgress(({ jobId, percent }) => {
       setJobs((prev) =>
-        prev.map((j) => j.id === jobId ? { ...j, progress: percent / 100, status: 'TRANSFERRING' } : j)
+        prev.map((j) => {
+          if (j.id !== jobId) return j
+          // A terminal status already reflects the store's final word on this
+          // job — a late progress tick from the in-flight transfer must not
+          // overwrite it.
+          if (j.status === 'DONE' || j.status === 'ERROR') return j
+          return { ...j, progress: percent / 100, status: 'TRANSFERRING' }
+        })
       )
     })
 

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { render, screen, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import QueueView from './QueueView'
 
@@ -201,5 +201,91 @@ describe('QueueView', () => {
     const minWidthMatch = styleAttr.match(/min-width:\s*(\d+)/)
     const minWidthValue = minWidthMatch ? parseInt(minWidthMatch[1], 10) : 0
     expect(minWidthValue).toBe(0)
+  })
+})
+
+describe('QueueView converges on store state', () => {
+  it('converges a retried job to the refetched status instead of freezing on Error', async () => {
+    let updatedCb
+    window.winraid.queue.onUpdated = vi.fn((cb) => { updatedCb = cb; return () => {} })
+    window.winraid.queue.list = vi.fn()
+      .mockResolvedValueOnce([makeJob({ id: 'j1', filename: 'retry.mp4', status: 'ERROR', errorMsg: 'boom' })])
+      .mockResolvedValue([makeJob({ id: 'j1', filename: 'retry.mp4', status: 'PENDING' })])
+
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('Error')).toBeInTheDocument()
+
+    act(() => { updatedCb({ type: 'retry', jobId: 'j1' }) })
+
+    expect(await screen.findByText('Pending')).toBeInTheDocument()
+  })
+
+  it('converges on an unhandled payload type (e.g. stats) by refetching the list', async () => {
+    let updatedCb
+    window.winraid.queue.onUpdated = vi.fn((cb) => { updatedCb = cb; return () => {} })
+    window.winraid.queue.list = vi.fn()
+      .mockResolvedValueOnce([makeJob({ id: 'j1', filename: 'stats.mp4', status: 'PENDING' })])
+      .mockResolvedValue([makeJob({ id: 'j1', filename: 'stats.mp4', status: 'TRANSFERRING', progress: 0.2 })])
+
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('Pending')).toBeInTheDocument()
+
+    act(() => { updatedCb({ type: 'stats' }) })
+
+    expect(await screen.findByText('20%')).toBeInTheDocument()
+  })
+
+  it('refetches on cleared instead of filtering renderer-local rows by status', async () => {
+    let updatedCb
+    let progressCb
+    window.winraid.queue.onUpdated = vi.fn((cb) => { updatedCb = cb; return () => {} })
+    window.winraid.queue.onProgress = vi.fn((cb) => { progressCb = cb; return () => {} })
+    window.winraid.queue.list = vi.fn()
+      .mockResolvedValueOnce([makeJob({ id: 'j1', filename: 'drift.mp4', status: 'PENDING' })])
+      .mockResolvedValue([])
+
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('drift.mp4')).toBeInTheDocument()
+
+    // A progress tick drifts the renderer-local row to TRANSFERRING even though
+    // the store has already removed the job by the time 'cleared' arrives.
+    act(() => { progressCb({ jobId: 'j1', percent: 50 }) })
+    expect(await screen.findByText('50%')).toBeInTheDocument()
+
+    act(() => { updatedCb({ type: 'cleared' }) })
+
+    expect(await screen.findByText('No transfers yet')).toBeInTheDocument()
+  })
+
+  it('a progress tick cannot resurrect a terminal ERROR status', async () => {
+    let progressCb
+    window.winraid.queue.onProgress = vi.fn((cb) => { progressCb = cb; return () => {} })
+    window.winraid.queue.list = vi.fn().mockResolvedValue([
+      makeJob({ id: 'j1', filename: 'cancelled.mp4', status: 'ERROR', errorMsg: 'Cancelled' }),
+    ])
+
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('Error')).toBeInTheDocument()
+
+    act(() => { progressCb({ jobId: 'j1', percent: 90 }) })
+
+    expect(screen.getByText('Error')).toBeInTheDocument()
+    expect(screen.queryByText('90%')).toBeNull()
+  })
+
+  it('a progress tick cannot resurrect a terminal DONE status', async () => {
+    let progressCb
+    window.winraid.queue.onProgress = vi.fn((cb) => { progressCb = cb; return () => {} })
+    window.winraid.queue.list = vi.fn().mockResolvedValue([
+      makeJob({ id: 'j1', filename: 'finished.mp4', status: 'DONE' }),
+    ])
+
+    render(<QueueView connections={TEST_CONNECTIONS} />)
+    expect(await screen.findByText('Done')).toBeInTheDocument()
+
+    act(() => { progressCb({ jobId: 'j1', percent: 90 }) })
+
+    expect(screen.getByText('Done')).toBeInTheDocument()
+    expect(screen.queryByText('90%')).toBeNull()
   })
 })
