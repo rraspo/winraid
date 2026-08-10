@@ -69,7 +69,7 @@ describe('setConfig — encryption available', () => {
   })
 })
 
-describe('setConfig — encryption unavailable (WR-09)', () => {
+describe('setConfig — encryption unavailable', () => {
   beforeEach(() => {
     mockSafeStorage.isEncryptionAvailable.mockReturnValue(false)
   })

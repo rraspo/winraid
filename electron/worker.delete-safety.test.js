@@ -1,5 +1,5 @@
 // @vitest-environment node
-// WR-01 acceptance: a skipped transfer must NEVER delete the local source.
+// A skipped transfer must NEVER delete the local source.
 // The queue is a backup pipeline — deleting the original because a same-named
 // file merely exists on the remote is silent data loss.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -76,7 +76,7 @@ async function runOneJob(connFields, transferResult, jobStoreOverrides = null, j
   expect(transferMock).toHaveBeenCalledTimes(1)
 }
 
-describe('worker delete safety (WR-01)', () => {
+describe('worker delete safety', () => {
   beforeEach(() => {
     vi.useFakeTimers()
   })

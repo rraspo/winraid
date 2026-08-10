@@ -132,7 +132,7 @@ describe('createSshConnection', () => {
   })
 })
 
-// WR-07: every connect used to accept any host key, so anything on the LAN
+// Every connect used to accept any host key, so anything on the LAN
 // could answer as the NAS and collect the credentials.
 describe('host key verification', () => {
   const cfg = { host: 'nas.local', port: 22, username: 'u', password: 'p' }

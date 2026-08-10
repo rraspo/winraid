@@ -1,11 +1,11 @@
 // @vitest-environment node
-// SFTP backend transfer-path coverage (WR-04): remote path construction
+// SFTP backend transfer-path coverage: remote path construction
 // (buildRemotePath), mkdirpRemote's tolerance for "already exists" SFTP
 // error codes, and fastPut progress forwarding.
 //
 // Skip-if-exists integrity (the stat-based size comparison that decides
-// whether to skip an upload) is already covered by WR-01's
-// sftp.verify.test.js — not repeated here.
+// whether to skip an upload) is already covered by the skip-integrity suite
+// in sftp.verify.test.js — not repeated here.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const state = vi.hoisted(() => ({
@@ -15,7 +15,7 @@ const state = vi.hoisted(() => ({
   fastPut:   null, // vi.fn per test, records upload attempts
 }))
 
-// The SSH layer pins host keys (WR-07), and the pin store reads the app
+// The SSH layer pins host keys, and the pin store reads the app
 // config, which imports electron. This backend runs in the transfer worker,
 // where electron exists at runtime but not under vitest.
 vi.mock('electron', () => ({

@@ -11,7 +11,7 @@ const NOISE_FILTER = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.
 // used to be substituted straight into `"${p#<root>/}"` — a double-quoted
 // context, where `$( )` and backticks still expand, so a directory named
 // `/share/x$(reboot)` (which validateRemotePath allows, and which anyone able
-// to write to the NAS can create) ran commands as the SSH user (WR-02).
+// to write to the NAS can create) ran commands as the SSH user.
 //
 // `${p#"$root"/}` quotes the expansion inside the pattern too: without those
 // inner quotes the root is read as a glob, so a root containing `*` or `?`

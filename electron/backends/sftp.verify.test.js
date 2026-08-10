@@ -1,5 +1,5 @@
 // @vitest-environment node
-// WR-01 acceptance: the SFTP skip decision must be an integrity check, not an
+// The SFTP skip decision must be an integrity check, not an
 // existence check. A remote file that merely exists (truncated, zero-byte, or
 // stale) must not cause a skip — combined with move/mirror_clean deletion,
 // that turns a leftover remote stub into local data loss.
@@ -12,7 +12,7 @@ const state = vi.hoisted(() => ({
   fastPut: null,    // vi.fn per test, records upload attempts
 }))
 
-// The SSH layer pins host keys (WR-07), and the pin store reads the app
+// The SSH layer pins host keys, and the pin store reads the app
 // config, which imports electron. This backend runs in the transfer worker,
 // where electron exists at runtime but not under vitest.
 vi.mock('electron', () => ({
@@ -55,7 +55,7 @@ import { createSftpBackend } from './sftp.js'
 const CFG = { host: 'nas.local', port: 22, username: 'backup', password: 'x', remotePath: '/backups' }
 const JOB = { srcPath: 'C:\\watch\\movie.mkv', filename: 'movie.mkv', relPath: 'movie.mkv', remoteDest: null }
 
-describe('SFTP skip integrity (WR-01)', () => {
+describe('SFTP skip integrity', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     state.fastPut = vi.fn((localPath, remotePath, opts, done) => done(null))

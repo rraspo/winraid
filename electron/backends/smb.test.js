@@ -68,10 +68,10 @@ describe('SMB backend — preserves source timestamps', () => {
   })
 })
 
-// WR-01 acceptance: like SFTP, the SMB skip decision must be an integrity
+// Like SFTP, the SMB skip decision must be an integrity
 // check — a destination that merely exists (e.g. a 0-byte leftover from an
 // aborted copy) must not be treated as already-transferred.
-describe('SMB skip integrity (WR-01)', () => {
+describe('SMB skip integrity', () => {
   const LOCAL_SIZE = 4096
   const cfg = { host: 'nas.local', share: 'media', remotePath: '\\photos' }
   const job = {
