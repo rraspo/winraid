@@ -180,3 +180,77 @@ describe('usePasteDrop — confirm cache reconciliation', () => {
     expect(result.current.pendingPaste).toBeNull()
   })
 })
+
+describe('usePasteDrop — external URL drop and navigation', () => {
+  // Drives a URL drop through handleExternalDrop (the public entry point;
+  // handleExternalUrlDrop itself is an internal helper) with the URL fetch
+  // held open so the test can navigate the user away mid-flight, then release
+  // it and inspect what got written vs. what got painted.
+  async function runUrlDrop({ navigateAway = false, fetchResult = null } = {}) {
+    window.winraid.remote.list.mockResolvedValue({ ok: true, entries: [] })
+    remoteFS.list.mockResolvedValue([{ name: 'a.png', type: 'file', size: 1, modified: 0 }])
+
+    let resolveFetch
+    window.winraid.url.fetch = vi.fn(() => new Promise((resolve) => { resolveFetch = resolve }))
+
+    const { result, rerender } = renderHook((props) => usePasteDrop(props), {
+      initialProps: makeArgs({ path: '/a' }),
+    })
+
+    const event = makeDragEvent({
+      types: ['text/uri-list'],
+      data: { 'text/uri-list': 'https://example.com/a.png' },
+    })
+
+    let dropPromise
+    act(() => { dropPromise = result.current.handleExternalDrop(event) })
+    await waitFor(() => expect(window.winraid.url.fetch).toHaveBeenCalled())
+
+    if (navigateAway) rerender(makeArgs({ path: '/b' }))
+
+    await act(async () => {
+      resolveFetch(fetchResult ?? { ok: true, mime: 'image/png', filename: 'a.png', bytes: new ArrayBuffer(4) })
+      await dropPromise
+    })
+
+    return { result, rerender }
+  }
+
+  it('writes to the captured directory and invalidates it, but does not paint the view once the user has navigated away', async () => {
+    await runUrlDrop({ navigateAway: true })
+
+    const [connectionId, destination] = window.winraid.remote.writeFileBinary.mock.calls[0]
+    expect(connectionId).toBe('conn1')
+    expect(destination).toBe('/a/a.png')
+    expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', '/a')
+    expect(setEntriesSpy).not.toHaveBeenCalled()
+    expect(fetchDirSpy).not.toHaveBeenCalledWith('/a')
+  })
+
+  it('refreshes the visible listing when the user has not navigated away', async () => {
+    await runUrlDrop({ navigateAway: false })
+
+    expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', '/a')
+    expect(remoteFS.list).toHaveBeenCalledWith('conn1', '/a')
+    expect(setEntriesSpy).toHaveBeenCalledWith([{ name: 'a.png', type: 'file', size: 1, modified: 0 }])
+  })
+
+  it.each([
+    ['stayed put', false],
+    ['navigated away', true],
+  ])('surfaces a success toast when the drop completes (%s)', async (_label, navigateAway) => {
+    await runUrlDrop({ navigateAway })
+
+    expect(setStatusSpy).toHaveBeenCalledWith({ ok: true, msg: 'Uploaded 1 file' })
+  })
+
+  it('reports a failed fetch and does not paint a stale directory once the user has navigated away', async () => {
+    await runUrlDrop({ navigateAway: true, fetchResult: { ok: false, error: 'Fetch failed: https://example.com/a.png' } })
+
+    expect(window.winraid.remote.writeFileBinary).not.toHaveBeenCalled()
+    expect(remoteFS.invalidate).toHaveBeenCalledWith('conn1', '/a')
+    expect(setEntriesSpy).not.toHaveBeenCalled()
+    expect(fetchDirSpy).not.toHaveBeenCalledWith('/a')
+    expect(setStatusSpy).toHaveBeenCalledWith({ ok: false, msg: 'Fetch failed: https://example.com/a.png' })
+  })
+})
