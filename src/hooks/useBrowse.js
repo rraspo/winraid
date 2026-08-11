@@ -202,7 +202,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // ── Sub-hook composition: directory listing ────────────────────────────────
   // Sits above the derived values because filteredEntries and every mutation
   // handler below read entries/setEntries/entriesRef/fetchDir from here.
-  const { entries, setEntries, entriesRef, loading, error, fetchDir } = useDirFetch({
+  const { entries, setEntries, entriesRef, loading, error, setError, fetchDir } = useDirFetch({
     selectedId,
     path,
     connections,
