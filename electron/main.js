@@ -387,6 +387,17 @@ function createWindow() {
     console.error(`[main] Renderer failed to load: ${desc} (${code}) — ${url}`)
   })
 
+  // Renderer-side failures otherwise leave no trace: nothing writes them to the
+  // log file, so a preview that won't load or a worker that won't start can only
+  // be diagnosed with DevTools open at the time. Warnings and errors only —
+  // info/verbose would drown the log.
+  mainWindow.webContents.on('console-message', (_e, details) => {
+    const level = details?.level ?? 0   // 0 verbose, 1 info, 2 warning, 3 error
+    if (level < 2) return
+    const origin = details?.sourceId ? ` (${details.sourceId}:${details.lineNumber ?? 0})` : ''
+    log(level >= 3 ? 'error' : 'warn', `[renderer] ${details.message}${origin}`)
+  })
+
   // If the renderer process crashes (e.g. GPU context lost after sleep), reload it.
   mainWindow.webContents.on('render-process-gone', (_e, { reason }) => {
     if (reason !== 'clean-exit') {
@@ -1834,8 +1845,11 @@ function registerIPC() {
       const probe = await _detectFfmpeg(connectionId, client)
       if (probe.available) return { ok: true, mode: 'server', version: probe.version }
 
+      // `source` lets the renderer tell an ffmpeg the user deliberately
+      // installed from one it merely found on PATH — the former already
+      // carries their consent to spend this PC's time on the work.
       const localPath = await _resolveLocalFfmpeg()
-      if (localPath) return { ok: true, mode: 'local' }
+      if (localPath) return { ok: true, mode: 'local', source: _localFfmpegSource }
       return { ok: true, mode: 'none' }
     } catch (err) {
       return { ok: false, error: err.message }
