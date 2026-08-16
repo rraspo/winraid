@@ -1786,7 +1786,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
                   video, trims it locally, and uploads the result.{' '}
                   {trimSetup.canLocalTrim
                     ? 'An ffmpeg is already available on this PC.'
-                    : 'That needs an ffmpeg on this PC — download the official build once (~80 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
+                    : 'That needs an ffmpeg on this PC — download the official build once (~105 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
                 </p>
               </div>
             </div>
@@ -1818,7 +1818,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
                   className={trimSetup.canLocalTrim ? modalStyles.modalSecondary : modalStyles.modalConfirmAccent}
                   onClick={handleFfmpegDownload}
                 >
-                  Download (~80 MB)
+                  Download (~105 MB)
                 </button>
                 {trimSetup.canLocalTrim && (
                   <button className={modalStyles.modalConfirmAccent} onClick={handleLocalTrimChoice}>Trim locally</button>
