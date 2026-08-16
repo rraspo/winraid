@@ -26,7 +26,10 @@ function normalize(deg) {
   return ((deg % 360) + 360) % 360
 }
 
-const DISPLAYMATRIX_RE = /displaymatrix:\s*rotation of (-?\d+(?:\.\d+)?) degrees/i
+// ffmpeg 8.1 renamed this side-data label from "displaymatrix:" to
+// "Display Matrix:", so both spellings have to match — a missed rotation
+// reads as none at all and rotates from the wrong origin.
+const DISPLAYMATRIX_RE = /display\s*matrix\s*:\s*rotation of (-?\d+(?:\.\d+)?) degrees/i
 const LEGACY_ROTATE_RE = /rotate\s*:\s*(-?\d+)/i
 
 // Reads a file's current display rotation out of `ffmpeg -i` stderr text.
