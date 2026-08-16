@@ -1860,7 +1860,10 @@ function registerIPC() {
     if (res.ok) {
       _localFfmpegPath = res.path
       _localFfmpegSource = 'downloaded'
-      log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version})`)
+      // Log the winning source: with a fallback chain, which candidate
+      // actually served the file is the first thing worth knowing when a
+      // download behaves unexpectedly.
+      log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version}) from ${res.source}`)
     } else if (res.canceled) {
       log('info', 'ffmpeg download canceled')
     } else {
