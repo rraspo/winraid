@@ -2087,7 +2087,10 @@ function registerIPC() {
         return { ok: false, error: (mv.stderr || 'Could not finalize rotated file').trim() }
       }
 
-      log('info', `Video rotated locally [${label}]: ${path} -> ${outPath} (${degrees}deg)`)
+      // Record the rotation actually read off the file and the absolute target
+      // written, not just the requested delta — a rotate that lands wrong is
+      // almost always a misread starting angle, which the delta alone hides.
+      log('info', `Video rotated locally [${label}]: ${path} -> ${outPath} (${currentRotation}deg +${degrees}deg -> ${target}deg, modern=${modern})`)
       emitActivity({
         type: 'upload', connectionId,
         payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
@@ -2164,7 +2167,7 @@ function registerIPC() {
           return { ok: false, error: (mv.stderr || 'Could not finalize rotated file').trim() }
         }
 
-        log('info', `Video rotated [${label}]: ${path} -> ${outPath} (${degrees}deg)`)
+        log('info', `Video rotated [${label}]: ${path} -> ${outPath} (${currentRotation}deg +${degrees}deg -> ${target}deg, modern=${modern})`)
         emitActivity({
           type: 'upload', connectionId,
           payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
