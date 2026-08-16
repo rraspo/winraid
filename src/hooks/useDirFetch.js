@@ -133,5 +133,5 @@ export function useDirFetch({ selectedId, path, connections, cacheModeRef, setti
     return () => { unsub?.(); clearTimeout(refreshTimerRef.current) }
   }, [selectedId, setHighlightFile])
 
-  return { entries, setEntries, entriesRef, loading, error, fetchDir }
+  return { entries, setEntries, entriesRef, loading, error, setError, fetchDir }
 }
