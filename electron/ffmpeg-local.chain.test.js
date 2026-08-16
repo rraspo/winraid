@@ -7,7 +7,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { EventEmitter } from 'events'
 import { existsSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
-import { join, dirname } from 'path'
+import { join } from 'path'
 
 // Extraction shells out to PowerShell and validation runs the binary with
 // -version; both go through spawn, so the mock stands in for both and lets a

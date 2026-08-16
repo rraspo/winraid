@@ -1794,9 +1794,9 @@ function registerIPC() {
   // the file, cuts it on this PC and uploads the result; 'none' means the
   // renderer should offer to download or locate a local ffmpeg.
   let _localFfmpegPath = null
-  // 'custom' | 'downloaded' | 'path', from findLocalFfmpeg — only a 'custom'
-  // (user-located) binary has an era _localRotate still needs to probe; the
-  // downloaded and PATH-resolved cases are known to be the pinned build.
+  // 'custom' | 'downloaded' | 'path', from findLocalFfmpeg — only the
+  // downloaded binary is the pinned build, so only its era is known without
+  // probing. A user-located or PATH binary can be any vintage.
   let _localFfmpegSource = null
   let _ffmpegDownloadPromise = null
   let _ffmpegDownloadController = null
@@ -2031,8 +2031,8 @@ function registerIPC() {
   // Local-fallback rotate: pull the source down, probe its current rotation,
   // rewrite it on this PC, push the result back up, then finalize with the
   // same atomic sibling-move the server path uses. The local ffmpeg's era is
-  // only re-probed for a user-located custom binary; the downloaded and
-  // PATH-resolved cases are the pinned build, whose era is already known.
+  // re-probed unless the binary is the one we downloaded ourselves, whose
+  // version is pinned and therefore already known.
   async function _localRotate({ connectionId, sftp, client, label, path, outPath, degrees }) {
     const slash = outPath.lastIndexOf('/')
     const dir   = slash > 0 ? outPath.slice(0, slash) : ''
@@ -2058,9 +2058,9 @@ function registerIPC() {
         proc.on('close', () => resolve(parseRotation(errOut)))
       })
 
-      const modern = _localFfmpegSource === 'custom'
-        ? supportsDisplayRotation((await validateFfmpegBinary(_localFfmpegPath)).version)
-        : supportsDisplayRotation(FFMPEG_PINNED_VERSION)
+      const modern = _localFfmpegSource === 'downloaded'
+        ? supportsDisplayRotation(FFMPEG_PINNED_VERSION)
+        : supportsDisplayRotation((await validateFfmpegBinary(_localFfmpegPath)).version)
       const target = combineRotation(currentRotation, degrees)
 
       const args = ffmpegRotateArgs({ input: localIn, output: localOut, degrees: target, modern })
