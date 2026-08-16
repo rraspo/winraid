@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe, FFMPEG_WIN64_URL,
+  ffmpegTrimArgs, probeFfmpegCommand, parseFfmpegProbe,
+  FFMPEG_WIN64_CANDIDATES, FFMPEG_PINNED_VERSION,
   ffmpegKeyframeProbeArgs, ffmpegStreamProbeArgs, ffmpegReencodeArgs, ffmpegTailSegmentArgs, ffmpegConcatArgs,
   parseKeyframeTimes, parseVideoStreamInfo, encoderForCodec, planTrim,
   shellFromArgs, runTrim,
@@ -33,9 +34,37 @@ describe('ffmpegTrimArgs', () => {
     expect(cmd).toBe("ffmpeg -nostdin -y -ss 1.500 -i '/mnt/user/v/a b.mp4' -t 8.500 -c copy -map 0 -avoid_negative_ts make_zero '/mnt/user/v/a b_trimmed.mp4'")
   })
 
-  it('publishes a Windows static-build download URL', () => {
-    expect(FFMPEG_WIN64_URL).toMatch(/^https:\/\//)
-    expect(FFMPEG_WIN64_URL).toMatch(/\.zip$/)
+})
+
+describe('pinned ffmpeg download candidates', () => {
+  it('is a non-empty ordered list of https zip URLs', () => {
+    expect(Array.isArray(FFMPEG_WIN64_CANDIDATES)).toBe(true)
+    expect(FFMPEG_WIN64_CANDIDATES.length).toBeGreaterThan(0)
+    for (const url of FFMPEG_WIN64_CANDIDATES) {
+      expect(url).toMatch(/^https:\/\//)
+      expect(url).toMatch(/\.zip$/)
+    }
+  })
+
+  // The whole point of the pin: the bytes a user downloads must not change
+  // when upstream re-publishes.
+  it('carries no moving alias', () => {
+    for (const url of FFMPEG_WIN64_CANDIDATES) {
+      expect(url).not.toMatch(/release-essentials/)
+      expect(url).not.toMatch(/latest/)
+    }
+  })
+
+  it('pins every candidate to the same declared version', () => {
+    expect(FFMPEG_PINNED_VERSION).toMatch(/^\d+\.\d+(\.\d+)?$/)
+    for (const url of FFMPEG_WIN64_CANDIDATES) {
+      expect(url).toContain(FFMPEG_PINNED_VERSION)
+    }
+  })
+
+  // The self-mirror is the only candidate the project controls, so it leads.
+  it('puts the self-mirror first', () => {
+    expect(FFMPEG_WIN64_CANDIDATES[0]).toContain('github.com/rraspo/winraid-deps')
   })
 })
 
