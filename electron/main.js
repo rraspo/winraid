@@ -2053,13 +2053,23 @@ function registerIPC() {
 
       // ffmpeg -i with no output always exits non-zero; the rotation side
       // data / metadata we need is in stderr regardless of that exit code.
-      const currentRotation = await new Promise((resolve, reject) => {
+      const probeOut = await new Promise((resolve, reject) => {
         const proc = spawn(_localFfmpegPath, ['-nostdin', '-hide_banner', '-i', localIn], { windowsHide: true })
         let errOut = ''
         proc.stderr?.on('data', (chunk) => { errOut += chunk })
         proc.on('error', reject)
-        proc.on('close', () => resolve(parseRotation(errOut)))
+        proc.on('close', () => resolve(errOut))
       })
+      const currentRotation = parseRotation(probeOut)
+      // A rotation the probe cannot see reads as 0 and silently rotates from
+      // the wrong origin, so record what the probe actually saw when it finds
+      // nothing: the local copy's size against the remote's, and the stream
+      // lines ffmpeg did print.
+      if (currentRotation === 0) {
+        const localSize = statSync(localIn).size
+        const streamLines = probeOut.split('\n').filter((line) => /Stream #|displaymatrix|rotate|Invalid|moov|Duration/i.test(line))
+        log('info', `Rotate probe found no rotation [${label}]: localBytes=${localSize} lines=${JSON.stringify(streamLines.slice(0, 6))}`)
+      }
 
       const modern = _localFfmpegSource === 'downloaded'
         ? supportsDisplayRotation(FFMPEG_PINNED_VERSION)
