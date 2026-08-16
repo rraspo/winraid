@@ -26,14 +26,16 @@ vi.mock('./components/Sidebar', () => ({
 // Stands in for BrowseView: pushes the tab's initial directory entry on mount
 // the way useBrowse does, reports the browseRestore it is handed, and can push
 // a deeper directory the way navigate() does on a folder click.
-vi.mock('./views/BrowseView', () => ({
-  default: ({ browseRestore, onHistoryPush, connectionId }) => {
+vi.mock('./views/BrowseView', () => {
+  // Named so the hooks below are linted as a component rather than a bare
+  // arrow assigned to `default`.
+  function BrowseStub({ browseRestore, onHistoryPush, connectionId }) {
     const pushedInitial = useRef(false)
     useEffect(() => {
       if (pushedInitial.current) return
       pushedInitial.current = true
       onHistoryPush?.({ kind: 'browse', path: '/mnt/user/media', quickLookFile: null, connectionId })
-    }, [])
+    }, []) // eslint-disable-line react-hooks/exhaustive-deps -- mount-once push, guarded by the ref
     return (
       <div>
         <span data-testid="restore-path">{browseRestore ? String(browseRestore.path) : 'none'}</span>
@@ -45,8 +47,9 @@ vi.mock('./views/BrowseView', () => ({
         </button>
       </div>
     )
-  },
-}))
+  }
+  return { default: BrowseStub }
+})
 
 vi.mock('./components/Header',       () => ({ default: () => <div /> }))
 vi.mock('./components/StatusBar',    () => ({ default: () => <div /> }))
