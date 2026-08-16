@@ -331,7 +331,7 @@ export default function App() {
         return [...prev, { id: tabId, connId: entry.connectionId, type: 'browse' }]
       })
       setActiveTabId(tabId)
-      setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, token: Date.now() })
+      setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
     }
   }
 
@@ -368,8 +368,7 @@ export default function App() {
   }
 
   function navigateFavorite(connId, path) {
-    openTab(connId, 'browse')
-    setBrowseRestore({ path, quickLookFile: null, connectionId: connId, highlightFile: null, token: Date.now() })
+    navigateBrowseJump(connId, path)
   }
 
   // Activity entry click → open where the file ended up (remote browse) or
@@ -382,14 +381,7 @@ export default function App() {
       return
     }
     if (nav.kind === 'remote') {
-      openTab(entry.connectionId, 'browse')
-      setBrowseRestore({
-        path: nav.path,
-        quickLookFile: null,
-        connectionId: entry.connectionId,
-        highlightFile: nav.highlight ?? null,
-        token: Date.now(),
-      })
+      navigateBrowseJump(entry.connectionId, nav.path, nav.highlight ?? null)
     }
   }
 
@@ -419,7 +411,11 @@ export default function App() {
   }
 
   // --- Tab helpers ----------------------------------------------------------
-  function openTab(connId, type) {
+  // `skipHistoryPush` is used by jumps that push their own `{kind:'browse'}`
+  // entry right after opening the tab (see navigateBrowseJump below) — a
+  // browse entry already recreates its tab on restore, so the tab's own
+  // pathless entry would just be a visible-nothing extra step on back.
+  function openTab(connId, type, { skipHistoryPush = false } = {}) {
     const id = `${connId}:${type}`
     setOpenTabs((prev) => {
       if (prev.find((t) => t.id === id)) return prev
@@ -427,7 +423,19 @@ export default function App() {
     })
     setActiveTabId(id)
     setActiveView(null)
-    if (id !== activeTabId) push({ kind: 'tab', id, connId, type })
+    if (!skipHistoryPush && id !== activeTabId) push({ kind: 'tab', id, connId, type })
+  }
+
+  // Jumps into browse from outside the browse view (favorites, activity
+  // entries, "show in browse" from the queue/size views) bypass useBrowse's
+  // navigate(), which is the only thing that normally records history for a
+  // browse move. Without this, those jumps never enter the nav stack and
+  // back walks straight past them to the tab's initial directory. This is
+  // the single place that opens the tab and records the jump together.
+  function navigateBrowseJump(connId, path, highlightFile = null) {
+    openTab(connId, 'browse', { skipHistoryPush: true })
+    push({ kind: 'browse', path, connectionId: connId, quickLookFile: null, highlightFile })
+    setBrowseRestore({ path, quickLookFile: null, connectionId: connId, highlightFile, token: Date.now() })
   }
 
   function activateTab(id) {
@@ -481,8 +489,7 @@ export default function App() {
       connections, onNavigate: navigateView,
       onNavigateLogs: handleNavigateLogs,
       onBrowsePath: (connId, remotePath, highlightFile) => {
-        openTab(connId, 'browse')
-        setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: connId, highlightFile: highlightFile ?? null, token: Date.now() })
+        navigateBrowseJump(connId, remotePath, highlightFile ?? null)
       },
     } :
     activeView === 'logs' ? { logNav } :
@@ -595,8 +602,7 @@ export default function App() {
                     connectionId={tab.connId}
                     connection={conn}
                     onBrowsePath={(remotePath) => {
-                      openTab(tab.connId, 'browse')
-                      setBrowseRestore({ path: remotePath, quickLookFile: null, connectionId: tab.connId, highlightFile: null, token: Date.now() })
+                      navigateBrowseJump(tab.connId, remotePath)
                     }}
                   />
                 </div>
