@@ -6,7 +6,7 @@
 import { spawn } from 'child_process'
 import { createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'fs'
 import { join } from 'path'
-import { parseFfmpegProbe, FFMPEG_WIN64_URL } from './video-trim.js'
+import { parseFfmpegProbe, FFMPEG_WIN64_CANDIDATES } from './video-trim.js'
 
 export function downloadedFfmpegPath(dataDir) {
   return join(dataDir, 'ffmpeg', 'ffmpeg.exe')
@@ -47,25 +47,24 @@ export async function findLocalFfmpeg({ dataDir, customPath }) {
   return null
 }
 
-// Download the official static build, keep only ffmpeg.exe. Extraction uses
+// One candidate attempt: download -> extract -> validate. Extraction uses
 // PowerShell Expand-Archive - the app ships on Windows only, so it is always
 // present and saves a zip dependency. `request` is electron net.request
 // (injected so this module stays importable outside Electron). `signal` is
-// an optional AbortSignal letting the caller cancel an in-flight download.
-export async function downloadFfmpeg({ dataDir, request, onProgress, signal }) {
-  if (signal?.aborted) return { ok: false, canceled: true }
-
+// an optional AbortSignal letting the caller cancel an in-flight download;
+// on cancel this resolves { ok: false, canceled: true } so the chain knows
+// to stop rather than fall through to the next candidate.
+async function downloadCandidate({ url, dataDir, request, onProgress, signal }) {
   const dir = join(dataDir, 'ffmpeg')
   const zipPath = join(dir, 'download.zip')
   const extractDir = join(dir, 'extract')
-  mkdirSync(dir, { recursive: true })
 
   let canceled = false
   let onAbort
 
   try {
     await new Promise((resolve, reject) => {
-      const req = request(FFMPEG_WIN64_URL)
+      const req = request(url)
 
       onAbort = () => {
         canceled = true
@@ -111,7 +110,7 @@ export async function downloadFfmpeg({ dataDir, request, onProgress, signal }) {
 
     const probe = await validateFfmpegBinary(finalPath)
     if (!probe.available) throw new Error('The downloaded ffmpeg did not run')
-    return { ok: true, path: finalPath, version: probe.version }
+    return { ok: true, path: finalPath, version: probe.version, source: url }
   } catch (err) {
     return canceled ? { ok: false, canceled: true } : { ok: false, error: err.message }
   } finally {
@@ -119,4 +118,26 @@ export async function downloadFfmpeg({ dataDir, request, onProgress, signal }) {
     rmSync(zipPath, { force: true })
     rmSync(extractDir, { recursive: true, force: true })
   }
+}
+
+// Try the pinned candidate chain in order, falling through to the next
+// source on any download/extract/validate failure. A cancel stops the whole
+// chain immediately rather than advancing - the user asked to stop, not to
+// keep trying other mirrors. Progress and the abort signal are wired fresh
+// per attempt, so a failed candidate never leaves its byte count in the next
+// one's reported fraction.
+export async function downloadFfmpeg({ dataDir, request, onProgress, signal }) {
+  if (signal?.aborted) return { ok: false, canceled: true }
+
+  mkdirSync(join(dataDir, 'ffmpeg'), { recursive: true })
+
+  const errors = []
+  for (const url of FFMPEG_WIN64_CANDIDATES) {
+    if (signal?.aborted) return { ok: false, canceled: true }
+
+    const result = await downloadCandidate({ url, dataDir, request, onProgress, signal })
+    if (result.ok || result.canceled) return result
+    errors.push(`${url}: ${result.error}`)
+  }
+  return { ok: false, error: `Every ffmpeg download source failed:\n${errors.join('\n')}` }
 }

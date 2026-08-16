@@ -32,7 +32,7 @@ import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from
 import { shQuote } from './shell-quote.js'
 import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { isWithinBase } from './path-guard.js'
-import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe, FFMPEG_PINNED_VERSION } from './video-trim.js'
 import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
 import { runCrop } from './video-crop.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
@@ -1794,6 +1794,10 @@ function registerIPC() {
   // the file, cuts it on this PC and uploads the result; 'none' means the
   // renderer should offer to download or locate a local ffmpeg.
   let _localFfmpegPath = null
+  // 'custom' | 'downloaded' | 'path', from findLocalFfmpeg — only a 'custom'
+  // (user-located) binary has an era _localRotate still needs to probe; the
+  // downloaded and PATH-resolved cases are known to be the pinned build.
+  let _localFfmpegSource = null
   let _ffmpegDownloadPromise = null
   let _ffmpegDownloadController = null
 
@@ -1804,7 +1808,10 @@ function registerIPC() {
       dataDir: app.getPath('userData'),
       customPath: getConfig('trimFfmpegPath'),
     })
-    if (local) _localFfmpegPath = local.path
+    if (local) {
+      _localFfmpegPath = local.path
+      _localFfmpegSource = local.source
+    }
     return local ? local.path : null
   }
 
@@ -1852,6 +1859,7 @@ function registerIPC() {
     const res = await _ffmpegDownloadPromise
     if (res.ok) {
       _localFfmpegPath = res.path
+      _localFfmpegSource = 'downloaded'
       log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version})`)
     } else if (res.canceled) {
       log('info', 'ffmpeg download canceled')
@@ -1881,6 +1889,7 @@ function registerIPC() {
     const { setConfig } = await import('./config.js')
     setConfig('trimFfmpegPath', chosen)
     _localFfmpegPath = chosen
+    _localFfmpegSource = 'custom'
     log('info', `ffmpeg located by user for local trims: ${chosen} (${probe.version})`)
     return { ok: true, path: chosen, version: probe.version }
   })
@@ -2019,10 +2028,11 @@ function registerIPC() {
     }
   })
 
-  // Local-fallback rotate: pull the source down, probe its current rotation
-  // and the local ffmpeg's era with the resolved binary, rewrite it on this
-  // PC, push the result back up, then finalize with the same atomic
-  // sibling-move the server path uses.
+  // Local-fallback rotate: pull the source down, probe its current rotation,
+  // rewrite it on this PC, push the result back up, then finalize with the
+  // same atomic sibling-move the server path uses. The local ffmpeg's era is
+  // only re-probed for a user-located custom binary; the downloaded and
+  // PATH-resolved cases are the pinned build, whose era is already known.
   async function _localRotate({ connectionId, sftp, client, label, path, outPath, degrees }) {
     const slash = outPath.lastIndexOf('/')
     const dir   = slash > 0 ? outPath.slice(0, slash) : ''
@@ -2048,8 +2058,9 @@ function registerIPC() {
         proc.on('close', () => resolve(parseRotation(errOut)))
       })
 
-      const localProbe = await validateFfmpegBinary(_localFfmpegPath)
-      const modern = supportsDisplayRotation(localProbe.version)
+      const modern = _localFfmpegSource === 'custom'
+        ? supportsDisplayRotation((await validateFfmpegBinary(_localFfmpegPath)).version)
+        : supportsDisplayRotation(FFMPEG_PINNED_VERSION)
       const target = combineRotation(currentRotation, degrees)
 
       const args = ffmpegRotateArgs({ input: localIn, output: localOut, degrees: target, modern })
