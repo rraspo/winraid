@@ -32,7 +32,7 @@ import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from
 import { shQuote } from './shell-quote.js'
 import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { isWithinBase } from './path-guard.js'
-import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe } from './video-trim.js'
+import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe, FFMPEG_PINNED_VERSION } from './video-trim.js'
 import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
 import { runCrop } from './video-crop.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
@@ -385,6 +385,17 @@ function createWindow() {
   // Log renderer load failures so they surface in the terminal
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error(`[main] Renderer failed to load: ${desc} (${code}) — ${url}`)
+  })
+
+  // Renderer-side failures otherwise leave no trace: nothing writes them to the
+  // log file, so a preview that won't load or a worker that won't start can only
+  // be diagnosed with DevTools open at the time. Warnings and errors only —
+  // info/verbose would drown the log.
+  mainWindow.webContents.on('console-message', (_e, details) => {
+    const level = details?.level ?? 0   // 0 verbose, 1 info, 2 warning, 3 error
+    if (level < 2) return
+    const origin = details?.sourceId ? ` (${details.sourceId}:${details.lineNumber ?? 0})` : ''
+    log(level >= 3 ? 'error' : 'warn', `[renderer] ${details.message}${origin}`)
   })
 
   // If the renderer process crashes (e.g. GPU context lost after sleep), reload it.
@@ -1794,6 +1805,10 @@ function registerIPC() {
   // the file, cuts it on this PC and uploads the result; 'none' means the
   // renderer should offer to download or locate a local ffmpeg.
   let _localFfmpegPath = null
+  // 'custom' | 'downloaded' | 'path', from findLocalFfmpeg — only the
+  // downloaded binary is the pinned build, so only its era is known without
+  // probing. A user-located or PATH binary can be any vintage.
+  let _localFfmpegSource = null
   let _ffmpegDownloadPromise = null
   let _ffmpegDownloadController = null
 
@@ -1804,7 +1819,10 @@ function registerIPC() {
       dataDir: app.getPath('userData'),
       customPath: getConfig('trimFfmpegPath'),
     })
-    if (local) _localFfmpegPath = local.path
+    if (local) {
+      _localFfmpegPath = local.path
+      _localFfmpegSource = local.source
+    }
     return local ? local.path : null
   }
 
@@ -1827,8 +1845,11 @@ function registerIPC() {
       const probe = await _detectFfmpeg(connectionId, client)
       if (probe.available) return { ok: true, mode: 'server', version: probe.version }
 
+      // `source` lets the renderer tell an ffmpeg the user deliberately
+      // installed from one it merely found on PATH — the former already
+      // carries their consent to spend this PC's time on the work.
       const localPath = await _resolveLocalFfmpeg()
-      if (localPath) return { ok: true, mode: 'local' }
+      if (localPath) return { ok: true, mode: 'local', source: _localFfmpegSource }
       return { ok: true, mode: 'none' }
     } catch (err) {
       return { ok: false, error: err.message }
@@ -1852,7 +1873,11 @@ function registerIPC() {
     const res = await _ffmpegDownloadPromise
     if (res.ok) {
       _localFfmpegPath = res.path
-      log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version})`)
+      _localFfmpegSource = 'downloaded'
+      // Log the winning source: with a fallback chain, which candidate
+      // actually served the file is the first thing worth knowing when a
+      // download behaves unexpectedly.
+      log('info', `ffmpeg downloaded for local trims: ${res.path} (${res.version}) from ${res.source}`)
     } else if (res.canceled) {
       log('info', 'ffmpeg download canceled')
     } else {
@@ -1881,6 +1906,7 @@ function registerIPC() {
     const { setConfig } = await import('./config.js')
     setConfig('trimFfmpegPath', chosen)
     _localFfmpegPath = chosen
+    _localFfmpegSource = 'custom'
     log('info', `ffmpeg located by user for local trims: ${chosen} (${probe.version})`)
     return { ok: true, path: chosen, version: probe.version }
   })
@@ -2019,10 +2045,11 @@ function registerIPC() {
     }
   })
 
-  // Local-fallback rotate: pull the source down, probe its current rotation
-  // and the local ffmpeg's era with the resolved binary, rewrite it on this
-  // PC, push the result back up, then finalize with the same atomic
-  // sibling-move the server path uses.
+  // Local-fallback rotate: pull the source down, probe its current rotation,
+  // rewrite it on this PC, push the result back up, then finalize with the
+  // same atomic sibling-move the server path uses. The local ffmpeg's era is
+  // re-probed unless the binary is the one we downloaded ourselves, whose
+  // version is pinned and therefore already known.
   async function _localRotate({ connectionId, sftp, client, label, path, outPath, degrees }) {
     const slash = outPath.lastIndexOf('/')
     const dir   = slash > 0 ? outPath.slice(0, slash) : ''
@@ -2040,16 +2067,27 @@ function registerIPC() {
 
       // ffmpeg -i with no output always exits non-zero; the rotation side
       // data / metadata we need is in stderr regardless of that exit code.
-      const currentRotation = await new Promise((resolve, reject) => {
+      const probeOut = await new Promise((resolve, reject) => {
         const proc = spawn(_localFfmpegPath, ['-nostdin', '-hide_banner', '-i', localIn], { windowsHide: true })
         let errOut = ''
         proc.stderr?.on('data', (chunk) => { errOut += chunk })
         proc.on('error', reject)
-        proc.on('close', () => resolve(parseRotation(errOut)))
+        proc.on('close', () => resolve(errOut))
       })
+      const currentRotation = parseRotation(probeOut)
+      // A rotation the probe cannot see reads as 0 and silently rotates from
+      // the wrong origin, so record what the probe actually saw when it finds
+      // nothing: the local copy's size against the remote's, and the stream
+      // lines ffmpeg did print.
+      if (currentRotation === 0) {
+        const localSize = statSync(localIn).size
+        const streamLines = probeOut.split('\n').filter((line) => /Stream #|displaymatrix|rotate|Invalid|moov|Duration/i.test(line))
+        log('info', `Rotate probe found no rotation [${label}]: localBytes=${localSize} lines=${JSON.stringify(streamLines.slice(0, 6))}`)
+      }
 
-      const localProbe = await validateFfmpegBinary(_localFfmpegPath)
-      const modern = supportsDisplayRotation(localProbe.version)
+      const modern = _localFfmpegSource === 'downloaded'
+        ? supportsDisplayRotation(FFMPEG_PINNED_VERSION)
+        : supportsDisplayRotation((await validateFfmpegBinary(_localFfmpegPath)).version)
       const target = combineRotation(currentRotation, degrees)
 
       const args = ffmpegRotateArgs({ input: localIn, output: localOut, degrees: target, modern })
@@ -2073,7 +2111,10 @@ function registerIPC() {
         return { ok: false, error: (mv.stderr || 'Could not finalize rotated file').trim() }
       }
 
-      log('info', `Video rotated locally [${label}]: ${path} -> ${outPath} (${degrees}deg)`)
+      // Record the rotation actually read off the file and the absolute target
+      // written, not just the requested delta — a rotate that lands wrong is
+      // almost always a misread starting angle, which the delta alone hides.
+      log('info', `Video rotated locally [${label}]: ${path} -> ${outPath} (${currentRotation}deg +${degrees}deg -> ${target}deg, modern=${modern})`)
       emitActivity({
         type: 'upload', connectionId,
         payload: { name: outPath.split('/').pop(), destDir: dir || '/' },
@@ -2150,7 +2191,7 @@ function registerIPC() {
           return { ok: false, error: (mv.stderr || 'Could not finalize rotated file').trim() }
         }
 
-        log('info', `Video rotated [${label}]: ${path} -> ${outPath} (${degrees}deg)`)
+        log('info', `Video rotated [${label}]: ${path} -> ${outPath} (${currentRotation}deg +${degrees}deg -> ${target}deg, modern=${modern})`)
         emitActivity({
           type: 'upload', connectionId,
           payload: { name: outPath.split('/').pop(), destDir: dir || '/' },

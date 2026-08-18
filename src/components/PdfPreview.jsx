@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import styles from './PdfPreview.module.css'
 
-// Lazy-load the (large) pdfjs library only when a PDF is actually opened.
+// The legacy build, not the default one: pdf.js calls
+// Uint8Array.prototype.toHex() while fingerprinting a document, and this
+// Electron's Chromium does not implement it yet — opening any PDF died with
+// "toHex is not a function". Only the legacy build carries the polyfill, and
+// it has to be legacy on both sides, since the failing call happens in the
+// worker where a polyfill loaded here would never reach it. Revisit once
+// Electron ships a Chromium new enough to have the method natively.
 let _pdfjsPromise = null
 function getPdfjs() {
   if (!_pdfjsPromise) {
-    _pdfjsPromise = import('pdfjs-dist').then((lib) => {
+    _pdfjsPromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((lib) => {
       lib.GlobalWorkerOptions.workerSrc = workerUrl
       return lib
     })

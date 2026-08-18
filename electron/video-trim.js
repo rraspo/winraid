@@ -266,9 +266,26 @@ export async function runTrim({ input, output, start, end, exec, remove, log = (
   }
 }
 
-// Official Windows static build (linked from ffmpeg.org). The zip nests
-// <build-name>/bin/ffmpeg.exe.
-export const FFMPEG_WIN64_URL = 'https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip'
+// Pinned so the bytes a user downloads don't change when upstream
+// re-publishes a "latest" alias. Bump this only for a deliberate re-pin, and
+// keep every candidate below pointing at the same version.
+export const FFMPEG_PINNED_VERSION = '8.1.2'
+
+// Ordered fallback chain for the local-fallback download: the project's own
+// mirror first (the only source it controls), then a dated (not `-latest`)
+// BtbN autobuild, then gyan.dev's versioned package as a last resort. Every
+// URL points at a fixed release, never a moving rolling-alias build. All
+// three archives nest <build-name>/bin/ffmpeg.exe.
+//
+// The mirrored archive is repacked to hold only ffmpeg.exe, which is the one
+// file kept below - roughly a third the size of the upstream archives, whose
+// bundled ffplay/ffprobe/docs are downloaded and discarded. The third-party
+// candidates are whatever their publishers ship, so they stay full size.
+export const FFMPEG_WIN64_CANDIDATES = [
+  'https://github.com/rraspo/winraid-deps/releases/download/ffmpeg-8.1.2/ffmpeg-8.1.2-win64-ffmpeg-only.zip',
+  'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-16-13-00/ffmpeg-n8.1.2-44-g7c533d0f86-win64-gpl-8.1.zip',
+  'https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-8.1.2-essentials_build.zip',
+]
 
 export function probeFfmpegCommand() {
   return 'ffmpeg -version'

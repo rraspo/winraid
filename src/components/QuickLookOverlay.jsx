@@ -9,6 +9,7 @@ import styles from './QuickLookOverlay.module.css'
 import modalStyles from './modals/modals.module.css'
 import { formatSize, formatDate } from '../utils/format'
 import { fileType, getExt, isRotatableVideo } from '../utils/fileTypes'
+import { needsLocalTrimConsent, markLocalTrimAcked, isLocalTrimAcked } from '../utils/localTrimConsent'
 import { nasStreamUrl } from '../utils/nasStream'
 import { computePan } from '../utils/panMath'
 import * as remoteFS from '../services/remoteFS'
@@ -567,7 +568,6 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [trimPos,     setTrimPos]     = useState(0)
   const [trimPlaying, setTrimPlaying] = useState(false)
   const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', canLocalTrim?, pct?, error? }
-  const trimLocalAckRef = useRef(false)  // 'Trim locally' chosen once this session
   const pendingEditIntentRef = useRef('trim')  // 'trim' | 'rotate' | 'crop' — which feature the engine gate should open once ready
   const [rotating,     setRotating]     = useState(false)
   const [rotateFile,   setRotateFile]   = useState(null)
@@ -644,7 +644,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       toast.show({ msg: cap?.error ?? 'Could not check trim support', type: 'error' })
       return
     }
-    if (cap.mode === 'server' || (cap.mode === 'local' && trimLocalAckRef.current)) {
+    if (!needsLocalTrimConsent({ mode: cap.mode, source: cap.source, acked: isLocalTrimAcked() })) {
+      if (cap.mode === 'none') {
+        setTrimSetup({ phase: 'prompt', canLocalTrim: false })
+        return
+      }
       proceedWithPendingIntent()
       return
     }
@@ -663,7 +667,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   function handleLocalTrimChoice() {
-    trimLocalAckRef.current = true
+    markLocalTrimAcked()
     setTrimSetup(null)
     proceedWithPendingIntent()
   }
@@ -677,7 +681,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     const res = await window.winraid?.remote.downloadFfmpeg?.()
     unsubscribe?.()
     if (res?.ok) {
-      trimLocalAckRef.current = true
+      markLocalTrimAcked()
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg ready — trims will run on your PC', type: 'success' })
       proceedWithPendingIntent()
@@ -692,7 +696,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     const res = await window.winraid?.remote.locateFfmpeg?.()
     if (res?.canceled) return
     if (res?.ok) {
-      trimLocalAckRef.current = true
+      markLocalTrimAcked()
       setTrimSetup(null)
       toast.show({ msg: 'ffmpeg found — trims will run on your PC', type: 'success' })
       proceedWithPendingIntent()
@@ -1786,7 +1790,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
                   video, trims it locally, and uploads the result.{' '}
                   {trimSetup.canLocalTrim
                     ? 'An ffmpeg is already available on this PC.'
-                    : 'That needs an ffmpeg on this PC — download the official build once (~80 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
+                    : 'That needs an ffmpeg on this PC — download the official build once (~35 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
                 </p>
               </div>
             </div>
@@ -1818,7 +1822,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
                   className={trimSetup.canLocalTrim ? modalStyles.modalSecondary : modalStyles.modalConfirmAccent}
                   onClick={handleFfmpegDownload}
                 >
-                  Download (~80 MB)
+                  Download (~35 MB)
                 </button>
                 {trimSetup.canLocalTrim && (
                   <button className={modalStyles.modalConfirmAccent} onClick={handleLocalTrimChoice}>Trim locally</button>

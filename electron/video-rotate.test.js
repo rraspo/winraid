@@ -41,6 +41,19 @@ describe('parseRotation', () => {
     expect(parseRotation('displaymatrix: rotation of -180.00 degrees')).toBe(180)
   })
 
+  // ffmpeg 8.1 renamed the side-data label from "displaymatrix:" to
+  // "Display Matrix:". Missing it reads as no rotation at all, which silently
+  // rotates from the wrong origin instead of failing. Captured verbatim from
+  // ffmpeg 8.1.2.
+  it('reads the spaced display-matrix label newer ffmpeg prints', () => {
+    const out = [
+      '  Stream #0:0[0x1](und): Video: h264 (Main) (avc1 / 0x31637661), yuv420p(progressive), 720x1280, 102 kb/s, 30 fps',
+      '    Side data:',
+      '      Display Matrix: rotation of -90.00 degrees',
+    ].join('\n')
+    expect(parseRotation(out)).toBe(90)
+  })
+
   it('reads the legacy rotate metadata tag (already clockwise)', () => {
     const out = [
       '    Metadata:',
