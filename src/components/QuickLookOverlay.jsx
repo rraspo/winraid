@@ -228,26 +228,6 @@ function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onL
   )
 }
 
-// Inline image rotate preview: a hidden full-resolution <img> supplies the
-// pixel source for rotateImage. It always stays pointed at the original file
-// so choosing a new direction rotates fresh from the unrotated source rather
-// than compounding onto the last result. The visible <img> shows the current
-// preview: the original until a direction is chosen, then the rotated blob.
-function ImageRotatePreview({ sourceSrc, previewSrc, sourceImgRef, onContextMenu }) {
-  return (
-    <div className={styles.mediaWrap}>
-      <img ref={sourceImgRef} src={sourceSrc} alt="" className={styles.rotateSourceImage} draggable={false} />
-      <img
-        src={previewSrc}
-        alt=""
-        className={styles.previewImage}
-        draggable={false}
-        onContextMenu={onContextMenu}
-      />
-    </div>
-  )
-}
-
 // Spatial video crop: ReactCrop wraps a paused, controls-less video element so
 // the user can drag a selection rect over the current frame the same way the
 // image crop mode drags one over an <img>.
@@ -469,7 +449,8 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     if (hasNext) onNavigate(files[currentIdx + 1])
   }, [hasNext, currentIdx, files, onNavigate])
 
-  // Arrow key navigation + spacebar play/pause (Escape is handled in useBrowse)
+  // Arrow key navigation, spacebar play/pause, and Escape (closes the overlay
+  // outright unless a mode below claims it to exit itself instead)
   useEffect(() => {
     function onKeyDown(e) {
       // While trimming, lock everything except Escape (exits trim mode) and
@@ -495,10 +476,11 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitRotateMode() }
         return
       }
-      // While rotating an image, lock everything except Escape (which exits
-      // rotate mode)
-      if (latestRef.current.imageRotating) {
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitImageRotateMode() }
+      // Fallback close for standalone use: the browse shell owns Escape-close
+      // via a capture-phase listener that already preventDefaults, so only
+      // act here when nothing upstream handled it (avoids a duplicate close).
+      if (e.key === 'Escape') {
+        if (!e.defaultPrevented) { e.preventDefault(); onClose() }
         return
       }
       if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev(); return }
@@ -511,7 +493,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handlePrev, handleNext])
+  }, [handlePrev, handleNext, onClose])
 
   const [copied,    setCopied]    = useState(false)
   const [loop,      setLoop]      = useState(() => localStorage.getItem('ql-video-loop') === 'true')
@@ -533,21 +515,14 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const [cropError,   setCropError]   = useState(null)
   const [cropRotating, setCropRotating] = useState(false)
 
-  // Image rotate mode (inline — no modal, peer to crop rather than a control
-  // inside it). Snapshot the file at entry so a stray navigation cannot
-  // retarget the save to a different path. Each direction rotates fresh from
-  // the original source image (see ImageRotatePreview), not cumulatively, so
-  // switching directions before saving always previews the requested angle.
-  const [imageRotating,        setImageRotating]        = useState(false)
-  const [imageRotateFile,      setImageRotateFile]      = useState(null)
-  const [imageRotateSourceSrc, setImageRotateSourceSrc] = useState(null)
-  const [imageRotatePreviewSrc, setImageRotatePreviewSrc] = useState(null)
-  const [imageRotateDirection, setImageRotateDirection] = useState(null)
-  const [imageRotateBlob,      setImageRotateBlob]      = useState(null)
-  const [imageRotateSaving,    setImageRotateSaving]    = useState(false)
-  const [imageRotateError,     setImageRotateError]     = useState(null)
-  const imageRotateSourceImgRef = useRef(null)
-  const imageRotatedUrlsRef     = useRef([])
+  // Image rotate: a one-click top-bar operation, reachable without entering
+  // crop. Capturing { file, src } at click time (rather than reading `file`
+  // again once the write settles) means a stray navigation mid-rotate cannot
+  // retarget the write to a different path.
+  const [imageRotateJob,   setImageRotateJob]   = useState(null)  // null | { file, src }
+  const [imageRotateError, setImageRotateError] = useState(null)
+  const imageRotateSourceImgRef  = useRef(null)
+  const imageRotateErrorTimerRef = useRef(null)
 
   // Video crop mode (inline — no modal, same shape as image crop above but
   // for a spatial crop of the video frame). Snapshot the file at entry so a
@@ -587,7 +562,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   const trimDragRef       = useRef(null)   // 'start' | 'end' | null while dragging a handle
   const trimRangeRef      = useRef({ in: 0, out: 0 })  // current selection for stable listeners
   const type = file ? fileType(file.name) : 'unknown'
-  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, rotating, videoCropping, imageRotating, type }
+  latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, rotating, videoCropping, type, file }
 
 
   function handleLoopChange(v) {
@@ -1209,105 +1184,64 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   }
 
   // ── Image rotate handlers ──────────────────────────────────────────────────
-  // Peer top-bar operation, reachable without entering crop. Client-side
-  // canvas rotation via rotateImage, saved the same way crop saves: blob to
-  // ArrayBuffer, then writeFileBinary to a copy path or the original path.
-  function enterImageRotateMode() {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-    panRef.current = { x: 0, y: 0 }
-    setImageRotateFile(file)
-    const srcUrl = nasStreamUrl(connectionId, file.path)
-    setImageRotateSourceSrc(srcUrl)
-    setImageRotatePreviewSrc(srcUrl)
-    setImageRotateDirection(null)
-    setImageRotateBlob(null)
+  // One click rotates the file 90 degrees clockwise and overwrites it in
+  // place — no direction chooser, no save step. The click captures { file,
+  // src } so a stray navigation before the write settles cannot retarget it
+  // at a different file. The rotate itself only runs once the hidden source
+  // <img> below has finished loading the full-resolution pixels.
+  function beginImageRotate() {
+    clearTimeout(imageRotateErrorTimerRef.current)
     setImageRotateError(null)
-    setImageRotating(true)
+    setImageRotateJob({ file, src })
   }
 
-  function exitImageRotateMode() {
-    imageRotatedUrlsRef.current.forEach((u) => URL.revokeObjectURL(u))
-    imageRotatedUrlsRef.current = []
-    setImageRotating(false)
-    setImageRotateFile(null)
-    setImageRotateSourceSrc(null)
-    setImageRotatePreviewSrc(null)
-    setImageRotateDirection(null)
-    setImageRotateBlob(null)
-    setImageRotateSaving(false)
-    setImageRotateError(null)
+  function showImageRotateError(msg) {
+    clearTimeout(imageRotateErrorTimerRef.current)
+    setImageRotateError(msg)
+    imageRotateErrorTimerRef.current = setTimeout(() => setImageRotateError(null), 2200)
   }
 
-  // Clean up rotation blob URLs on unmount
-  useEffect(() => () => imageRotatedUrlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
+  // Clean up the error auto-clear timer on unmount.
+  useEffect(() => () => clearTimeout(imageRotateErrorTimerRef.current), [])
 
-  async function handleImageRotateDirection(direction) {
+  async function handleImageRotateSourceLoad() {
+    const job = imageRotateJob
     const img = imageRotateSourceImgRef.current
-    if (!img || !imageRotateFile) return
-    setImageRotateDirection(direction)
-    setImageRotateError(null)
+    if (!job || !img) return
     try {
-      const degrees = ROTATE_DEGREES[direction]
-      const blob = await rotateImage(img, cropMimeType(imageRotateFile.name), degrees)
-      const url  = URL.createObjectURL(blob)
-      imageRotatedUrlsRef.current.push(url)
-      setImageRotateBlob(blob)
-      setImageRotatePreviewSrc(url)
-    } catch (err) {
-      setImageRotateError(err.message ?? 'Rotate failed')
-    }
-  }
+      const mime = cropMimeType(job.file.name)
+      const blob = await rotateImage(img, mime, 90)
+      const buf  = await blob.arrayBuffer()
 
-  async function handleImageRotateSave(overwrite) {
-    if (!imageRotateFile || !imageRotateBlob) return
-    setImageRotateSaving(true)
-    setImageRotateError(null)
-    try {
-      const buf = await imageRotateBlob.arrayBuffer()
-
-      let dest
-      if (overwrite) {
-        dest = imageRotateFile.path
-      } else {
-        // Pick the next free _rotated / _rotated_2 / _rotated_3 ... name in
-        // the parent directory so saving never clobbers an existing copy.
-        const slash = imageRotateFile.path.lastIndexOf('/')
-        const dir   = slash > 0 ? imageRotateFile.path.slice(0, slash) : '/'
-        const list  = await window.winraid?.remote.list(connectionId, dir)
-        const names = list?.ok ? new Set((list.entries ?? []).map((e) => e.name)) : new Set()
-        dest = nextAvailableCopyPath(imageRotateFile.path, names, '_rotated')
-      }
-
-      const res = await window.winraid?.remote.writeFileBinary(connectionId, dest, buf, { atomic: overwrite })
+      const res = await window.winraid?.remote.writeFileBinary(connectionId, job.file.path, buf, { atomic: true })
       if (!res?.ok) throw new Error(res?.error ?? 'Write failed')
 
-      await window.winraid?.cache.invalidateFile(connectionId, dest)
+      await window.winraid?.cache.invalidateFile(connectionId, job.file.path)
 
-      const slash    = dest.lastIndexOf('/')
-      const destDir  = slash > 0 ? dest.slice(0, slash) : '/'
+      const slash   = job.file.path.lastIndexOf('/')
+      const destDir = slash > 0 ? job.file.path.slice(0, slash) : '/'
       remoteFS.invalidate(connectionId, destDir)
-      const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
+      remoteFS.list(connectionId, destDir).catch(() => {})
 
-      if (overwrite) {
+      // Only refresh zoom/pan and the preview if the user hasn't navigated
+      // away from the rotated file while the write was in flight.
+      if (latestRef.current.file?.path === job.file.path) {
+        setZoom(1)
+        const zero = { x: 0, y: 0 }
+        setPan(zero)
+        panRef.current = zero
         setCacheBust(Date.now())
-        exitImageRotateMode()
-      } else {
-        // Navigate to the new copy so the user immediately sees the result
-        // (mirroring how Overwrite shows the rotated image right away).
-        const destName = dest.slice(slash + 1)
-        const entry    = refreshed?.find((e) => e.name === destName)
-        const newFile  = entry
-          ? { ...entry, path: dest }
-          : { name: destName, path: dest, size: buf.byteLength, modified: Date.now(), type: 'file' }
-        exitImageRotateMode()
-        onNavigate?.(newFile)
       }
     } catch (err) {
-      setImageRotateError(err.message)
+      showImageRotateError(err.message ?? 'Rotate failed')
     } finally {
-      setImageRotateSaving(false)
+      setImageRotateJob(null)
     }
+  }
+
+  function handleImageRotateSourceError() {
+    showImageRotateError('Could not load image')
+    setImageRotateJob(null)
   }
 
   // Wheel: zoom or scroll-navigate (passive:false so we can preventDefault)
@@ -1316,7 +1250,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     if (!el) return
     function onWheel(e) {
       // While cropping, no wheel-based navigation or zoom
-      if (latestRef.current.cropping || latestRef.current.videoCropping || latestRef.current.imageRotating) return
+      if (latestRef.current.cropping || latestRef.current.videoCropping) return
       // PDFs scroll their own page list — don't hijack the wheel for zoom/nav.
       if (latestRef.current.type === 'pdf') return
       // Horizontal tilt wheel → navigate files (always, regardless of wheel mode)
@@ -1476,16 +1410,6 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
   ) : null
 
   function renderPreview() {
-    if (imageRotating && type === 'image') {
-      return (
-        <ImageRotatePreview
-          sourceSrc={imageRotateSourceSrc}
-          previewSrc={imageRotatePreviewSrc}
-          sourceImgRef={imageRotateSourceImgRef}
-          onContextMenu={handleImageContextMenu}
-        />
-      )
-    }
     if (cropping && type === 'image') {
       return (
         <CropImagePreview
@@ -1529,7 +1453,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       className={styles.overlay}
       data-theme="dark"
       tabIndex={-1}
-      onClick={(e) => { if (e.target === e.currentTarget && !cropping && !videoCropping && !imageRotating) onClose() }}
+      onClick={(e) => { if (e.target === e.currentTarget && !cropping && !videoCropping) onClose() }}
       onPointerUp={() => overlayRef.current?.focus()}
       role="dialog"
       aria-modal="true"
@@ -1551,7 +1475,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             <span>{formatDate(file.modified)}</span>
           </span>
         </div>
-        {type === 'image' && !cropping && !imageRotating && (
+        {type === 'image' && !cropping && (
           <Tooltip tip="Crop" side="bottom">
             <button
               className={styles.fileMenuBtn}
@@ -1562,14 +1486,15 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             </button>
           </Tooltip>
         )}
-        {type === 'image' && !cropping && !imageRotating && (
-          <Tooltip tip="Rotate" side="bottom">
+        {type === 'image' && !cropping && (
+          <Tooltip tip="Rotate 90° clockwise" side="bottom">
             <button
               className={styles.fileMenuBtn}
-              onClick={enterImageRotateMode}
+              onClick={beginImageRotate}
+              disabled={!!imageRotateJob}
               aria-label="Rotate image"
             >
-              <RotateCw size={16} />
+              {imageRotateJob ? <Loader size={16} /> : <RotateCw size={16} />}
             </button>
           </Tooltip>
         )}
@@ -1669,47 +1594,6 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             </button>
           </div>
         )}
-        {imageRotating && (
-          <div className={styles.cropToolbar}>
-            <span className={styles.cropToolbarLabel}>Rotate</span>
-            <button
-              className={[styles.cropAspectBtn, imageRotateDirection === 'left' ? styles.cropAspectBtnActive : ''].filter(Boolean).join(' ')}
-              onClick={() => handleImageRotateDirection('left')}
-              disabled={imageRotateSaving}
-              aria-label="Rotate left"
-            >
-              Left
-            </button>
-            <button
-              className={[styles.cropAspectBtn, imageRotateDirection === 'right' ? styles.cropAspectBtnActive : ''].filter(Boolean).join(' ')}
-              onClick={() => handleImageRotateDirection('right')}
-              disabled={imageRotateSaving}
-              aria-label="Rotate right"
-            >
-              Right
-            </button>
-            <button
-              className={[styles.cropAspectBtn, imageRotateDirection === '180' ? styles.cropAspectBtnActive : ''].filter(Boolean).join(' ')}
-              onClick={() => handleImageRotateDirection('180')}
-              disabled={imageRotateSaving}
-              aria-label="Rotate 180"
-            >
-              180°
-            </button>
-            {imageRotateError && <span className={styles.cropError}>{imageRotateError}</span>}
-            <button className={styles.cropCancelBtn} onClick={exitImageRotateMode} disabled={imageRotateSaving}>
-              Cancel
-            </button>
-            <button className={styles.cropSaveBtn} onClick={() => handleImageRotateSave(false)} disabled={imageRotateSaving || !imageRotateBlob}>
-              {imageRotateSaving ? <Loader size={13} /> : null}
-              Save copy
-            </button>
-            <button className={styles.cropOverwriteBtn} onClick={() => handleImageRotateSave(true)} disabled={imageRotateSaving || !imageRotateBlob}>
-              {imageRotateSaving ? <Loader size={13} /> : null}
-              Overwrite
-            </button>
-          </div>
-        )}
         {trimming && (
           <div className={styles.trimToolbar}>
             <button className={styles.cropCancelBtn} onClick={exitTrimMode} disabled={trimSaving}>Cancel</button>
@@ -1736,7 +1620,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           <button
             className={[styles.navBtn, styles.navBtnLeft].join(' ')}
             onClick={handlePrev}
-            disabled={!hasPrev || cropping || trimming || videoCropping || imageRotating}
+            disabled={!hasPrev || cropping || trimming || videoCropping}
             aria-label="Previous file"
           >
             <ChevronLeft size={22} />
@@ -1755,12 +1639,29 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
           {renderPreview()}
         </div>
 
+        {/* Hidden full-resolution pixel source for an in-flight image rotate.
+            Its onLoad fires the actual rotate+write; it never renders visibly.
+            Keyed on the job alone (not the currently viewed `type`) so
+            navigating away mid-rotate — even to a non-image file — doesn't
+            unmount it before the write completes. */}
+        {imageRotateJob && (
+          <img
+            ref={imageRotateSourceImgRef}
+            src={imageRotateJob.src}
+            alt=""
+            draggable={false}
+            className={styles.rotateSourceImage}
+            onLoad={handleImageRotateSourceLoad}
+            onError={handleImageRotateSourceError}
+          />
+        )}
+
         {/* Next arrow */}
         <Tooltip tip="Next (Right arrow)" side="left">
           <button
             className={[styles.navBtn, styles.navBtnRight].join(' ')}
             onClick={handleNext}
-            disabled={!hasNext || cropping || trimming || videoCropping || imageRotating}
+            disabled={!hasNext || cropping || trimming || videoCropping}
             aria-label="Next file"
           >
             <ChevronRight size={22} />
@@ -1776,6 +1677,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       )}
 
       {snapMsg && <div className={styles.snapToast}>{snapMsg}</div>}
+      {imageRotateError && <div className={styles.snapToast}>{imageRotateError}</div>}
 
       {/* Trim engine setup: no ffmpeg on the NAS or this PC */}
       {trimSetup && (
