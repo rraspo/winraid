@@ -550,6 +550,20 @@
   max-height: calc(100vh - 200px);
 }
 
+/* Rotate dialog live preview: animates the pending-rotation transform.
+   Scoped to this modifier class rather than .previewVideo itself so it
+   doesn't add lag to the continuous zoom/pan transform used during normal
+   viewing. */
+.previewVideoRotating {
+  transition: transform var(--transition);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .previewVideoRotating {
+    transition: none;
+  }
+}
+
 /* ── Audio ───────────────────────────────────────────────────────────────── */
 .audioWrap {
   display: flex;

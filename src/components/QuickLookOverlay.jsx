@@ -40,6 +40,12 @@ const CROP_ASPECTS = [
 // dialog offers.
 const ROTATE_DEGREES = { left: 270, right: 90, '180': 180 }
 
+// Signed preview-only degrees for the rotate dialog's live video transform.
+// Distinct from ROTATE_DEGREES above (which is unsigned clockwise degrees
+// fed to ffmpeg) — signed so the +/-90 previews animate along the shortest
+// rotation path instead of always spinning clockwise.
+const ROTATE_PREVIEW_DEGREES = { left: -90, right: 90, '180': 180 }
+
 // Format a duration in seconds as HH-MM-SS for filenames (no colons).
 function formatVideoTimestamp(seconds) {
   const total = Math.max(0, Math.floor(seconds || 0))
@@ -241,7 +247,7 @@ function CropVideoPreview({ src, crop, onChange, onComplete, videoRef }) {
   )
 }
 
-function VideoPreview({ src, loop, zoom, pan, mediaRef, trimming, trimBar }) {
+function VideoPreview({ src, loop, zoom, pan, mediaRef, trimming, trimBar, rotatePreviewDegrees }) {
   const videoRef = useRef(null)
 
   // Restore saved volume/muted on mount
@@ -261,18 +267,44 @@ function VideoPreview({ src, loop, zoom, pan, mediaRef, trimming, trimBar }) {
     localStorage.setItem('ql-video-muted',  String(v.muted))
   }
 
+  // Rotate dialog live preview: rides along in the same inline transform as
+  // the existing zoom/pan style. A +/-90 preview would overflow the video's
+  // own rendered box, so a fit scale rides along too, derived from that box
+  // (clientWidth/clientHeight, measured on the same element via videoRef) —
+  // a zero/unavailable box (e.g. in tests) falls back to no scaling.
+  function rotatedVideoStyle() {
+    const base = panStyle(zoom, pan) ?? {}
+    if (rotatePreviewDegrees == null) return base
+    const video  = videoRef.current
+    const width  = video?.clientWidth  ?? 0
+    const height = video?.clientHeight ?? 0
+    const fitScale = Math.abs(rotatePreviewDegrees) === 90 && width > 0 && height > 0
+      ? Math.min(width, height) / Math.max(width, height)
+      : 1
+    const priorTransform = base.transform ? `${base.transform} ` : ''
+    return {
+      ...base,
+      transform: `${priorTransform}rotate(${rotatePreviewDegrees}deg) scale(${fitScale})`,
+      transformOrigin: 'center center',
+    }
+  }
+
   return (
     <div className={styles.mediaWrap}>
       <div className={styles.videoCol}>
         <video
           ref={(el) => { videoRef.current = el; if (mediaRef) mediaRef.current = el }}
-          className={[styles.previewVideo, trimming ? styles.previewVideoTrimming : ''].filter(Boolean).join(' ')}
+          className={[
+            styles.previewVideo,
+            trimming ? styles.previewVideoTrimming : '',
+            rotatePreviewDegrees != null ? styles.previewVideoRotating : '',
+          ].filter(Boolean).join(' ')}
           src={src}
           controls={!trimming}
           autoPlay
           loop={loop}
           onVolumeChange={handleVolumeChange}
-          style={panStyle(zoom, pan)}
+          style={rotatedVideoStyle()}
         />
         {trimBar}
       </div>
@@ -1437,7 +1469,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     }
     switch (type) {
       case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} onContextMenu={handleImageContextMenu} />
-      case 'video': return <VideoPreview src={src} loop={loop && !trimming} zoom={zoom} pan={pan} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} />
+      case 'video': return <VideoPreview src={src} loop={loop && !trimming} zoom={zoom} pan={pan} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} rotatePreviewDegrees={rotating ? ROTATE_PREVIEW_DEGREES[rotateDirection] : null} />
       case 'audio': return <AudioPreview file={file} src={src} />
       case 'pdf':   return <PdfPreview src={src} />
       case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
