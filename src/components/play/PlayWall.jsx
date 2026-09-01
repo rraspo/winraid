@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, List, Shuffle, Maximize2, Loader } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
-import VideoThumb from '../browse/VideoThumb'
+import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
 import { layoutMasonry } from '../../utils/masonry'
 import { withThumb, buildPathSegments } from './playShared'
@@ -14,6 +14,10 @@ const TILE_TARGET_WIDTH   = 240
 const TILE_GAP            = 4
 const FALLBACK_COLUMNS    = 4
 const VIDEO_TILE_RATIO    = 16 / 9
+
+function isAnimatedGif(remotePath) {
+  return /\.gif$/i.test(remotePath)
+}
 
 function columnGeometry(containerWidth) {
   if (containerWidth <= 0) {
@@ -38,7 +42,11 @@ export default function PlayWall({
   const scrollContainerRef = useRef(null)
   const sentinelRef        = useRef(null)
   const [containerWidth, setContainerWidth] = useState(0)
-  const [imageRatios,    setImageRatios]    = useState(() => new Map())
+  // Keyed by remote path, shared between image thumbnails and video
+  // players so either kind of tile can report the real proportions of
+  // its media once known; the ratio survives a video player being
+  // dropped when its tile leaves view.
+  const [mediaRatios,    setMediaRatios]    = useState(() => new Map())
 
   useEffect(() => {
     const element = scrollContainerRef.current
@@ -63,11 +71,9 @@ export default function PlayWall({
     return () => observer.disconnect()
   }, [fill, pageSize, playlist.length])
 
-  function handleThumbLoad(remotePath, event) {
-    const { naturalWidth, naturalHeight } = event.target
-    if (!naturalWidth || !naturalHeight) return
-    const ratio = naturalWidth / naturalHeight
-    setImageRatios((previous) => {
+  function setMediaRatio(remotePath, ratio) {
+    if (!ratio) return
+    setMediaRatios((previous) => {
       if (previous.get(remotePath) === ratio) return previous
       const next = new Map(previous)
       next.set(remotePath, ratio)
@@ -75,14 +81,20 @@ export default function PlayWall({
     })
   }
 
+  function handleThumbLoad(remotePath, event) {
+    const { naturalWidth, naturalHeight } = event.target
+    if (!naturalWidth || !naturalHeight) return
+    setMediaRatio(remotePath, naturalWidth / naturalHeight)
+  }
+
   const { columnCount, columnWidth } = columnGeometry(containerWidth)
 
   const { positions, height } = useMemo(() => {
     const items = playlist.map((file) => ({
-      ratio: file.type === 'video' ? VIDEO_TILE_RATIO : (imageRatios.get(file.path) || 0),
+      ratio: mediaRatios.get(file.path) || (file.type === 'video' ? VIDEO_TILE_RATIO : 0),
     }))
     return layoutMasonry(items, { columnCount, columnWidth, gap: TILE_GAP })
-  }, [playlist, imageRatios, columnCount, columnWidth])
+  }, [playlist, mediaRatios, columnCount, columnWidth])
 
   const isEmpty     = !scanning && playlist.length === 0
   const totalKnown  = playlist.length + poolSize
@@ -180,11 +192,16 @@ export default function PlayWall({
                   aria-label={`Open ${name}`}
                 >
                   {file.type === 'video' ? (
-                    <VideoThumb url={streamUrl} />
+                    <WallVideo
+                      connectionId={connectionId}
+                      remotePath={file.path}
+                      onRatioKnown={setMediaRatio}
+                      playbackSuspended={hiddenFromViewer}
+                    />
                   ) : (
                     <img
                       className={styles.tileImage}
-                      src={withThumb(streamUrl)}
+                      src={isAnimatedGif(file.path) ? streamUrl : withThumb(streamUrl)}
                       alt=""
                       loading="lazy"
                       onLoad={(event) => handleThumbLoad(file.path, event)}
