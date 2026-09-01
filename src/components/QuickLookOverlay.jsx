@@ -1017,7 +1017,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
     setPan({ x: 0, y: 0 })
     panRef.current = { x: 0, y: 0 }
     setCropFile(file)
-    setCropSrc(nasStreamUrl(connectionId, file.path))
+    setCropSrc(src)
     setCrop(undefined)
     setCompCrop(null)
     setCropError(null)

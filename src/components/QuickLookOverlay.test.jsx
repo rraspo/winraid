@@ -1053,6 +1053,21 @@ describe('QuickLookOverlay one-click image rotate', () => {
     expect(screen.queryByLabelText('Rotate image')).not.toBeInTheDocument()
   })
 
+  it('entering crop after a rotate reads the refreshed file, not the stale cache', async () => {
+    const writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+    window.winraid = createWinraidMock({ remote: { writeFileBinary } })
+    const sourceImg = await clickRotate()
+    fireEvent.load(sourceImg)
+    await waitFor(() => expect(writeFileBinary).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByLabelText('Rotate image')).not.toBeDisabled())
+    fireEvent.click(screen.getByLabelText('Crop image'))
+    await act(async () => {})
+    const cropImg = screen.getByTestId('react-crop').querySelector('img')
+    // A crop source without the bust param would resolve to the browser's
+    // cached pre-rotate pixels, so saving the crop would undo the rotation
+    expect(cropImg.src).toContain('bust=')
+  })
+
   it('Escape still closes the overlay after a rotate click — there is no mode to exit', async () => {
     const onClose = vi.fn()
     const writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
