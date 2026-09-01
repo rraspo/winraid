@@ -1,0 +1,72 @@
+.wallRoot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wallScroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-4);
+}
+
+.wallGrid {
+  position: relative;
+  width: 100%;
+}
+
+.tile {
+  position: absolute;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: transform var(--transition), box-shadow var(--transition);
+}
+
+.tile:hover {
+  transform: scale(1.015);
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tile {
+    animation: tileEnter 180ms ease both;
+  }
+}
+
+@keyframes tileEnter {
+  from { opacity: 0; transform: scale(0.96); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.tileImage {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.sentinel {
+  width: 100%;
+  height: 1px;
+}
+
+.wallCounter {
+  font-size: var(--font-size-xs);
+  color: rgba(255, 255, 255, 0.4);
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+}
