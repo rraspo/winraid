@@ -91,14 +91,16 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
 
   useEffect(() => { overlayRef.current?.focus() }, [])
 
-  // Prefetch the most-likely next image so pressing Right is instant.
+  // Prefetch the most-likely next image so pressing Right is instant, but
+  // only while the viewer is open: on the wall every page pull would
+  // otherwise download a full-size image nobody is looking at.
   // Browser caches the bytes; we don't need to keep the Image instance.
   // Videos are not prefetched — full-video downloads would be too costly.
   useEffect(() => {
-    if (!nextPredicted || nextPredicted.type !== 'image') return
+    if (!isViewerOpen || !nextPredicted || nextPredicted.type !== 'image') return
     const img = new Image()
     img.src = nasStreamUrl(connectionId, nextPredicted.path)
-  }, [nextPredicted, connectionId])
+  }, [isViewerOpen, nextPredicted, connectionId])
 
   return (
     <div ref={overlayRef} className={styles.overlay} data-theme="dark" role="dialog" aria-modal="true" aria-label="Play" tabIndex={-1}>

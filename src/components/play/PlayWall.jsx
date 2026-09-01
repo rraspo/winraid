@@ -8,10 +8,21 @@ import { withThumb, buildPathSegments } from './playShared'
 import overlayStyles from '../PlayOverlay.module.css'
 import styles from './PlayWall.module.css'
 
-const TILE_COLUMN_WIDTH   = 240
-const TILE_GAP            = 12
+// Target column width; the real width stretches so the columns span the
+// container edge to edge instead of leaving a margin on the right.
+const TILE_TARGET_WIDTH   = 240
+const TILE_GAP            = 4
 const FALLBACK_COLUMNS    = 4
 const VIDEO_TILE_RATIO    = 16 / 9
+
+function columnGeometry(containerWidth) {
+  if (containerWidth <= 0) {
+    return { columnCount: FALLBACK_COLUMNS, columnWidth: TILE_TARGET_WIDTH }
+  }
+  const columnCount = Math.max(1, Math.floor(containerWidth / TILE_TARGET_WIDTH))
+  const columnWidth = Math.floor((containerWidth - (columnCount - 1) * TILE_GAP) / columnCount)
+  return { columnCount, columnWidth }
+}
 
 /**
  * Scrollable masonry wall of every walked file. Stays mounted underneath
@@ -39,6 +50,9 @@ export default function PlayWall({
     return () => observer.disconnect()
   }, [])
 
+  // Re-armed whenever the wall grows: a fresh observer reports the current
+  // intersection immediately, so a page that was too short to push the
+  // sentinel out of view still triggers the next page instead of stalling.
   useEffect(() => {
     const element = sentinelRef.current
     if (!element) return
@@ -47,7 +61,7 @@ export default function PlayWall({
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [fill, pageSize])
+  }, [fill, pageSize, playlist.length])
 
   function handleThumbLoad(remotePath, event) {
     const { naturalWidth, naturalHeight } = event.target
@@ -61,16 +75,14 @@ export default function PlayWall({
     })
   }
 
-  const columnCount = containerWidth > 0
-    ? Math.max(1, Math.floor(containerWidth / TILE_COLUMN_WIDTH))
-    : FALLBACK_COLUMNS
+  const { columnCount, columnWidth } = columnGeometry(containerWidth)
 
   const { positions, height } = useMemo(() => {
     const items = playlist.map((file) => ({
       ratio: file.type === 'video' ? VIDEO_TILE_RATIO : (imageRatios.get(file.path) || 0),
     }))
-    return layoutMasonry(items, { columnCount, columnWidth: TILE_COLUMN_WIDTH, gap: TILE_GAP })
-  }, [playlist, imageRatios, columnCount])
+    return layoutMasonry(items, { columnCount, columnWidth, gap: TILE_GAP })
+  }, [playlist, imageRatios, columnCount, columnWidth])
 
   const isEmpty     = !scanning && playlist.length === 0
   const totalKnown  = playlist.length + poolSize
@@ -156,7 +168,7 @@ export default function PlayWall({
               const streamUrl  = nasStreamUrl(connectionId, file.path)
               const tileStyle  = position
                 ? { left: position.left, top: position.top, width: position.width, height: position.height }
-                : { left: 0, top: 0, width: TILE_COLUMN_WIDTH, height: TILE_COLUMN_WIDTH }
+                : { left: 0, top: 0, width: columnWidth, height: columnWidth }
               return (
                 <button
                   key={file.path}
