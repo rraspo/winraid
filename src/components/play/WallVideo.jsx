@@ -4,10 +4,11 @@ import styles from './PlayWall.module.css'
 
 /**
  * Video player for a single wall tile. The player only exists in the DOM
- * while the tile intersects the viewport or the viewer covering the wall
- * is open — anything off screen decodes nothing. The anchor node stays
- * mounted for the tile's whole life so a single IntersectionObserver can
- * track it without re-wiring on every visibility flip.
+ * while the tile intersects the viewport and the viewer is not covering
+ * the wall — anything off screen or hidden decodes nothing and streams
+ * nothing. The anchor node stays mounted for the tile's whole life so a
+ * single IntersectionObserver can track it without re-wiring on every
+ * visibility flip.
  */
 export default function WallVideo({ connectionId, remotePath, onRatioKnown, playbackSuspended }) {
   const anchorRef = useRef(null)
