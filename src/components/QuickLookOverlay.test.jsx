@@ -697,6 +697,26 @@ describe('QuickLookOverlay rotate flow', () => {
     expect(window.winraid.remote.rotateVideo).not.toHaveBeenCalled()
   })
 
+  it('previews the pending rotation on the video while the dialog is open', async () => {
+    await openRotate()
+    // Default direction is right, so the video shows where it will end up
+    expect(document.querySelector('.previewVideo').style.transform).toContain('rotate(90deg)')
+  })
+
+  it('updates the preview when the direction changes', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByLabelText('Rotate left'))
+    expect(document.querySelector('.previewVideo').style.transform).toContain('rotate(-90deg)')
+    fireEvent.click(screen.getByLabelText('Rotate 180'))
+    expect(document.querySelector('.previewVideo').style.transform).toContain('rotate(180deg)')
+  })
+
+  it('clears the rotation preview when the dialog closes', async () => {
+    await openRotate()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(document.querySelector('.previewVideo').style.transform).not.toContain('rotate')
+  })
+
   it('shows the ffmpeg setup dialog when no engine exists', async () => {
     await openRotate({
       remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
