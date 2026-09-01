@@ -651,13 +651,15 @@ describe('usePlayIndex fill/goTo', () => {
     // Always pick the last pool entry: pool after seed is [b, c, d] -> d,
     // then [b, c] -> c, then [b] -> b.
     const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    let randomCalls = 0
     try {
       act(() => result.current.fill(3))
+      randomCalls = spy.mock.calls.length
     } finally {
       spy.mockRestore()
     }
     expect(result.current.playlist.map((f) => f.path)).toEqual(['/a.jpg', '/d.jpg', '/c.jpg', '/b.jpg'])
-    expect(spy).toHaveBeenCalledTimes(3)
+    expect(randomCalls).toBe(3)
   })
 
   it('next after a fill continues from the trail tip, not from the current index', async () => {
