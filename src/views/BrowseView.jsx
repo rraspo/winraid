@@ -253,6 +253,9 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           connectionId={selectedId}
           path={path}
           onClose={() => setShowPlay(false)}
+          remoteBasePath={cfgRemotePath}
+          canServerEdit={browse.selectedConn?.type === 'sftp'}
+          onDelete={(target) => { setShowPlay(false); setDeleteTarget(target) }}
         />
       )}
       <DragGhost
