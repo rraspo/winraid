@@ -84,6 +84,45 @@
   color: var(--text-faint);
 }
 
+.folderPath {
+  font-size: var(--font-size-xs);
+  color: var(--text-faint);
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.folderCrumb {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.folderSegment {
+  color: var(--text-muted);
+  padding: 0 2px;
+  text-decoration: none;
+  text-underline-offset: 2px;
+  transition: color var(--transition), text-decoration-color var(--transition);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folderSegmentActive {
+  text-decoration: underline;
+  text-decoration-color: var(--text-muted);
+}
+
+.folderSegment:hover { color: var(--accent); }
+
+.folderSep {
+  color: var(--text-faint);
+  padding: 0 1px;
+  flex-shrink: 0;
+}
+
 .closeBtn {
   display: flex;
   align-items: center;

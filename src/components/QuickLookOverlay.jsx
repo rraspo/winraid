@@ -8,6 +8,7 @@ import PdfPreview from './PdfPreview'
 import styles from './QuickLookOverlay.module.css'
 import modalStyles from './modals/modals.module.css'
 import { formatSize, formatDate } from '../utils/format'
+import { buildPathSegments } from '../utils/pathSegments'
 import { fileType, getExt, isRotatableVideo } from '../utils/fileTypes'
 import { needsLocalTrimConsent, markLocalTrimAcked, isLocalTrimAcked } from '../utils/localTrimConsent'
 import { nasStreamUrl } from '../utils/nasStream'
@@ -469,7 +470,7 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // ---------------------------------------------------------------------------
 export default function QuickLookOverlay({
   file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit,
-  hasMoreBeyondList = false, onNextBeyondList, onFileChanged,
+  hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation,
 }) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
@@ -1518,6 +1519,26 @@ export default function QuickLookOverlay({
             <span className={styles.metaSep}>·</span>
             <span>{formatDate(file.modified)}</span>
           </span>
+          {folderNavigation && (
+            <span className={styles.folderPath}>
+              {buildPathSegments(file.path.split('/').slice(0, -1).join('/') || '/').map((segment, segmentIndex) => (
+                <span key={segment.path} className={styles.folderCrumb}>
+                  {segmentIndex > 0 && <span className={styles.folderSep}>/</span>}
+                  <button
+                    type="button"
+                    className={[styles.folderSegment, segment.path === folderNavigation.activePath ? styles.folderSegmentActive : ''].filter(Boolean).join(' ')}
+                    aria-current={segment.path === folderNavigation.activePath ? 'true' : undefined}
+                    onClick={() => {
+                      if (segment.path === folderNavigation.activePath) return
+                      folderNavigation.onSelect(segment.path)
+                    }}
+                  >
+                    {segment.label}
+                  </button>
+                </span>
+              ))}
+            </span>
+          )}
         </div>
         {type === 'image' && !cropping && (
           <Tooltip tip="Crop" side="bottom">

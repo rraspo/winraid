@@ -4,7 +4,8 @@ import Tooltip from '../ui/Tooltip'
 import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
 import { layoutMasonry } from '../../utils/masonry'
-import { withThumb, buildPathSegments } from './playShared'
+import { withThumb } from './playShared'
+import { buildPathSegments } from '../../utils/pathSegments'
 import overlayStyles from '../PlayOverlay.module.css'
 import styles from './PlayWall.module.css'
 
@@ -122,6 +123,7 @@ export default function PlayWall({
                   <button
                     type="button"
                     className={[overlayStyles.pathSegment, segment.path === scanRoot ? overlayStyles.pathSegmentActive : ''].filter(Boolean).join(' ')}
+                    aria-current={segment.path === scanRoot ? 'true' : undefined}
                     onClick={() => onSegmentClick(segment.path)}
                   >
                     {segment.label}

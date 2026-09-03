@@ -48,6 +48,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
     if (segmentPath === scanRoot) return
     setStartFile(playlist[index] ?? null)
     setScanRoot(segmentPath)
+    setIsViewerOpen(false)
   }, [scanRoot, playlist, index])
 
   const openTile = useCallback((tileIndex) => {
@@ -164,6 +165,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
             hasMoreBeyondList={hasMore}
             onNextBeyondList={next}
             onFileChanged={bumpVersion}
+            folderNavigation={{ activePath: scanRoot, onSelect: handleSegmentClick }}
           />
         </div>
       )}
