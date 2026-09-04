@@ -592,3 +592,120 @@ describe('usePlayIndex', () => {
   })
 
 })
+
+// Paged promotion for the wall: fill(count) walks up to `count` files from
+// the pool into the trail in one state update, using the current mode's
+// pick rule for every step (sequential = alphabetic successor of the tip,
+// shuffle = Math.random). It never moves the user's index. goTo(i) moves
+// the index to an already-walked trail position and clamps to the trail.
+describe('usePlayIndex fill/goTo', () => {
+  function emit(paths) {
+    onMediaFoundCb?.({ files: paths.map((path) => ({ path, size: 0, mtime: 0, type: 'image' })) })
+  }
+
+  it('fill(count) promotes exactly count files from the pool without moving index', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg', '/e.jpg']))
+    expect(result.current.playlist).toHaveLength(1)
+    act(() => result.current.fill(3))
+    expect(result.current.playlist.map((f) => f.path)).toEqual(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg'])
+    expect(result.current.index).toBe(0)
+    expect(result.current.hasMore).toBe(true)
+  })
+
+  it('fill(count) stops at the pool size and leaves hasMore false once the scan is done', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg', '/b.jpg']))
+    act(() => { onMediaDoneCb?.({ totalMatches: 2, durationMs: 1 }) })
+    act(() => result.current.fill(10))
+    expect(result.current.playlist.map((f) => f.path)).toEqual(['/a.jpg', '/b.jpg'])
+    expect(result.current.hasMore).toBe(false)
+  })
+
+  it('fill is a no-op on an empty pool and keeps the same playlist reference', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg']))
+    const before = result.current.playlist
+    act(() => result.current.fill(5))
+    expect(result.current.playlist).toBe(before)
+  })
+
+  it('sequential fill walks the alphabetic order regardless of arrival order', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/m.jpg', '/z.jpg', '/a.jpg', '/k.jpg']))
+    // Trail seeded with the first arrival (/m.jpg); sequential successors
+    // of the tip are /z.jpg, then wrap to /a.jpg, then /k.jpg.
+    act(() => result.current.fill(3))
+    expect(result.current.playlist.map((f) => f.path)).toEqual(['/m.jpg', '/z.jpg', '/a.jpg', '/k.jpg'])
+  })
+
+  it('shuffle fill picks every promoted file via Math.random', async () => {
+    window.winraid.config.get.mockResolvedValue({ recursive: false, shuffle: true })
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']))
+    // Always pick the last pool entry: pool after seed is [b, c, d] -> d,
+    // then [b, c] -> c, then [b] -> b.
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    let randomCalls = 0
+    try {
+      act(() => result.current.fill(3))
+      randomCalls = spy.mock.calls.length
+    } finally {
+      spy.mockRestore()
+    }
+    expect(result.current.playlist.map((f) => f.path)).toEqual(['/a.jpg', '/d.jpg', '/c.jpg', '/b.jpg'])
+    expect(randomCalls).toBe(3)
+  })
+
+  it('next after a fill continues from the trail tip, not from the current index', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg']))
+    act(() => result.current.fill(1))
+    // index 0 of a 2-long trail: next moves along the trail first.
+    act(() => result.current.next())
+    expect(result.current.index).toBe(1)
+    expect(result.current.playlist).toHaveLength(2)
+    act(() => result.current.next())
+    expect(result.current.index).toBe(2)
+    expect(result.current.playlist.map((f) => f.path)).toEqual(['/a.jpg', '/b.jpg', '/c.jpg'])
+  })
+
+  it('goTo(i) moves the index to a walked position and clamps to the trail bounds', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']))
+    act(() => result.current.fill(3))
+    act(() => result.current.goTo(2))
+    expect(result.current.index).toBe(2)
+    act(() => result.current.goTo(99))
+    expect(result.current.index).toBe(3)
+    act(() => result.current.goTo(-5))
+    expect(result.current.index).toBe(0)
+  })
+
+  it('goTo does not touch the trail or the pool', async () => {
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg']))
+    act(() => result.current.fill(1))
+    const before = result.current.playlist
+    act(() => result.current.goTo(1))
+    expect(result.current.playlist).toBe(before)
+    expect(result.current.hasMore).toBe(true)
+  })
+
+  it('exposes fill and goTo as stable callbacks', async () => {
+    const { result, rerender } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    const { fill, goTo } = result.current
+    rerender()
+    expect(result.current.fill).toBe(fill)
+    expect(result.current.goTo).toBe(goTo)
+  })
+})

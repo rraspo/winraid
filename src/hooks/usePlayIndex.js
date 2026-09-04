@@ -140,6 +140,40 @@ export function usePlayIndex(connId, path, startFile = null) {
     setState((s) => ({ ...s, index: Math.max(s.index - 1, 0) }))
   }, [])
 
+  // Paged promotion for the wall: walks up to `count` files from the pool
+  // into the trail in one state update, using the same pick rule as `next`
+  // for every step. Never moves the user's index. Returns the same state
+  // object when the pool is already empty, so a refill effect driven off
+  // this call can never loop.
+  const fill = useCallback((count) => {
+    setState((s) => {
+      if (s.pool.length === 0 || count <= 0) return s
+      let trail = s.trail
+      let pool  = s.pool
+      let tip   = trail[trail.length - 1] ?? null
+      let promotedCount = 0
+      while (promotedCount < count && pool.length > 0) {
+        const pick = shuffleRef.current ? randomPick(pool) : sequentialPickAfter(pool, tip)
+        trail = [...trail, pick]
+        pool  = removeFirstMatch(pool, pick)
+        tip   = pick
+        promotedCount++
+      }
+      if (promotedCount === 0) return s
+      return { ...s, trail, pool }
+    })
+  }, [])
+
+  // Moves the viewer's position to an already-walked trail entry, clamped
+  // to the trail bounds. Touches nothing else — the trail and pool are
+  // untouched by opening/closing the viewer.
+  const goTo = useCallback((targetIndex) => {
+    setState((s) => ({
+      ...s,
+      index: Math.max(0, Math.min(targetIndex, s.trail.length - 1)),
+    }))
+  }, [])
+
   // Fork-on-toggle: if the user has walked back into the trail and then
   // toggles shuffle, the forward path beyond their current position is
   // discarded — those files go back into the pool so the next pick is a
@@ -180,6 +214,9 @@ export function usePlayIndex(connId, path, startFile = null) {
     toggleShuffle,
     next,
     prev,
+    fill,
+    goTo,
+    poolSize: state.pool.length,
     error,
     retry,
   }
