@@ -19,6 +19,14 @@ function isAnimatedGif(remotePath) {
   return /\.gif$/i.test(remotePath)
 }
 
+// Appends a cache-busting version, when one is known, so a tile whose file
+// was just edited in place picks up the new bytes instead of the stale
+// browser cache entry.
+function withVersion(url, version) {
+  if (!version) return url
+  return url + (url.includes('?') ? '&' : '?') + 'v=' + version
+}
+
 function columnGeometry(containerWidth) {
   if (containerWidth <= 0) {
     return { columnCount: FALLBACK_COLUMNS, columnWidth: TILE_TARGET_WIDTH }
@@ -37,7 +45,7 @@ export default function PlayWall({
   recursive, toggleRecursive, shuffle, toggleShuffle,
   error, retry, pageSize, fill,
   onSegmentClick, onOpenTile, onToggleFullscreen, onClose,
-  hiddenFromViewer,
+  hiddenFromViewer, fileVersions,
 }) {
   const scrollContainerRef = useRef(null)
   const sentinelRef        = useRef(null)
@@ -178,6 +186,7 @@ export default function PlayWall({
               const position   = positions[tileIndex]
               const name       = file.path.split('/').pop()
               const streamUrl  = nasStreamUrl(connectionId, file.path)
+              const version    = fileVersions?.get(file.path)
               const tileStyle  = position
                 ? { left: position.left, top: position.top, width: position.width, height: position.height }
                 : { left: 0, top: 0, width: columnWidth, height: columnWidth }
@@ -201,7 +210,7 @@ export default function PlayWall({
                   ) : (
                     <img
                       className={styles.tileImage}
-                      src={isAnimatedGif(file.path) ? streamUrl : withThumb(streamUrl)}
+                      src={isAnimatedGif(file.path) ? withVersion(streamUrl, version) : withVersion(withThumb(streamUrl), version)}
                       alt=""
                       loading="lazy"
                       onLoad={(event) => handleThumbLoad(file.path, event)}

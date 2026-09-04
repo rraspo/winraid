@@ -467,19 +467,26 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // ---------------------------------------------------------------------------
 // Main overlay
 // ---------------------------------------------------------------------------
-export default function QuickLookOverlay({ file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit }) {
+export default function QuickLookOverlay({
+  file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit,
+  hasMoreBeyondList = false, onNextBeyondList, onFileChanged,
+}) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
   const hasPrev    = currentIdx > 0
-  const hasNext    = currentIdx < files.length - 1
+  const hasNext    = currentIdx < files.length - 1 || hasMoreBeyondList
 
   const handlePrev = useCallback(() => {
     if (hasPrev) onNavigate(files[currentIdx - 1])
   }, [hasPrev, currentIdx, files, onNavigate])
 
   const handleNext = useCallback(() => {
-    if (hasNext) onNavigate(files[currentIdx + 1])
-  }, [hasNext, currentIdx, files, onNavigate])
+    if (currentIdx < files.length - 1) {
+      onNavigate(files[currentIdx + 1])
+    } else if (hasMoreBeyondList) {
+      onNextBeyondList?.()
+    }
+  }, [currentIdx, files, onNavigate, hasMoreBeyondList, onNextBeyondList])
 
   // Arrow key navigation, spacebar play/pause, and Escape (closes the overlay
   // outright unless a mode below claims it to exit itself instead)
@@ -892,6 +899,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(trimFile.path)
         exitTrimMode()
       } else {
         const destName = dest.slice(slash + 1)
@@ -957,6 +965,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(rotateFile.path)
         exitRotateMode()
       } else {
         const destName = dest.slice(slash + 1)
@@ -1029,6 +1038,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(videoCropFile.path)
         exitVideoCropMode()
       } else {
         const destName = dest.slice(slash + 1)
@@ -1196,6 +1206,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(cropFile.path)
         exitCropMode()
       } else {
         // Navigate to the new copy so the user immediately sees the result
@@ -1263,6 +1274,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         setPan(zero)
         panRef.current = zero
         setCacheBust(Date.now())
+        onFileChanged?.(job.file.path)
       }
     } catch (err) {
       showImageRotateError(err.message ?? 'Rotate failed')
@@ -1702,9 +1714,9 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       </div>
 
       {/* File counter */}
-      {files.length > 1 && (
+      {(files.length > 1 || hasMoreBeyondList) && (
         <div className={styles.counter}>
-          {currentIdx + 1} / {files.length}
+          {currentIdx + 1} / {files.length}{hasMoreBeyondList ? '+' : ''}
         </div>
       )}
 
