@@ -576,3 +576,78 @@ describe('PlayOverlay viewer', () => {
     }
   })
 })
+
+// The viewer shows the open file's folder path as breadcrumbs under the
+// file name, the way the old Play viewer did. Clicking a segment makes that
+// folder the new scan root: the queue rebuilds from a fresh scan there with
+// the same settings, seeded with the file that was open so it stays the
+// first tile, and the viewer closes onto the new wall. The segment that is
+// the current scan root carries aria-current and is inert.
+describe('PlayOverlay viewer breadcrumbs', () => {
+  const nested = image('/photos/2025/vacation/img.jpg')
+
+  function crumb(label) {
+    return within(viewer()).getByRole('button', { name: label })
+  }
+
+  it('shows the open file folder as breadcrumbs with the scan root marked current', async () => {
+    setup()
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    expect(crumb('/')).toBeTruthy()
+    expect(crumb('photos').getAttribute('aria-current')).toBe('true')
+    expect(crumb('2025').hasAttribute('aria-current')).toBe(false)
+    expect(crumb('vacation').hasAttribute('aria-current')).toBe(false)
+    expect(within(viewer()).getByRole('button', { name: 'img.jpg' })).toBeTruthy()
+  })
+
+  it('clicking a deeper folder rescans there, seeds the wall with the open file, and closes the viewer', async () => {
+    setup()
+    await mount()
+    emit([nested, image('/photos/other.jpg')])
+    await open('img.jpg')
+    fireEvent.click(crumb('2025'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos/2025', { recursive: true })
+    expect(viewer()).toBeNull()
+    expect(tilePaths()).toEqual(['img.jpg'])
+    emit([image('/photos/2025/spring.jpg'), nested])
+    expect(tilePaths()).toEqual(['img.jpg', 'spring.jpg'])
+    expect(screen.getByRole('button', { name: '2025' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  it('clicking a folder above the scan root widens the scope the same way', async () => {
+    setup()
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    fireEvent.click(crumb('/'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/', { recursive: true })
+    expect(viewer()).toBeNull()
+    expect(tilePaths()).toEqual(['img.jpg'])
+  })
+
+  it('clicking the current scan root does nothing', async () => {
+    setup()
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    fireEvent.click(crumb('photos'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(1)
+    expect(viewer()).toBeTruthy()
+  })
+
+  it('keeps the shuffle setting across the rescan', async () => {
+    setup({ shuffle: true })
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    fireEvent.click(crumb('2025'))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'Toggle shuffle' }).getAttribute('aria-pressed')).toBe('true')
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos/2025', { recursive: true })
+  })
+})
