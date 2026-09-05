@@ -4,6 +4,8 @@ import { usePlayIndex } from '../hooks/usePlayIndex'
 import { nasStreamUrl } from '../utils/nasStream'
 import PlayWall from './play/PlayWall'
 import QuickLookOverlay from './QuickLookOverlay'
+import DeleteModal from './modals/DeleteModal'
+import * as toast from '../services/toast'
 
 // The wall keeps itself topped up to at least this many walked files
 // whenever the pool still has more to offer, and pulls another page of
@@ -23,7 +25,7 @@ function toQuickLookFile(playFile, fileVersions) {
   }
 }
 
-export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onDelete }) {
+export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated }) {
   const [scanRoot, setScanRoot] = useState(path)
   // When the user navigates between folders via a breadcrumb, the file
   // they were just looking at carries into the new scope as the trail seed
@@ -33,12 +35,17 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   // Keyed by remote path, bumped whenever Quick Look saves an edit in place
   // so both the wall tile and the viewer's own file reload the new bytes.
   const [fileVersions, setFileVersions] = useState(() => new Map())
+  // The file pending a delete confirmation, or null. Set by Quick Look's
+  // "More actions" menu; the confirmation itself renders inside Play.
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [deleteInFlight, setDeleteInFlight] = useState(false)
 
   const {
     playlist, index, scanning, hasMore, nextPredicted, poolSize,
     recursive, toggleRecursive,
     shuffle, toggleShuffle,
     next, prev, fill, goTo,
+    removePaths,
     error, retry,
   } = usePlayIndex(connectionId, scanRoot, startFile)
 
@@ -57,6 +64,29 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   }, [goTo])
 
   const returnToWall = useCallback(() => setIsViewerOpen(false), [])
+
+  const requestDelete = useCallback((target) => setPendingDelete(target), [])
+  const cancelDelete   = useCallback(() => setPendingDelete(null), [])
+
+  const confirmDelete = useCallback(async (target) => {
+    if (deleteInFlight) return
+    setDeleteInFlight(true)
+    try {
+      const res = await window.winraid.remote.delete(connectionId, target.path, false)
+      if (res?.ok) {
+        window.winraid.cache.invalidateFile(connectionId, target.path)
+        removePaths([target.path])
+        toast.show({ msg: `Deleted ${target.name}`, type: 'success' })
+        setPendingDelete(null)
+        onMutated?.({ paths: [target.path] })
+      } else {
+        toast.show({ msg: res?.error || 'Delete failed', type: 'error' })
+        setPendingDelete(null)
+      }
+    } finally {
+      setDeleteInFlight(false)
+    }
+  }, [connectionId, removePaths, onMutated, deleteInFlight])
 
   const bumpVersion = useCallback((remotePath) => {
     setFileVersions((previous) => {
@@ -101,6 +131,13 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   }, [isViewerOpen, onClose])
 
   useEffect(() => { overlayRef.current?.focus() }, [])
+
+  // A delete that empties the queue leaves nothing for the viewer to show —
+  // close it so the wall's empty state is what the user sees. Play itself
+  // stays open.
+  useEffect(() => {
+    if (isViewerOpen && playlist.length === 0) setIsViewerOpen(false)
+  }, [isViewerOpen, playlist.length])
 
   // Prefetch the most-likely next image so pressing Right is instant, but
   // only while the viewer is open: on the wall every page pull would
@@ -161,13 +198,20 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
             canServerEdit={canServerEdit}
             onNavigate={handleQuickLookNavigate}
             onClose={returnToWall}
-            onDelete={onDelete}
+            onDelete={requestDelete}
             hasMoreBeyondList={hasMore}
             onNextBeyondList={next}
             onFileChanged={bumpVersion}
             folderNavigation={{ activePath: scanRoot, onSelect: handleSegmentClick }}
           />
         </div>
+      )}
+      {pendingDelete && (
+        <DeleteModal
+          target={pendingDelete}
+          onConfirm={confirmDelete}
+          onCancel={cancelDelete}
+        />
       )}
     </div>
   )

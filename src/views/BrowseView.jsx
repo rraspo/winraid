@@ -24,8 +24,16 @@ import { useBrowse } from '../hooks/useBrowse'
 import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
 import * as toast from '../services/toast'
+import * as remoteFS from '../services/remoteFS'
 
 const MERGERFS_MSG = 'This directory is a mergerfs union mount — files cannot be uploaded or created here. Navigate into a share folder.'
+
+// The parent folder of a remote path: everything before the last '/', or
+// the root when the path has nothing before its last segment.
+function parentFolder(remotePath) {
+  const lastSlash = remotePath.lastIndexOf('/')
+  return lastSlash > 0 ? remotePath.slice(0, lastSlash) : '/'
+}
 
 export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style, favorites = [], onToggleFavorite, onOpenEditor }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
@@ -65,6 +73,18 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
   const activateFile = (entry, entryPath) =>
     isEditableFile(entry.name) ? onOpenEditor?.(entryPath) : browse.openQuickLook(entry, entryPath)
   const editFile = (entryPath) => onOpenEditor?.(entryPath)
+
+  // Play performs its own deletes/moves and reports the remote paths it
+  // touched. Drop the cached listing of every folder those paths sit in so
+  // stale entries never resurface, and refetch the one currently shown
+  // behind Play so its listing catches up immediately.
+  const handlePlayMutated = ({ paths }) => {
+    const folders = new Set(paths.map(parentFolder))
+    for (const folder of folders) {
+      remoteFS.invalidate(selectedId, folder)
+      if (folder === path) fetchDir(path)
+    }
+  }
 
   // "Reveal in Explorer" for mirrored connections: map a remote entry to its
   // local mirror copy, gate on existence, and open it in the OS file manager.
@@ -255,7 +275,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           onClose={() => setShowPlay(false)}
           remoteBasePath={cfgRemotePath}
           canServerEdit={browse.selectedConn?.type === 'sftp'}
-          onDelete={(target) => { setShowPlay(false); setDeleteTarget(target) }}
+          onMutated={handlePlayMutated}
         />
       )}
       <DragGhost
