@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './PlayOverlay.module.css'
 import { usePlayIndex } from '../hooks/usePlayIndex'
+import { useWallSelection } from '../hooks/useWallSelection'
+import { usePlayMutations, joinRemote } from '../hooks/usePlayMutations'
 import { nasStreamUrl } from '../utils/nasStream'
 import PlayWall from './play/PlayWall'
 import QuickLookOverlay from './QuickLookOverlay'
 import DeleteModal from './modals/DeleteModal'
+import BulkDeleteModal from './modals/BulkDeleteModal'
+import BulkMoveModal from './modals/BulkMoveModal'
+import MoveModal from './modals/MoveModal'
 import * as toast from '../services/toast'
 
 // The wall keeps itself topped up to at least this many walked files
@@ -25,7 +30,7 @@ function toQuickLookFile(playFile, fileVersions) {
   }
 }
 
-export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated }) {
+export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null }) {
   const [scanRoot, setScanRoot] = useState(path)
   // When the user navigates between folders via a breadcrumb, the file
   // they were just looking at carries into the new scope as the trail seed
@@ -39,15 +44,37 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   // "More actions" menu; the confirmation itself renders inside Play.
   const [pendingDelete, setPendingDelete] = useState(null)
   const [deleteInFlight, setDeleteInFlight] = useState(false)
+  // Wall selection's own delete/move flow, distinct from the viewer's
+  // single-file pendingDelete above: null | 'delete' | 'move'.
+  const [bulkAction, setBulkAction] = useState(null)
+  const [bulkMoveDest, setBulkMoveDest] = useState('')
 
   const {
     playlist, index, scanning, hasMore, nextPredicted, poolSize,
     recursive, toggleRecursive,
     shuffle, toggleShuffle,
     next, prev, fill, goTo,
-    removePaths,
+    removePaths, relocatePaths,
     error, retry,
   } = usePlayIndex(connectionId, scanRoot, startFile)
+
+  // Destructured so the callbacks and the keydown effect below depend on
+  // the stable functions, not on a selection object rebuilt every render.
+  const {
+    selectedPaths,
+    toggle: toggleSelected,
+    selectRange,
+    selectAll,
+    clear: clearSelection,
+    drop: dropFromSelection,
+  } = useWallSelection(playlist)
+  const mutations = usePlayMutations({
+    connectionId,
+    removePaths,
+    relocatePaths,
+    dropFromSelection,
+    onMutated,
+  })
 
   const overlayRef = useRef(null)
 
@@ -56,7 +83,13 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
     setStartFile(playlist[index] ?? null)
     setScanRoot(segmentPath)
     setIsViewerOpen(false)
-  }, [scanRoot, playlist, index])
+    clearSelection()
+  }, [scanRoot, playlist, index, clearSelection])
+
+  const handleToggleRecursive = useCallback(() => {
+    toggleRecursive()
+    clearSelection()
+  }, [toggleRecursive, clearSelection])
 
   const openTile = useCallback((tileIndex) => {
     goTo(tileIndex)
@@ -76,6 +109,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
       if (res?.ok) {
         window.winraid.cache.invalidateFile(connectionId, target.path)
         removePaths([target.path])
+        dropFromSelection([target.path])
         toast.show({ msg: `Deleted ${target.name}`, type: 'success' })
         setPendingDelete(null)
         onMutated?.({ paths: [target.path] })
@@ -86,7 +120,48 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
     } finally {
       setDeleteInFlight(false)
     }
-  }, [connectionId, removePaths, onMutated, deleteInFlight])
+  }, [connectionId, removePaths, onMutated, deleteInFlight, dropFromSelection])
+
+  // The wall-selected files, in wall order — the basis for both the bulk
+  // delete/move confirmations and the sequential loops that execute them.
+  const selectedFiles = useMemo(
+    () => playlist.filter((file) => selectedPaths.has(file.path)),
+    [playlist, selectedPaths],
+  )
+
+  const requestBulkDelete = useCallback(() => {
+    if (mutations.inFlight) return
+    setBulkAction('delete')
+  }, [mutations.inFlight])
+
+  const requestBulkMove = useCallback(() => {
+    if (mutations.inFlight) return
+    setBulkMoveDest(scanRoot)
+    setBulkAction('move')
+  }, [mutations.inFlight, scanRoot])
+
+  const cancelBulkAction = useCallback(() => setBulkAction(null), [])
+
+  const confirmBulkDelete = useCallback(() => {
+    setBulkAction(null)
+    mutations.deleteFiles(selectedFiles)
+  }, [mutations, selectedFiles])
+
+  const confirmSingleMove = useCallback((sourcePath, destinationPath) => {
+    setBulkAction(null)
+    mutations.moveFiles([{ from: sourcePath, to: destinationPath }], {
+      isSingle: true, scanRoot, recursive,
+    })
+  }, [mutations, scanRoot, recursive])
+
+  const confirmBulkMove = useCallback(() => {
+    const dest = bulkMoveDest.trim()
+    setBulkAction(null)
+    const pairs = selectedFiles
+      .map((file) => ({ from: file.path, to: joinRemote(dest, file.path.split('/').pop()) }))
+      .filter((pair) => pair.from !== pair.to)
+    mutations.moveFiles(pairs, { isSingle: false, scanRoot, recursive, dest })
+  }, [bulkMoveDest, selectedFiles, mutations, scanRoot, recursive])
 
   const bumpVersion = useCallback((remotePath) => {
     setFileVersions((previous) => {
@@ -114,21 +189,37 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
     }
   }, [playlist.length, poolSize, fill])
 
-  // The wall only ever responds to Escape (close). While the viewer is
-  // open, Quick Look's own window keydown listener owns Escape, the arrow
-  // keys and the wheel entirely — this listener steps aside so nothing
-  // double-handles them.
+  // The wall responds to Escape (clear selection, else close), Ctrl/Meta+A
+  // (select every walked tile) and Delete (open the bulk delete confirmation)
+  // on top of the selection gestures PlayWall handles itself. While the
+  // viewer is open, Quick Look's own window keydown listener owns Escape,
+  // the arrow keys and the wheel entirely — this listener steps aside so
+  // nothing double-handles them, and none of the selection keys act either.
   useEffect(() => {
     if (isViewerOpen) return
     function onKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        selectAll()
+        return
+      }
       if (e.key === 'Escape') {
         e.preventDefault()
-        onClose()
+        if (selectedPaths.size > 0) {
+          clearSelection()
+        } else {
+          onClose()
+        }
+        return
+      }
+      if (e.key === 'Delete' && selectedPaths.size > 0 && !mutations.inFlight) {
+        e.preventDefault()
+        setBulkAction('delete')
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [isViewerOpen, onClose])
+  }, [isViewerOpen, onClose, selectedPaths, selectAll, clearSelection, mutations.inFlight])
 
   useEffect(() => { overlayRef.current?.focus() }, [])
 
@@ -170,7 +261,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
         scanning={scanning}
         poolSize={poolSize}
         recursive={recursive}
-        toggleRecursive={toggleRecursive}
+        toggleRecursive={handleToggleRecursive}
         shuffle={shuffle}
         toggleShuffle={toggleShuffle}
         error={error}
@@ -183,6 +274,13 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
         onClose={onClose}
         hiddenFromViewer={isViewerOpen}
         fileVersions={fileVersions}
+        selectedPaths={selectedPaths}
+        onToggleSelect={toggleSelected}
+        onSelectRange={selectRange}
+        onClearSelection={clearSelection}
+        onRequestBulkDelete={requestBulkDelete}
+        onRequestBulkMove={requestBulkMove}
+        mutationInFlight={mutations.inFlight}
       />
       {isViewerOpen && quickLookFile && (
         <div
@@ -211,6 +309,38 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
           target={pendingDelete}
           onConfirm={confirmDelete}
           onCancel={cancelDelete}
+        />
+      )}
+      {bulkAction === 'delete' && (
+        <BulkDeleteModal
+          count={selectedFiles.length}
+          names={selectedFiles.map((file) => file.path.split('/').pop())}
+          onConfirm={confirmBulkDelete}
+          onCancel={cancelBulkAction}
+        />
+      )}
+      {bulkAction === 'move' && selectedFiles.length === 1 && (
+        <MoveModal
+          target={{
+            name:  selectedFiles[0].path.split('/').pop(),
+            path:  selectedFiles[0].path,
+            isDir: false,
+          }}
+          sftpCfg={sftpCfg}
+          onConfirm={confirmSingleMove}
+          onCancel={cancelBulkAction}
+        />
+      )}
+      {bulkAction === 'move' && selectedFiles.length > 1 && (
+        <BulkMoveModal
+          count={selectedFiles.length}
+          names={selectedFiles.map((file) => file.path.split('/').pop())}
+          dest={bulkMoveDest}
+          onDestChange={setBulkMoveDest}
+          onConfirm={confirmBulkMove}
+          onCancel={cancelBulkAction}
+          currentPath={scanRoot}
+          sftpCfg={sftpCfg}
         />
       )}
     </div>

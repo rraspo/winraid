@@ -276,6 +276,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           remoteBasePath={cfgRemotePath}
           canServerEdit={browse.selectedConn?.type === 'sftp'}
           onMutated={handlePlayMutated}
+          sftpCfg={sftpCfg}
         />
       )}
       <DragGhost
