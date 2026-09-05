@@ -140,6 +140,58 @@ export function usePlayIndex(connId, path, startFile = null) {
     setState((s) => ({ ...s, index: Math.max(s.index - 1, 0) }))
   }, [])
 
+  // Drops every trail/pool entry whose path is listed, so a delete performed
+  // elsewhere in Play (or a move discovered later) removes it from the queue
+  // without a rescan. The viewer's index follows the file that took the
+  // removed current file's place; when that file was last, the index falls
+  // back to the file before it. Files removed ahead of the current position
+  // shift the index down so the same file stays current. Returns the same
+  // state object when nothing matched, so the caller never re-renders on a
+  // no-op removal.
+  const removePaths = useCallback((paths) => {
+    setState((s) => {
+      const toRemove = new Set(paths)
+      const trailHasMatch = s.trail.some((file) => toRemove.has(file.path))
+      const poolHasMatch  = s.pool.some((file) => toRemove.has(file.path))
+      if (!trailHasMatch && !poolHasMatch) return s
+
+      const currentPath    = s.trail[s.index]?.path ?? null
+      const currentRemoved = currentPath !== null && toRemove.has(currentPath)
+      let removedBeforeCurrent = 0
+      const trail = s.trail.filter((file, trailIndex) => {
+        if (!toRemove.has(file.path)) return true
+        if (trailIndex < s.index) removedBeforeCurrent++
+        return false
+      })
+      const pool = s.pool.filter((file) => !toRemove.has(file.path))
+
+      let index = 0
+      if (trail.length > 0) {
+        const followingIndex = s.index - removedBeforeCurrent
+        index = currentRemoved ? Math.min(followingIndex, trail.length - 1) : followingIndex
+        index = Math.max(0, index)
+      }
+
+      return { trail, pool, index }
+    })
+  }, [])
+
+  // Rewrites `path` in place on every trail/pool entry whose current path
+  // matches a `from` in `pairs`, keeping its position, size, mtime and type —
+  // used when a file is moved rather than deleted. Returns the same state
+  // object when no `from` matched.
+  const relocatePaths = useCallback((pairs) => {
+    setState((s) => {
+      const relocations = new Map(pairs.map(({ from, to }) => [from, to]))
+      const trailHasMatch = s.trail.some((file) => relocations.has(file.path))
+      const poolHasMatch  = s.pool.some((file) => relocations.has(file.path))
+      if (!trailHasMatch && !poolHasMatch) return s
+
+      const relocate = (file) => relocations.has(file.path) ? { ...file, path: relocations.get(file.path) } : file
+      return { ...s, trail: s.trail.map(relocate), pool: s.pool.map(relocate) }
+    })
+  }, [])
+
   // Paged promotion for the wall: walks up to `count` files from the pool
   // into the trail in one state update, using the same pick rule as `next`
   // for every step. Never moves the user's index. Returns the same state
@@ -216,6 +268,8 @@ export function usePlayIndex(connId, path, startFile = null) {
     prev,
     fill,
     goTo,
+    removePaths,
+    relocatePaths,
     poolSize: state.pool.length,
     error,
     retry,

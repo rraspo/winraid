@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react'
 import PlayOverlay, { WALL_PAGE_SIZE } from './PlayOverlay'
 import { createWinraidMock } from '../__mocks__/winraid'
+import * as toast from '../services/toast'
 
 // Contract under test — the Play overlay is a scrollable masonry wall of
 // every file the media scan finds, in queue order (shuffle or sequential),
@@ -12,7 +13,9 @@ import { createWinraidMock } from '../__mocks__/winraid'
 //
 // DOM contract the implementation must honor:
 //   - root: role="dialog" aria-label="Play"
-//   - props: { connectionId, path, onClose, remoteBasePath, canServerEdit, onDelete }
+//   - props: { connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated }
+//     onMutated({ paths }) fires after every mutation Play performs itself,
+//     with the remote paths it touched, so the browse view can refresh
 //   - wall scroll container: data-testid="play-wall"
 //   - one tile per walked file, in trail order:
 //       <button aria-label="Open <basename>" data-type="image|video">
@@ -78,6 +81,7 @@ afterEach(() => {
   window.ResizeObserver           = savedResizeObserver
   globalThis.IntersectionObserver = savedIntersectionObserver
   globalThis.ResizeObserver       = savedResizeObserver
+  toast.clearAll()
   delete window.winraid
 })
 
@@ -104,7 +108,7 @@ const defaultProps = {
   onClose: vi.fn(),
   remoteBasePath: '/photos',
   canServerEdit: true,
-  onDelete: vi.fn(),
+  onMutated: vi.fn(),
 }
 
 function image(path) { return { path, size: 100, mtime: 0, type: 'image' } }
@@ -114,8 +118,11 @@ function emit(files) {
   act(() => { onMediaFoundCb?.({ files }) })
 }
 
+// The wall is aria-hidden while the viewer covers it, so tile queries
+// include hidden nodes: the tiles are still there, just not for assistive
+// technology until the viewer closes.
 function tiles() {
-  return screen.queryAllByRole('button', { name: /^Open / })
+  return screen.queryAllByRole('button', { name: /^Open /, hidden: true })
 }
 
 function tilePaths() {
@@ -530,17 +537,6 @@ describe('PlayOverlay viewer', () => {
     expect(viewerImageSrc()).toContain('/photos/b.jpg')
   })
 
-  it('Delete from the viewer menu hands the file to onDelete', async () => {
-    const onDelete = vi.fn()
-    setup()
-    await mount({ ...defaultProps, onDelete })
-    emit([image('/photos/a.jpg')])
-    await open('a.jpg')
-    fireEvent.click(within(viewer()).getByLabelText('More actions'))
-    fireEvent.click(within(viewer()).getByText('Delete'))
-    expect(onDelete).toHaveBeenCalledWith({ name: 'a.jpg', path: '/photos/a.jpg', isDir: false })
-  })
-
   it('an in-place edit in the viewer refreshes that tile on the wall', async () => {
     const context = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() }
     const canvasMock = {
@@ -649,5 +645,138 @@ describe('PlayOverlay viewer breadcrumbs', () => {
     await act(async () => {})
     expect(screen.getByRole('button', { name: 'Toggle shuffle' }).getAttribute('aria-pressed')).toBe('true')
     expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos/2025', { recursive: true })
+  })
+})
+
+// Deleting from the viewer happens inside Play: a confirmation, the remote
+// delete, and the queue drops the file in place — the wall loses its tile,
+// the viewer moves on to the file that followed, and Play stays open. The
+// browse view only hears about it through onMutated.
+describe('PlayOverlay viewer delete', () => {
+  function requestDelete() {
+    fireEvent.click(within(viewer()).getByLabelText('More actions'))
+    fireEvent.click(within(viewer()).getByText('Delete'))
+  }
+
+  function confirmDelete() {
+    return act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
+    })
+  }
+
+  it('Delete from the viewer menu asks for confirmation inside Play, deleting nothing yet', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    const onClose = vi.fn()
+    await mount({ ...defaultProps, onClose })
+    emit([image('/photos/a.jpg')])
+    await open('a.jpg')
+    requestDelete()
+    const playDialog = screen.getByRole('dialog', { name: 'Play' })
+    expect(within(playDialog).getByText('Delete file?')).toBeTruthy()
+    expect(within(playDialog).getByText('a.jpg', { selector: 'strong' })).toBeTruthy()
+    expect(window.winraid.remote.delete).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('Cancel keeps the file, the viewer and the wall exactly as they were', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    const onMutated = vi.fn()
+    await mount({ ...defaultProps, onMutated })
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
+    await open('a.jpg')
+    requestDelete()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByText('Delete file?')).toBeNull()
+    expect(window.winraid.remote.delete).not.toHaveBeenCalled()
+    expect(onMutated).not.toHaveBeenCalled()
+    expect(viewerImageSrc()).toContain('/photos/a.jpg')
+    expect(tilePaths()).toEqual(['a.jpg', 'b.jpg'])
+  })
+
+  it('confirming deletes the file remotely, drops its tile, and the viewer shows the next file', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    const onMutated = vi.fn()
+    const onClose   = vi.fn()
+    await mount({ ...defaultProps, onMutated, onClose })
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg')])
+    await open('b.jpg')
+    requestDelete()
+    await confirmDelete()
+    expect(window.winraid.remote.delete).toHaveBeenCalledWith('c1', '/photos/b.jpg', false)
+    expect(window.winraid.cache.invalidateFile).toHaveBeenCalledWith('c1', '/photos/b.jpg')
+    expect(screen.queryByText('Delete file?')).toBeNull()
+    expect(tilePaths()).toEqual(['a.jpg', 'c.jpg'])
+    expect(viewer()).toBeTruthy()
+    expect(viewerImageSrc()).toContain('/photos/c.jpg')
+    expect(onMutated).toHaveBeenCalledWith({ paths: ['/photos/b.jpg'] })
+    expect(onClose).not.toHaveBeenCalled()
+    expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(1)
+  })
+
+  it('deleting the last walked file moves the viewer back to the previous one', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    await mount()
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
+    act(() => { onMediaDoneCb?.({ totalMatches: 2, durationMs: 10 }) })
+    await open('b.jpg')
+    requestDelete()
+    await confirmDelete()
+    expect(tilePaths()).toEqual(['a.jpg'])
+    expect(viewer()).toBeTruthy()
+    expect(viewerImageSrc()).toContain('/photos/a.jpg')
+  })
+
+  it('deleting the only file returns to the wall, which shows the empty state, and Play stays open', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    const onClose = vi.fn()
+    await mount({ ...defaultProps, onClose })
+    emit([image('/photos/a.jpg')])
+    act(() => { onMediaDoneCb?.({ totalMatches: 1, durationMs: 10 }) })
+    await open('a.jpg')
+    requestDelete()
+    await confirmDelete()
+    expect(viewer()).toBeNull()
+    expect(tiles()).toHaveLength(0)
+    expect(screen.getByText('No media files found')).toBeTruthy()
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('a deleted file at the wall tip is not refilled from thin air: the pool supplies the next page', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    await mount()
+    emit(manyImages(WALL_PAGE_SIZE + 1))
+    expect(tiles()).toHaveLength(WALL_PAGE_SIZE)
+    await open('0003.jpg')
+    requestDelete()
+    await confirmDelete()
+    // The wall tops itself back up to a full page from the pool, and the
+    // deleted file is gone for good.
+    expect(tiles()).toHaveLength(WALL_PAGE_SIZE)
+    expect(tilePaths()).not.toContain('0003.jpg')
+  })
+
+  it('a failed delete keeps the file everywhere and reports the error', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: false, error: 'Permission denied' }) } })
+    const onMutated = vi.fn()
+    await mount({ ...defaultProps, onMutated })
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
+    await open('a.jpg')
+    requestDelete()
+    await confirmDelete()
+    expect(screen.queryByText('Delete file?')).toBeNull()
+    expect(tilePaths()).toEqual(['a.jpg', 'b.jpg'])
+    expect(viewerImageSrc()).toContain('/photos/a.jpg')
+    expect(onMutated).not.toHaveBeenCalled()
+    expect(toast.getSnapshot().some((entry) => entry.type === 'error' && /Permission denied/.test(entry.msg))).toBe(true)
+  })
+
+  it('a successful delete confirms itself with a toast naming the file', async () => {
+    setup({ remote: { delete: vi.fn().mockResolvedValue({ ok: true }) } })
+    await mount()
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
+    await open('a.jpg')
+    requestDelete()
+    await confirmDelete()
+    expect(toast.getSnapshot().some((entry) => entry.type === 'success' && /a\.jpg/.test(entry.msg))).toBe(true)
   })
 })
