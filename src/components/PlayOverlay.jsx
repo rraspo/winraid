@@ -1,22 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import styles from './PlayOverlay.module.css'
 import { usePlayIndex } from '../hooks/usePlayIndex'
 import { nasStreamUrl } from '../utils/nasStream'
 import PlayWall from './play/PlayWall'
-import PlayViewer from './play/PlayViewer'
+import QuickLookOverlay from './QuickLookOverlay'
 
 // The wall keeps itself topped up to at least this many walked files
 // whenever the pool still has more to offer, and pulls another page of
 // this size whenever the bottom sentinel comes into view.
 export const WALL_PAGE_SIZE = 24
 
-export default function PlayOverlay({ connectionId, path, onClose }) {
+// Maps a walked play-index entry ({ path, size, mtime, type }) to the shape
+// Quick Look expects ({ name, path, size, modified }). A version bumped by
+// an in-place save (fileVersions) stands in for mtime so Quick Look's own
+// cache-busting query param picks up the edit.
+function toQuickLookFile(playFile, fileVersions) {
+  return {
+    name:     playFile.path.split('/').pop(),
+    path:     playFile.path,
+    size:     playFile.size,
+    modified: fileVersions.get(playFile.path) ?? playFile.mtime,
+  }
+}
+
+export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onDelete }) {
   const [scanRoot, setScanRoot] = useState(path)
   // When the user navigates between folders via a breadcrumb, the file
   // they were just looking at carries into the new scope as the trail seed
   // — they can walk back to it like any other walked file.
   const [startFile, setStartFile] = useState(null)
   const [isViewerOpen, setIsViewerOpen] = useState(false)
+  // Keyed by remote path, bumped whenever Quick Look saves an edit in place
+  // so both the wall tile and the viewer's own file reload the new bytes.
+  const [fileVersions, setFileVersions] = useState(() => new Map())
 
   const {
     playlist, index, scanning, hasMore, nextPredicted, poolSize,
@@ -32,6 +48,7 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
     if (segmentPath === scanRoot) return
     setStartFile(playlist[index] ?? null)
     setScanRoot(segmentPath)
+    setIsViewerOpen(false)
   }, [scanRoot, playlist, index])
 
   const openTile = useCallback((tileIndex) => {
@@ -40,6 +57,14 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
   }, [goTo])
 
   const returnToWall = useCallback(() => setIsViewerOpen(false), [])
+
+  const bumpVersion = useCallback((remotePath) => {
+    setFileVersions((previous) => {
+      const next = new Map(previous)
+      next.set(remotePath, Date.now())
+      return next
+    })
+  }, [])
 
   const toggleFullscreen = useCallback(() => {
     if (!document.fullscreenElement) {
@@ -59,35 +84,21 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
     }
   }, [playlist.length, poolSize, fill])
 
-  // A single always-on capture-phase listener, branching on whether the
-  // viewer is open — the wall only ever responds to Escape (close), while
-  // the viewer also walks the queue and returns to the wall on Escape.
+  // The wall only ever responds to Escape (close). While the viewer is
+  // open, Quick Look's own window keydown listener owns Escape, the arrow
+  // keys and the wheel entirely — this listener steps aside so nothing
+  // double-handles them.
   useEffect(() => {
+    if (isViewerOpen) return
     function onKeyDown(e) {
-      if (isViewerOpen) {
-        if (e.key === 'ArrowRight') { e.preventDefault(); next() }
-        if (e.key === 'ArrowLeft')  { e.preventDefault(); prev() }
-        if (e.key === 'Escape')     { e.preventDefault(); returnToWall() }
-      } else if (e.key === 'Escape') {
+      if (e.key === 'Escape') {
         e.preventDefault()
         onClose()
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [isViewerOpen, next, prev, returnToWall, onClose])
-
-  // The wheel only walks the queue while the viewer is open — on the wall
-  // it must scroll the tile grid natively.
-  useEffect(() => {
-    if (!isViewerOpen) return
-    function onWheel(e) {
-      if (e.deltaY > 0) next()
-      else if (e.deltaY < 0) prev()
-    }
-    window.addEventListener('wheel', onWheel)
-    return () => window.removeEventListener('wheel', onWheel)
-  }, [isViewerOpen, next, prev])
+  }, [isViewerOpen, onClose])
 
   useEffect(() => { overlayRef.current?.focus() }, [])
 
@@ -101,6 +112,17 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
     const img = new Image()
     img.src = nasStreamUrl(connectionId, nextPredicted.path)
   }, [isViewerOpen, nextPredicted, connectionId])
+
+  const quickLookFiles = useMemo(
+    () => playlist.map((playFile) => toQuickLookFile(playFile, fileVersions)),
+    [playlist, fileVersions],
+  )
+  const quickLookFile = quickLookFiles[index] ?? null
+
+  const handleQuickLookNavigate = useCallback((navigatedFile) => {
+    const targetIndex = playlist.findIndex((playFile) => playFile.path === navigatedFile.path)
+    if (targetIndex !== -1) goTo(targetIndex)
+  }, [playlist, goTo])
 
   return (
     <div ref={overlayRef} className={styles.overlay} data-theme="dark" role="dialog" aria-modal="true" aria-label="Play" tabIndex={-1}>
@@ -123,29 +145,29 @@ export default function PlayOverlay({ connectionId, path, onClose }) {
         onToggleFullscreen={toggleFullscreen}
         onClose={onClose}
         hiddenFromViewer={isViewerOpen}
+        fileVersions={fileVersions}
       />
-      {isViewerOpen && (
-        <PlayViewer
-          connectionId={connectionId}
-          scanRoot={scanRoot}
-          file={playlist[index] ?? null}
-          index={index}
-          total={playlist.length}
-          hasMore={hasMore}
-          recursive={recursive}
-          toggleRecursive={toggleRecursive}
-          shuffle={shuffle}
-          toggleShuffle={toggleShuffle}
-          scanning={scanning}
-          error={error}
-          retry={retry}
-          next={next}
-          prev={prev}
-          onSegmentClick={handleSegmentClick}
-          onReturnToWall={returnToWall}
-          onToggleFullscreen={toggleFullscreen}
-          onClose={onClose}
-        />
+      {isViewerOpen && quickLookFile && (
+        <div
+          data-testid="play-viewer"
+          className={styles.viewerLayer}
+          onContextMenuCapture={(e) => { e.preventDefault(); e.stopPropagation(); returnToWall() }}
+        >
+          <QuickLookOverlay
+            file={quickLookFile}
+            files={quickLookFiles}
+            connectionId={connectionId}
+            remoteBasePath={remoteBasePath}
+            canServerEdit={canServerEdit}
+            onNavigate={handleQuickLookNavigate}
+            onClose={returnToWall}
+            onDelete={onDelete}
+            hasMoreBeyondList={hasMore}
+            onNextBeyondList={next}
+            onFileChanged={bumpVersion}
+            folderNavigation={{ activePath: scanRoot, onSelect: handleSegmentClick }}
+          />
+        </div>
       )}
     </div>
   )

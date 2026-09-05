@@ -8,6 +8,7 @@ import PdfPreview from './PdfPreview'
 import styles from './QuickLookOverlay.module.css'
 import modalStyles from './modals/modals.module.css'
 import { formatSize, formatDate } from '../utils/format'
+import { buildPathSegments } from '../utils/pathSegments'
 import { fileType, getExt, isRotatableVideo } from '../utils/fileTypes'
 import { needsLocalTrimConsent, markLocalTrimAcked, isLocalTrimAcked } from '../utils/localTrimConsent'
 import { nasStreamUrl } from '../utils/nasStream'
@@ -467,19 +468,26 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // ---------------------------------------------------------------------------
 // Main overlay
 // ---------------------------------------------------------------------------
-export default function QuickLookOverlay({ file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit }) {
+export default function QuickLookOverlay({
+  file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit,
+  hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation,
+}) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
   const hasPrev    = currentIdx > 0
-  const hasNext    = currentIdx < files.length - 1
+  const hasNext    = currentIdx < files.length - 1 || hasMoreBeyondList
 
   const handlePrev = useCallback(() => {
     if (hasPrev) onNavigate(files[currentIdx - 1])
   }, [hasPrev, currentIdx, files, onNavigate])
 
   const handleNext = useCallback(() => {
-    if (hasNext) onNavigate(files[currentIdx + 1])
-  }, [hasNext, currentIdx, files, onNavigate])
+    if (currentIdx < files.length - 1) {
+      onNavigate(files[currentIdx + 1])
+    } else if (hasMoreBeyondList) {
+      onNextBeyondList?.()
+    }
+  }, [currentIdx, files, onNavigate, hasMoreBeyondList, onNextBeyondList])
 
   // Arrow key navigation, spacebar play/pause, and Escape (closes the overlay
   // outright unless a mode below claims it to exit itself instead)
@@ -892,6 +900,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(trimFile.path)
         exitTrimMode()
       } else {
         const destName = dest.slice(slash + 1)
@@ -957,6 +966,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(rotateFile.path)
         exitRotateMode()
       } else {
         const destName = dest.slice(slash + 1)
@@ -1029,6 +1039,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(videoCropFile.path)
         exitVideoCropMode()
       } else {
         const destName = dest.slice(slash + 1)
@@ -1196,6 +1207,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
 
       if (overwrite) {
         setCacheBust(Date.now())
+        onFileChanged?.(cropFile.path)
         exitCropMode()
       } else {
         // Navigate to the new copy so the user immediately sees the result
@@ -1263,6 +1275,7 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
         setPan(zero)
         panRef.current = zero
         setCacheBust(Date.now())
+        onFileChanged?.(job.file.path)
       }
     } catch (err) {
       showImageRotateError(err.message ?? 'Rotate failed')
@@ -1506,6 +1519,26 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
             <span className={styles.metaSep}>·</span>
             <span>{formatDate(file.modified)}</span>
           </span>
+          {folderNavigation && (
+            <span className={styles.folderPath}>
+              {buildPathSegments(file.path.split('/').slice(0, -1).join('/') || '/').map((segment, segmentIndex) => (
+                <span key={segment.path} className={styles.folderCrumb}>
+                  {segmentIndex > 0 && <span className={styles.folderSep}>/</span>}
+                  <button
+                    type="button"
+                    className={[styles.folderSegment, segment.path === folderNavigation.activePath ? styles.folderSegmentActive : ''].filter(Boolean).join(' ')}
+                    aria-current={segment.path === folderNavigation.activePath ? 'true' : undefined}
+                    onClick={() => {
+                      if (segment.path === folderNavigation.activePath) return
+                      folderNavigation.onSelect(segment.path)
+                    }}
+                  >
+                    {segment.label}
+                  </button>
+                </span>
+              ))}
+            </span>
+          )}
         </div>
         {type === 'image' && !cropping && (
           <Tooltip tip="Crop" side="bottom">
@@ -1702,9 +1735,9 @@ export default function QuickLookOverlay({ file, connectionId, remoteBasePath, f
       </div>
 
       {/* File counter */}
-      {files.length > 1 && (
+      {(files.length > 1 || hasMoreBeyondList) && (
         <div className={styles.counter}>
-          {currentIdx + 1} / {files.length}
+          {currentIdx + 1} / {files.length}{hasMoreBeyondList ? '+' : ''}
         </div>
       )}
 

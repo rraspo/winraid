@@ -1,25 +1,35 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, act, within } from '@testing-library/react'
+import { render, screen, fireEvent, act, within, waitFor } from '@testing-library/react'
 import PlayOverlay, { WALL_PAGE_SIZE } from './PlayOverlay'
 import { createWinraidMock } from '../__mocks__/winraid'
 
 // Contract under test — the Play overlay is a scrollable masonry wall of
 // every file the media scan finds, in queue order (shuffle or sequential),
-// paged from the pool. Clicking a tile opens that file whole in a viewer
-// that walks the same order; right-click or Escape in the viewer returns
+// paged from the pool. Clicking a tile opens that file in the Quick Look
+// viewer, which walks the same order and carries every editing tool Quick
+// Look has. Escape, the Close button, or a right-click in the viewer return
 // to the wall exactly as it was left (same tiles, same scroll, no rescan).
 //
 // DOM contract the implementation must honor:
 //   - root: role="dialog" aria-label="Play"
+//   - props: { connectionId, path, onClose, remoteBasePath, canServerEdit, onDelete }
 //   - wall scroll container: data-testid="play-wall"
 //   - one tile per walked file, in trail order:
 //       <button aria-label="Open <basename>" data-type="image|video">
 //       image tiles contain an <img> whose src is the thumb URL (?thumb=1)
 //   - bottom sentinel: data-testid="play-wall-sentinel", observed with an
 //     IntersectionObserver; intersecting requests another page
-//   - viewer: data-testid="play-viewer", holds the full-size <img> (alt =
-//     basename) or <video>; hidden/unmounted while the wall is browsed
+//   - viewer: data-testid="play-viewer" wrapping a Quick Look dialog
+//     (role="dialog" aria-label="Quick Look: <basename>") whose "Next file"
+//     and "Previous file" controls and arrow keys walk the wall order, and
+//     whose Next stays enabled at the wall's tip while the queue has more
+//   - no half-screen tap zones over the media
 //   - WALL_PAGE_SIZE: exported page length, at least 12
+
+vi.mock('react-image-crop', () => ({
+  default: ({ children }) => <div data-testid="react-crop">{children}</div>,
+}))
+vi.mock('react-image-crop/dist/ReactCrop.css', () => ({}))
 
 let onMediaFoundCb = null
 let onMediaDoneCb  = null
@@ -71,7 +81,7 @@ afterEach(() => {
   delete window.winraid
 })
 
-function setup({ shuffle = false, recursive = true } = {}) {
+function setup({ shuffle = false, recursive = true, remote = {} } = {}) {
   onMediaFoundCb = null
   onMediaDoneCb  = null
   onMediaErrorCb = null
@@ -83,11 +93,19 @@ function setup({ shuffle = false, recursive = true } = {}) {
       onMediaFound: vi.fn().mockImplementation((cb) => { onMediaFoundCb = cb; return () => {} }),
       onMediaDone:  vi.fn().mockImplementation((cb) => { onMediaDoneCb  = cb; return () => {} }),
       onMediaError: vi.fn().mockImplementation((cb) => { onMediaErrorCb = cb; return () => {} }),
+      ...remote,
     },
   })
 }
 
-const defaultProps = { connectionId: 'c1', path: '/photos', onClose: vi.fn() }
+const defaultProps = {
+  connectionId: 'c1',
+  path: '/photos',
+  onClose: vi.fn(),
+  remoteBasePath: '/photos',
+  canServerEdit: true,
+  onDelete: vi.fn(),
+}
 
 function image(path) { return { path, size: 100, mtime: 0, type: 'image' } }
 function video(path) { return { path, size: 5000, mtime: 0, type: 'video' } }
@@ -104,6 +122,10 @@ function tilePaths() {
   return tiles().map((tile) => tile.getAttribute('aria-label').replace(/^Open /, ''))
 }
 
+function tileImageSrc(name) {
+  return screen.getByRole('button', { name: `Open ${name}` }).querySelector('img').getAttribute('src')
+}
+
 function wall() {
   return screen.getByTestId('play-wall')
 }
@@ -112,14 +134,23 @@ function viewer() {
   return screen.queryByTestId('play-viewer')
 }
 
+function viewerDialog() {
+  return within(viewer()).getByRole('dialog', { name: /^Quick Look: / })
+}
+
 function viewerImageSrc() {
-  return within(viewer()).getByRole('img').getAttribute('src')
+  return viewer().querySelector('img').getAttribute('src')
 }
 
 async function mount(props = defaultProps) {
   const utils = render(<PlayOverlay {...props} />)
   await act(async () => {})
   return utils
+}
+
+async function open(name) {
+  fireEvent.click(screen.getByRole('button', { name: `Open ${name}` }))
+  await act(async () => {})
 }
 
 function manyImages(count) {
@@ -175,11 +206,11 @@ describe('PlayOverlay wall', () => {
     emit([video('/photos/clip.mp4')])
     const [tile] = tiles()
     expect(tile.getAttribute('data-type')).toBe('video')
-    fireEvent.click(tile)
+    await open('clip.mp4')
     const player = viewer().querySelector('video')
     expect(player).toBeTruthy()
     expect(player.getAttribute('src')).toBe('nas-stream://c1/photos/clip.mp4')
-    expect(within(viewer()).queryByRole('img')).toBeNull()
+    expect(viewer().querySelector('img')).toBeNull()
   })
 
   it('keeps growing the wall as batches stream in below one page', async () => {
@@ -313,72 +344,124 @@ describe('PlayOverlay wall', () => {
 })
 
 describe('PlayOverlay viewer', () => {
-  it('clicking a tile opens that file whole, in a viewer over the wall', async () => {
+  it('clicking a tile opens that file in a Quick Look dialog over the wall', async () => {
     setup()
     await mount()
     emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open b.jpg' }))
+    await open('b.jpg')
     expect(viewer()).toBeTruthy()
+    expect(viewerDialog().getAttribute('aria-label')).toBe('Quick Look: b.jpg')
     expect(viewerImageSrc()).toContain('/photos/b.jpg')
-    expect(within(viewer()).getByRole('img').getAttribute('alt')).toBe('b.jpg')
   })
 
   it('opening a tile does not start a new scan', async () => {
     setup()
     await mount()
     emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open b.jpg' }))
+    await open('b.jpg')
     expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(1)
     expect(window.winraid.remote.mediaCancel).not.toHaveBeenCalled()
   })
 
-  it('ArrowRight and ArrowLeft walk the wall order from the opened tile', async () => {
+  it('offers the image editing tools for an image', async () => {
+    setup()
+    await mount()
+    emit([image('/photos/a.jpg')])
+    await open('a.jpg')
+    expect(within(viewer()).getByLabelText('Rotate image')).toBeTruthy()
+    expect(within(viewer()).getByLabelText('Crop image')).toBeTruthy()
+    expect(within(viewer()).getByLabelText('More actions')).toBeTruthy()
+  })
+
+  it('offers the video editing tools for a video when the server can edit', async () => {
+    setup()
+    await mount({ ...defaultProps, canServerEdit: true })
+    emit([video('/photos/clip.mp4')])
+    await open('clip.mp4')
+    expect(within(viewer()).getByLabelText('Trim video')).toBeTruthy()
+    expect(within(viewer()).getByLabelText('Rotate video')).toBeTruthy()
+    expect(within(viewer()).getByLabelText('Crop video')).toBeTruthy()
+    expect(within(viewer()).getByLabelText('Save video snapshot')).toBeTruthy()
+  })
+
+  it('hides the server-side video tools when the server cannot edit', async () => {
+    setup()
+    await mount({ ...defaultProps, canServerEdit: false })
+    emit([video('/photos/clip.mp4')])
+    await open('clip.mp4')
+    expect(within(viewer()).queryByLabelText('Trim video')).toBeNull()
+    expect(within(viewer()).queryByLabelText('Rotate video')).toBeNull()
+    expect(within(viewer()).queryByLabelText('Crop video')).toBeNull()
+  })
+
+  it('the viewer video keeps its native controls with nothing covering it', async () => {
+    setup()
+    await mount()
+    emit([video('/photos/clip.mp4')])
+    await open('clip.mp4')
+    const player = viewer().querySelector('video')
+    expect(player.hasAttribute('controls')).toBe(true)
+    expect(within(viewer()).queryByRole('button', { name: 'Previous' })).toBeNull()
+    expect(within(viewer()).queryByRole('button', { name: 'Next' })).toBeNull()
+  })
+
+  it('Next file and Previous file walk the wall order from the opened tile', async () => {
     setup()
     await mount()
     emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open b.jpg' }))
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await open('b.jpg')
+    fireEvent.click(within(viewer()).getByRole('button', { name: 'Next file' }))
     expect(viewerImageSrc()).toContain('/photos/c.jpg')
-    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.click(within(viewer()).getByRole('button', { name: 'Previous file' }))
     expect(viewerImageSrc()).toContain('/photos/b.jpg')
-    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    fireEvent.click(within(viewer()).getByRole('button', { name: 'Previous file' }))
     expect(viewerImageSrc()).toContain('/photos/a.jpg')
-    fireEvent.keyDown(window, { key: 'ArrowLeft' })
-    expect(viewerImageSrc()).toContain('/photos/a.jpg')
+    expect(within(viewer()).getByRole('button', { name: 'Previous file' })).toBeDisabled()
   })
 
-  it('wheel in the viewer walks forward and back', async () => {
+  it('ArrowRight and ArrowLeft walk the wall order exactly one step per press', async () => {
     setup()
     await mount()
-    emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open a.jpg' }))
-    fireEvent.wheel(window, { deltaY: 100 })
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg')])
+    await open('a.jpg')
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(viewerImageSrc()).toContain('/photos/b.jpg')
-    fireEvent.wheel(window, { deltaY: -100 })
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
     expect(viewerImageSrc()).toContain('/photos/a.jpg')
   })
 
-  it('walking past the last tile pulls the next file from the pool and adds it to the wall', async () => {
+  it('shows the position within the walked wall', async () => {
+    setup()
+    await mount()
+    emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg')])
+    act(() => { onMediaDoneCb?.({ totalMatches: 3, durationMs: 10 }) })
+    await open('b.jpg')
+    expect(within(viewer()).getByText('2 / 3')).toBeTruthy()
+  })
+
+  it('Next at the wall tip stays enabled while the queue has more and pulls the next file', async () => {
     setup()
     await mount()
     emit(manyImages(WALL_PAGE_SIZE + 3))
     const last = tilePaths()[WALL_PAGE_SIZE - 1]
-    fireEvent.click(screen.getByRole('button', { name: `Open ${last}` }))
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    await open(last)
+    const nextButton = within(viewer()).getByRole('button', { name: 'Next file' })
+    expect(nextButton).not.toBeDisabled()
+    fireEvent.click(nextButton)
     const shown = viewerImageSrc()
     expect(shown).not.toContain(last)
-    fireEvent.contextMenu(viewer())
+    fireEvent.keyDown(window, { key: 'Escape' })
     expect(tiles()).toHaveLength(WALL_PAGE_SIZE + 1)
     expect(shown).toContain(tilePaths()[WALL_PAGE_SIZE])
   })
 
-  it('shows the end marker at the last file once the scan is done', async () => {
+  it('Next at the last file is disabled once the scan is done and the pool is empty', async () => {
     setup()
     await mount()
     emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
     act(() => { onMediaDoneCb?.({ totalMatches: 2, durationMs: 10 }) })
-    fireEvent.click(screen.getByRole('button', { name: 'Open b.jpg' }))
-    expect(within(viewer()).getByText('End')).toBeTruthy()
+    await open('b.jpg')
+    expect(within(viewer()).getByRole('button', { name: 'Next file' })).toBeDisabled()
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     expect(viewerImageSrc()).toContain('/photos/b.jpg')
   })
@@ -387,8 +470,8 @@ describe('PlayOverlay viewer', () => {
     setup()
     await mount()
     emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open a.jpg' }))
-    const notPrevented = fireEvent.contextMenu(within(viewer()).getByRole('img'))
+    await open('a.jpg')
+    const notPrevented = fireEvent.contextMenu(viewer().querySelector('img'))
     expect(notPrevented).toBe(false)
     expect(viewer()).toBeNull()
     expect(tilePaths()).toEqual(['a.jpg', 'b.jpg'])
@@ -399,7 +482,7 @@ describe('PlayOverlay viewer', () => {
     setup()
     await mount({ ...defaultProps, onClose })
     emit([image('/photos/a.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open a.jpg' }))
+    await open('a.jpg')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(viewer()).toBeNull()
     expect(onClose).not.toHaveBeenCalled()
@@ -407,14 +490,15 @@ describe('PlayOverlay viewer', () => {
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('the close button in the viewer closes the whole overlay', async () => {
+  it('the Close button in the viewer returns to the wall without closing the overlay', async () => {
     const onClose = vi.fn()
     setup()
     await mount({ ...defaultProps, onClose })
     emit([image('/photos/a.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open a.jpg' }))
+    await open('a.jpg')
     fireEvent.click(within(viewer()).getByRole('button', { name: 'Close' }))
-    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(viewer()).toBeNull()
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('returning to the wall keeps the same wall node, scroll position and queue, with no rescan', async () => {
@@ -424,7 +508,7 @@ describe('PlayOverlay viewer', () => {
     const wallBefore = wall()
     const before = tilePaths()
     wallBefore.scrollTop = 480
-    fireEvent.click(screen.getByRole('button', { name: `Open ${before[3]}` }))
+    await open(before[3])
     fireEvent.keyDown(window, { key: 'ArrowRight' })
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(wall()).toBe(wallBefore)
@@ -438,32 +522,132 @@ describe('PlayOverlay viewer', () => {
     setup()
     await mount()
     emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open a.jpg' }))
+    await open('a.jpg')
     fireEvent.keyDown(window, { key: 'Escape' })
-    fireEvent.click(screen.getByRole('button', { name: 'Open c.jpg' }))
+    await open('c.jpg')
     expect(viewerImageSrc()).toContain('/photos/c.jpg')
     fireEvent.keyDown(window, { key: 'ArrowLeft' })
     expect(viewerImageSrc()).toContain('/photos/b.jpg')
   })
 
-  it('a breadcrumb click in the viewer rescans there and keeps the open file until navigation', async () => {
+  it('Delete from the viewer menu hands the file to onDelete', async () => {
+    const onDelete = vi.fn()
+    setup()
+    await mount({ ...defaultProps, onDelete })
+    emit([image('/photos/a.jpg')])
+    await open('a.jpg')
+    fireEvent.click(within(viewer()).getByLabelText('More actions'))
+    fireEvent.click(within(viewer()).getByText('Delete'))
+    expect(onDelete).toHaveBeenCalledWith({ name: 'a.jpg', path: '/photos/a.jpg', isDir: false })
+  })
+
+  it('an in-place edit in the viewer refreshes that tile on the wall', async () => {
+    const context = { drawImage: vi.fn(), translate: vi.fn(), rotate: vi.fn() }
+    const canvasMock = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+      toBlob: vi.fn((callback, mime) => callback(new Blob(['pixels'], { type: mime ?? 'image/jpeg' }))),
+    }
+    const originalCreateElement = document.createElement.bind(document)
+    document.createElement = (tag) => (tag === 'canvas' ? canvasMock : originalCreateElement(tag))
+    try {
+      const writeFileBinary = vi.fn().mockResolvedValue({ ok: true })
+      setup({ remote: { writeFileBinary } })
+      await mount()
+      emit([image('/photos/a.jpg'), image('/photos/b.jpg')])
+      const srcBefore = tileImageSrc('a.jpg')
+      await open('a.jpg')
+      fireEvent.click(within(viewer()).getByLabelText('Rotate image'))
+      await act(async () => {})
+      const sourceImg = document.querySelector('.rotateSourceImage')
+      expect(sourceImg).not.toBeNull()
+      Object.defineProperty(sourceImg, 'naturalWidth',  { configurable: true, value: 800 })
+      Object.defineProperty(sourceImg, 'naturalHeight', { configurable: true, value: 600 })
+      fireEvent.load(sourceImg)
+      await waitFor(() => expect(writeFileBinary).toHaveBeenCalledWith('c1', '/photos/a.jpg', expect.anything(), { atomic: true }))
+      await waitFor(() => expect(window.winraid.cache.invalidateFile).toHaveBeenCalledWith('c1', '/photos/a.jpg'))
+      fireEvent.keyDown(window, { key: 'Escape' })
+      await waitFor(() => expect(tileImageSrc('a.jpg')).not.toBe(srcBefore))
+      expect(tileImageSrc('a.jpg')).toMatch(/^nas-stream:\/\/c1\/photos\/a\.jpg\?thumb=1/)
+      expect(tileImageSrc('b.jpg')).toMatch(/^nas-stream:\/\/c1\/photos\/b\.jpg\?thumb=1$/)
+    } finally {
+      document.createElement = originalCreateElement
+    }
+  })
+})
+
+// The viewer shows the open file's folder path as breadcrumbs under the
+// file name, the way the old Play viewer did. Clicking a segment makes that
+// folder the new scan root: the queue rebuilds from a fresh scan there with
+// the same settings, seeded with the file that was open so it stays the
+// first tile, and the viewer closes onto the new wall. The segment that is
+// the current scan root carries aria-current and is inert.
+describe('PlayOverlay viewer breadcrumbs', () => {
+  const nested = image('/photos/2025/vacation/img.jpg')
+
+  function crumb(label) {
+    return within(viewer()).getByRole('button', { name: label })
+  }
+
+  it('shows the open file folder as breadcrumbs with the scan root marked current', async () => {
     setup()
     await mount()
-    emit([image('/photos/2025/vacation/img.jpg')])
-    fireEvent.click(screen.getByRole('button', { name: 'Open img.jpg' }))
-    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos', { recursive: true })
+    emit([nested])
+    await open('img.jpg')
+    expect(crumb('/')).toBeTruthy()
+    expect(crumb('photos').getAttribute('aria-current')).toBe('true')
+    expect(crumb('2025').hasAttribute('aria-current')).toBe(false)
+    expect(crumb('vacation').hasAttribute('aria-current')).toBe(false)
+    expect(within(viewer()).getByRole('button', { name: 'img.jpg' })).toBeTruthy()
+  })
 
-    fireEvent.click(within(viewer()).getByRole('button', { name: '2025' }))
+  it('clicking a deeper folder rescans there, seeds the wall with the open file, and closes the viewer', async () => {
+    setup()
+    await mount()
+    emit([nested, image('/photos/other.jpg')])
+    await open('img.jpg')
+    fireEvent.click(crumb('2025'))
     await act(async () => {})
     expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos/2025', { recursive: true })
-    expect(viewerImageSrc()).toContain('img.jpg')
-
-    emit([image('/photos/2025/spring.jpg')])
-    expect(viewerImageSrc()).toContain('img.jpg')
-
-    fireEvent.keyDown(window, { key: 'ArrowRight' })
-    expect(viewerImageSrc()).toContain('spring.jpg')
-    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(viewer()).toBeNull()
+    expect(tilePaths()).toEqual(['img.jpg'])
+    emit([image('/photos/2025/spring.jpg'), nested])
     expect(tilePaths()).toEqual(['img.jpg', 'spring.jpg'])
+    expect(screen.getByRole('button', { name: '2025' }).getAttribute('aria-current')).toBe('true')
+  })
+
+  it('clicking a folder above the scan root widens the scope the same way', async () => {
+    setup()
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    fireEvent.click(crumb('/'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/', { recursive: true })
+    expect(viewer()).toBeNull()
+    expect(tilePaths()).toEqual(['img.jpg'])
+  })
+
+  it('clicking the current scan root does nothing', async () => {
+    setup()
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    fireEvent.click(crumb('photos'))
+    await act(async () => {})
+    expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(1)
+    expect(viewer()).toBeTruthy()
+  })
+
+  it('keeps the shuffle setting across the rescan', async () => {
+    setup({ shuffle: true })
+    await mount()
+    emit([nested])
+    await open('img.jpg')
+    fireEvent.click(crumb('2025'))
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: 'Toggle shuffle' }).getAttribute('aria-pressed')).toBe('true')
+    expect(window.winraid.remote.mediaScan).toHaveBeenLastCalledWith('c1', '/photos/2025', { recursive: true })
   })
 })

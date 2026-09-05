@@ -1135,3 +1135,47 @@ describe('QuickLookOverlay crop-mode rotate control (unchanged by one-click imag
     expect(cropImg.src).toContain('blob:crop-rotated')
   })
 })
+
+// Folder breadcrumbs are opt-in: a caller passes `folderNavigation`
+// ({ activePath, onSelect }) to get the file's folder path rendered as
+// segment buttons under the file name. Browse-view Quick Look passes
+// nothing and keeps its single file-name button.
+describe('QuickLookOverlay folder breadcrumbs', () => {
+  const nestedFile = { name: 'img.jpg', path: '/media/2025/vacation/img.jpg', size: 100, modified: 0 }
+
+  it('renders no folder segments without folderNavigation', async () => {
+    render(<QuickLookOverlay {...baseProps} file={nestedFile} />)
+    await act(async () => {})
+    expect(screen.queryByRole('button', { name: '2025' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'vacation' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'img.jpg' })).toBeInTheDocument()
+  })
+
+  it('renders root and every folder of the file as segments, marking the active path current', async () => {
+    const onSelect = vi.fn()
+    render(<QuickLookOverlay {...baseProps} file={nestedFile} folderNavigation={{ activePath: '/media/2025', onSelect }} />)
+    await act(async () => {})
+    expect(screen.getByRole('button', { name: '/' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'media' }).hasAttribute('aria-current')).toBe(false)
+    expect(screen.getByRole('button', { name: '2025' }).getAttribute('aria-current')).toBe('true')
+    expect(screen.getByRole('button', { name: 'vacation' }).hasAttribute('aria-current')).toBe(false)
+  })
+
+  it('hands the clicked folder path to onSelect', async () => {
+    const onSelect = vi.fn()
+    render(<QuickLookOverlay {...baseProps} file={nestedFile} folderNavigation={{ activePath: '/media', onSelect }} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'vacation' }))
+    expect(onSelect).toHaveBeenCalledWith('/media/2025/vacation')
+    fireEvent.click(screen.getByRole('button', { name: '/' }))
+    expect(onSelect).toHaveBeenCalledWith('/')
+  })
+
+  it('does not call onSelect for the active path', async () => {
+    const onSelect = vi.fn()
+    render(<QuickLookOverlay {...baseProps} file={nestedFile} folderNavigation={{ activePath: '/media', onSelect }} />)
+    await act(async () => {})
+    fireEvent.click(screen.getByRole('button', { name: 'media' }))
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+})
