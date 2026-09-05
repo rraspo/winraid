@@ -118,8 +118,11 @@ function emit(files) {
   act(() => { onMediaFoundCb?.({ files }) })
 }
 
+// The wall is aria-hidden while the viewer covers it, so tile queries
+// include hidden nodes: the tiles are still there, just not for assistive
+// technology until the viewer closes.
 function tiles() {
-  return screen.queryAllByRole('button', { name: /^Open / })
+  return screen.queryAllByRole('button', { name: /^Open /, hidden: true })
 }
 
 function tilePaths() {
