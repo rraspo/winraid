@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, List, Shuffle, Maximize2, Loader } from 'lucide-react'
+import { X, List, Shuffle, Maximize2, Loader, Square, CheckSquare, FolderInput, Trash2 } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
 import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
@@ -47,6 +47,8 @@ export default function PlayWall({
   error, retry, pageSize, fill,
   onSegmentClick, onOpenTile, onToggleFullscreen, onClose,
   hiddenFromViewer, fileVersions,
+  selectedPaths, onToggleSelect, onSelectRange, onClearSelection,
+  onRequestBulkDelete, onRequestBulkMove, mutationInFlight,
 }) {
   const scrollContainerRef = useRef(null)
   const sentinelRef        = useRef(null)
@@ -94,6 +96,20 @@ export default function PlayWall({
     const { naturalWidth, naturalHeight } = event.target
     if (!naturalWidth || !naturalHeight) return
     setMediaRatio(remotePath, naturalWidth / naturalHeight)
+  }
+
+  // Ctrl/Meta+click toggles the tile, Shift+click extends the range from
+  // the selection anchor, and a plain click still opens the viewer.
+  function handleTileClick(tileIndex, filePath, event) {
+    if (event.ctrlKey || event.metaKey) {
+      onToggleSelect(filePath)
+      return
+    }
+    if (event.shiftKey) {
+      onSelectRange(filePath)
+      return
+    }
+    onOpenTile(tileIndex)
   }
 
   const { columnCount, columnWidth } = columnGeometry(containerWidth)
@@ -189,42 +205,99 @@ export default function PlayWall({
               const name       = file.path.split('/').pop()
               const streamUrl  = nasStreamUrl(connectionId, file.path)
               const version    = fileVersions?.get(file.path)
+              const isSelected = selectedPaths.has(file.path)
               const tileStyle  = position
                 ? { left: position.left, top: position.top, width: position.width, height: position.height }
                 : { left: 0, top: 0, width: columnWidth, height: columnWidth }
               return (
-                <button
-                  key={file.path}
-                  type="button"
-                  className={styles.tile}
-                  data-type={file.type}
-                  style={tileStyle}
-                  onClick={() => onOpenTile(tileIndex)}
-                  aria-label={`Open ${name}`}
-                >
-                  {file.type === 'video' ? (
-                    <WallVideo
-                      connectionId={connectionId}
-                      remotePath={file.path}
-                      onRatioKnown={setMediaRatio}
-                      playbackSuspended={hiddenFromViewer}
-                    />
-                  ) : (
-                    <img
-                      className={styles.tileImage}
-                      src={isAnimatedGif(file.path) ? withVersion(streamUrl, version) : withVersion(withThumb(streamUrl), version)}
-                      alt=""
-                      loading="lazy"
-                      onLoad={(event) => handleThumbLoad(file.path, event)}
-                    />
-                  )}
-                </button>
+                <div key={file.path} className={styles.tileWrap} style={tileStyle}>
+                  <button
+                    type="button"
+                    className={styles.tile}
+                    data-type={file.type}
+                    data-selected={isSelected ? 'true' : undefined}
+                    style={{ width: tileStyle.width, height: tileStyle.height }}
+                    onClick={(event) => handleTileClick(tileIndex, file.path, event)}
+                    aria-label={`Open ${name}`}
+                  >
+                    {file.type === 'video' ? (
+                      <WallVideo
+                        connectionId={connectionId}
+                        remotePath={file.path}
+                        onRatioKnown={setMediaRatio}
+                        playbackSuspended={hiddenFromViewer}
+                      />
+                    ) : (
+                      <img
+                        className={styles.tileImage}
+                        src={isAnimatedGif(file.path) ? withVersion(streamUrl, version) : withVersion(withThumb(streamUrl), version)}
+                        alt=""
+                        loading="lazy"
+                        onLoad={(event) => handleThumbLoad(file.path, event)}
+                      />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.selectBtn}
+                    aria-label={`Select ${name}`}
+                    aria-pressed={isSelected}
+                    onClick={() => onToggleSelect(file.path)}
+                  >
+                    {isSelected ? <CheckSquare size={14} /> : <Square size={14} />}
+                  </button>
+                </div>
               )
             })}
           </div>
         )}
         <div data-testid="play-wall-sentinel" className={styles.sentinel} ref={sentinelRef} />
       </div>
+      {(selectedPaths.size > 0 || mutationInFlight) && (
+        <div className={styles.bulkBar} role="toolbar" aria-label="Selection">
+          {mutationInFlight ? (
+            <span className={styles.bulkCount}>
+              {mutationInFlight.kind === 'delete' ? 'Deleting' : 'Moving'} {mutationInFlight.done + 1} of {mutationInFlight.total}
+            </span>
+          ) : (
+            <span className={styles.bulkCount}>{selectedPaths.size} selected</span>
+          )}
+          <div className={styles.bulkActions}>
+            <Tooltip tip="Move selected" side="top">
+              <button
+                type="button"
+                className={styles.bulkBtn}
+                aria-label="Move selected"
+                onClick={onRequestBulkMove}
+                disabled={Boolean(mutationInFlight)}
+              >
+                <FolderInput size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip tip="Delete selected" side="top">
+              <button
+                type="button"
+                className={[styles.bulkBtn, styles.bulkBtnDanger].join(' ')}
+                aria-label="Delete selected"
+                onClick={onRequestBulkDelete}
+                disabled={Boolean(mutationInFlight)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip tip="Clear selection" side="top">
+              <button
+                type="button"
+                className={styles.bulkBtn}
+                aria-label="Clear selection"
+                onClick={onClearSelection}
+              >
+                <X size={14} />
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
