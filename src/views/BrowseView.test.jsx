@@ -7,9 +7,11 @@ import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
 
 vi.mock('../components/PlayOverlay', () => ({
-  default: ({ onClose }) => (
+  default: ({ onClose, onMutated }) => (
     <div data-testid="play-overlay">
       <button onClick={onClose}>close-play</button>
+      <button onClick={() => onMutated({ paths: ['/mnt/user/data/readme.txt'] })}>mutate-here</button>
+      <button onClick={() => onMutated({ paths: ['/mnt/user/data/Photos/2024/x.jpg'] })}>mutate-elsewhere</button>
     </div>
   ),
 }))
@@ -472,6 +474,40 @@ describe('BrowseView', () => {
     expect(screen.getByTestId('play-overlay')).toBeInTheDocument()
     fireEvent.click(screen.getByText('close-play'))
     expect(screen.queryByTestId('play-overlay')).not.toBeInTheDocument()
+  })
+
+  // Play performs its own deletes and moves; the browse view hears about
+  // them through onMutated({ paths }) and drops the cached listing of every
+  // touched folder, refetching the current one so the listing behind Play
+  // (and the one shown after Play closes) never lists a file that is gone.
+  it('a Play mutation in the current folder refetches its listing', async () => {
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('readme.txt')
+    const listCallsBefore = window.winraid.remote.list.mock.calls.length
+    window.winraid.remote.list.mockResolvedValue({
+      ok: true,
+      entries: SAMPLE_ENTRIES.filter((entry) => entry.name !== 'readme.txt'),
+    })
+    fireEvent.click(screen.getByLabelText('Play media slideshow'))
+    await act(async () => { fireEvent.click(screen.getByText('mutate-here')) })
+    expect(window.winraid.remote.list.mock.calls.length).toBeGreaterThan(listCallsBefore)
+    expect(window.winraid.remote.list).toHaveBeenLastCalledWith('conn-1', '/mnt/user/data')
+    fireEvent.click(screen.getByText('close-play'))
+    await waitFor(() => expect(screen.queryByText('readme.txt')).not.toBeInTheDocument())
+    expect(screen.getByText('video.mp4')).toBeInTheDocument()
+  })
+
+  it('a Play mutation in another folder drops that folder from the cache without refetching the current one', async () => {
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('readme.txt')
+    await act(async () => { await remoteFS.list('conn-1', '/mnt/user/data/Photos/2024') })
+    expect(remoteFS.getSnapshot('conn-1', '/mnt/user/data/Photos/2024')).not.toBeNull()
+    const listCallsBefore = window.winraid.remote.list.mock.calls.length
+    fireEvent.click(screen.getByLabelText('Play media slideshow'))
+    await act(async () => { fireEvent.click(screen.getByText('mutate-elsewhere')) })
+    expect(remoteFS.getSnapshot('conn-1', '/mnt/user/data/Photos/2024')).toBeNull()
+    expect(remoteFS.getSnapshot('conn-1', '/mnt/user/data')).not.toBeNull()
+    expect(window.winraid.remote.list.mock.calls.length).toBe(listCallsBefore)
   })
 
   describe('browse directory cache', () => {
