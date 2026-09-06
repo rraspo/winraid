@@ -1,15 +1,15 @@
 .gridCard {
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--bg-card, var(--bg-panel));
+  border-radius: 8px;
+  border: 1px solid var(--strokeSoft);
+  background: var(--card);
   cursor: default;
   transition: border-color var(--transition), background-color var(--transition);
   min-width: 0;
 }
 
 .gridCard:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
+  border-color: var(--stroke);
+  background: var(--hover);
 }
 
 .gridCardDir  { cursor: pointer; }
@@ -17,13 +17,13 @@
 
 .gridThumb {
   position: relative;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 4 / 3;
   display: flex;
   align-items: center;
   overflow: hidden;
   justify-content: center;
-  background: var(--bg-base);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--surface2);
+  border-radius: 8px 8px 0 0;
 }
 
 .gridIconDir { width: 40px; height: 40px; color: var(--accent); opacity: 0.8; }
@@ -50,7 +50,7 @@
 }
 
 .gridName {
-  font-size: var(--font-size-xs);
+  font-size: 12.5px;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -58,8 +58,8 @@
 }
 
 .gridSize {
-  font-size: 10px;
-  color: var(--text-faint);
+  font-size: 11px;
+  color: var(--text3);
   padding-left: 2px;
 }
 
@@ -87,15 +87,16 @@
 }
 
 .gridCard:hover .gridCheckbox,
-.gridCardSelected .gridCheckbox {
+.gridCardSelected .gridCheckbox,
+.gridCardSelectionMode .gridCheckbox {
   opacity: 1;
 }
 
 .checkmark {
   width: 16px;
   height: 16px;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  border: 1.5px solid var(--stroke);
   background: transparent;
   transition: background-color 150ms ease, border-color 150ms ease;
   display: flex;
@@ -108,7 +109,7 @@
   display: none;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--onAccent);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg) translate(-0.5px, -0.5px);
 }
@@ -128,7 +129,7 @@
 
 .gridCardSelected {
   border-color: var(--accent) !important;
-  background: rgba(91, 164, 245, 0.08) !important;
+  background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
 }
 
 /* ── Drag-and-drop states ─────────────────────────────────────────────────── */
@@ -140,7 +141,7 @@
 
 .dragging { opacity: 0.45; }
 
-.lastVisited { background: rgba(91, 164, 245, 0.25) !important; }
+.lastVisited { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
 
 /* Type-to-jump cursor — instant solid accent tint, snappier than the
    selection background. Snaps in immediately, eases out on removal so
@@ -149,4 +150,10 @@
   background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
   border-color: var(--accent) !important;
   transition: background-color 200ms ease-out, border-color 200ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gridCard, .gridCheckbox, .checkmark, .cursor {
+    transition: none;
+  }
 }

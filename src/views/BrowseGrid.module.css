@@ -11,14 +11,14 @@
 /* ── Empty dir ────────────────────────────────────────────────────────────── */
 .emptyDir {
   padding: var(--space-4);
-  color: var(--text-faint);
+  color: var(--text3);
   font-size: var(--font-size-sm);
 }
 
 /* ── Lasso rubber-band rect ───────────────────────────────────────────────── */
 .lassoRect {
   position: absolute;
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   border: 1.5px solid var(--accent);
   border-radius: 3px;
   pointer-events: none;

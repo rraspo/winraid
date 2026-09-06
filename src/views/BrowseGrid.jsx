@@ -6,7 +6,7 @@ import styles from './BrowseGrid.module.css'
 
 const BrowseGrid = memo(function BrowseGrid({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
-  path, selectedId, busy, selected, dragSourcePaths, lastVisitedDir,
+  path, selectedId, busy, selected, selectionMode, dragSourcePaths, lastVisitedDir,
   highlightFile, highlightRef, cursorEntry,
   scrollAnchor, setScrollAnchor,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
@@ -159,7 +159,10 @@ const BrowseGrid = memo(function BrowseGrid({
   return (
     <div
       ref={setGridScrollEl}
-      className={[styles.gridWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
+      className={[
+        styles.gridWrapper,
+        selected.size > 0 ? styles.hasSelection : '',
+      ].join(' ')}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
@@ -213,6 +216,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       busy={busy}
                       index={entryIndex}
                       isSelected={selected.has(entry.name)}
+                      selectionMode={selectionMode}
                       isDragSource={dragSourcePaths.has(entryPath)}
                       isLastVisited={isDir && lastVisitedDir === entry.name}
                       isHighlighted={highlightFile === entry.name}

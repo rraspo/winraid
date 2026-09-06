@@ -6,7 +6,7 @@ import styles from './BrowseList.module.css'
 
 const BrowseList = memo(function BrowseList({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
-  path, selectedId, busy, selected, dragSourcePaths, lastVisitedDir,
+  path, selectedId, busy, selected, selectionMode, dragSourcePaths, lastVisitedDir,
   highlightFile, highlightRef, cursorEntry,
   scrollAnchor, setScrollAnchor,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
@@ -159,7 +159,11 @@ const BrowseList = memo(function BrowseList({
   return (
     <div
       ref={setListScrollEl}
-      className={[styles.listWrapper, selected.size > 0 ? styles.hasSelection : ''].join(' ')}
+      className={[
+        styles.listWrapper,
+        selected.size > 0 ? styles.hasSelection : '',
+        selectionMode ? styles.forceCheckboxes : '',
+      ].join(' ')}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}

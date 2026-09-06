@@ -77,7 +77,7 @@ afterEach(() => {
 describe('BrowseView', () => {
   it('renders the header toolbar', async () => {
     render(<BrowseView onHistoryPush={() => {}} />)
-    expect(await screen.findByText('New Folder')).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'New folder' })).toBeInTheDocument()
   })
 
   it('renders breadcrumb path segments', async () => {
@@ -469,7 +469,7 @@ describe('BrowseView', () => {
 
   it('mounts PlayOverlay when Play is clicked and unmounts on close', async () => {
     render(<BrowseView onHistoryPush={() => {}} />)
-    await screen.findByText('New Folder')
+    await screen.findByRole('button', { name: 'New folder' })
     fireEvent.click(screen.getByLabelText('Play media slideshow'))
     expect(screen.getByTestId('play-overlay')).toBeInTheDocument()
     fireEvent.click(screen.getByText('close-play'))

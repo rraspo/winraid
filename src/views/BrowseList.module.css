@@ -8,11 +8,15 @@
 /* Extra bottom padding when bulk bar is visible so last row isn't covered */
 .hasSelection { padding-bottom: 52px; }
 
+/* Selection mode (the toolbar's Select toggle): every row's checkbox
+   stays visible instead of only appearing on hover/selection. */
+.forceCheckboxes .checkbox { opacity: 1; }
+
 /* Rubber-band lasso rect — visual layer; pointer-events disabled so it
    doesn't eat clicks on rows underneath. */
 .lassoRect {
   position: absolute;
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   border: 1.5px solid var(--accent);
   border-radius: 3px;
   pointer-events: none;
@@ -25,14 +29,14 @@
   align-items: center;
   padding: 0 var(--space-4);
   height: 32px;
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
+  border-bottom: 1px solid var(--strokeSoft);
+  font-size: 10.5px;
+  color: var(--text3);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   position: sticky;
   top: 0;
-  background: var(--bg-panel);
+  background: var(--bg);
   z-index: 1;
 }
 
@@ -47,12 +51,12 @@
   align-items: center;
   padding: 0 var(--space-4);
   height: 40px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--strokeSoft);
   font-size: var(--font-size-sm);
   transition: background-color var(--transition);
 }
 
-.row:hover { background-color: var(--bg-hover); }
+.row:hover { background-color: var(--hover); }
 
 .rowDir { }
 
@@ -67,7 +71,7 @@
 }
 
 .iconDir  { color: var(--accent);     flex-shrink: 0; }
-.iconFile { color: var(--text-faint); flex-shrink: 0; }
+.iconFile { color: var(--text3); flex-shrink: 0; }
 
 .nameBtn {
   overflow: hidden;
@@ -84,7 +88,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-muted);
+  color: var(--text2);
 }
 
 /* ── Size / date / actions cells ─────────────────────────────────────────── */
@@ -92,7 +96,7 @@
   width: 80px;
   flex-shrink: 0;
   text-align: right;
-  color: var(--text-muted);
+  color: var(--text2);
   font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
@@ -101,7 +105,7 @@
   width: 110px;
   flex-shrink: 0;
   text-align: right;
-  color: var(--text-faint);
+  color: var(--text3);
   font-size: var(--font-size-xs);
 }
 
@@ -148,7 +152,7 @@
   width: 16px;
   height: 16px;
   border-radius: var(--radius-sm);
-  border: 1.5px solid var(--border-strong);
+  border: 1.5px solid var(--stroke);
   background: transparent;
   transition: background-color 150ms ease, border-color 150ms ease;
   display: flex;
@@ -161,7 +165,7 @@
   display: none;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--onAccent);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg) translate(-0.5px, -0.5px);
 }
@@ -189,13 +193,13 @@
 .checkbox:hover .checkmark { border-color: var(--accent); }
 
 /* ── Row selection ────────────────────────────────────────────────────────── */
-.rowSelected          { background: rgba(91, 164, 245, 0.10) !important; }
-.rowSelected:hover    { background: rgba(91, 164, 245, 0.15) !important; }
+.rowSelected          { background: color-mix(in srgb, var(--accent) 10%, transparent) !important; }
+.rowSelected:hover    { background: color-mix(in srgb, var(--accent) 15%, transparent) !important; }
 
 /* ── Empty dir ────────────────────────────────────────────────────────────── */
 .emptyDir {
   padding: var(--space-4);
-  color: var(--text-faint);
+  color: var(--text3);
   font-size: var(--font-size-sm);
 }
 
@@ -208,7 +212,7 @@
 
 .dragging { opacity: 0.45; }
 
-.lastVisited { background: rgba(91, 164, 245, 0.25) !important; }
+.lastVisited { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
 
 /* Type-to-jump cursor — instant solid accent tint, snappier than the
    selection background so the user can see where their keystrokes
