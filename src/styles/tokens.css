@@ -2,89 +2,76 @@
    Design tokens — all CSS custom properties live here.
    Theme is applied by setting [data-theme] on <html> in App.jsx.
    Dark is the default; light overrides only what changes.
+   Values and names come from the Claude Design prototype so a runtime accent
+   change (Settings > Appearance) recolors the whole app through a single
+   `--accent` custom property set on the root element.
    ============================================================================= */
 
 /* Dark theme (default) */
 :root,
 [data-theme="dark"] {
+  /* Accent — the default is a static fallback; App sets --accent and
+     --onAccent on the root element from the resolved Settings > Appearance
+     choice, so every token below that derives from --accent recolors live. */
+  --accent:    #CA5010;
+  --accentHi:  color-mix(in oklab, var(--accent) 55%, white);
+  --onAccent:  #FFFFFF;
+  --btnAccent: color-mix(in oklab, var(--accent) 85%, white);
+
   /* Surfaces */
-  --bg:           #0F1419;
-  --bg-base:      #0F1419;
-  --bg-panel:     #161E27;
-  --bg-card:      #1C2733;
-  --bg-surface:   #192431;
-  --bg-hover:     rgba(255, 255, 255, 0.04);
-  --bg-active:    rgba(91, 164, 245, 0.12);
-  --bg-input:     rgba(255, 255, 255, 0.05);
+  --bg:         #202020;
+  --card:       #2B2B2B;
+  --surface2:   #333333;
 
   /* Borders */
-  --border:        rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.14);
-  --border-input:  rgba(255, 255, 255, 0.10);
+  --stroke:     rgba(255, 255, 255, 0.07);
+  --strokeSoft: rgba(255, 255, 255, 0.045);
 
   /* Text */
-  --text:           #E6EDF3;
-  --text-muted:     #7D8590;
-  --text-faint:     #3D4450;
-  --text-on-accent: #FFFFFF;
+  --text:  #FFFFFF;
+  --text2: #C9C9C9;
+  --text3: #8F8F8F;
 
-  /* Accent / Primary — blue adapted for dark surfaces */
-  --accent:        #5BA4F5;
-  --accent-dark:   #82BBFF;
-  --accent-glow:   rgba(91, 164, 245, 0.20);
-  --accent-subtle: rgba(91, 164, 245, 0.10);
+  /* Interaction states */
+  --hover:  rgba(255, 255, 255, 0.05);
+  --active: rgba(255, 255, 255, 0.09);
 
-  /* Scrollbar */
-  --scrollbar-thumb:       rgba(255, 255, 255, 0.12);
-  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.22);
+  /* Status */
+  --ok:   #6CCB5F;
+  --warn: #FCE100;
+  --err:  #FF99A4;
+
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* Light theme overrides — Material Design 3 blue palette */
+/* Light theme overrides — only what changes */
 [data-theme="light"] {
-  /* Surfaces */
-  --bg:           #F8F9FF;   /* surface */
-  --bg-base:      #F8F9FF;
-  --bg-panel:     #EFF4FF;   /* surface-container-low — sidebar, panels */
-  --bg-card:      #FFFFFF;   /* surface-container-lowest — card backgrounds */
-  --bg-surface:   #E5EEFF;   /* surface-container */
-  --bg-hover:     rgba(0, 79, 150, 0.05);
-  --bg-active:    #D3E4FE;   /* surface-container-highest — active nav */
-  --bg-input:     rgba(0, 40, 120, 0.04);
+  --accentHi:  var(--accent);
+  --btnAccent: var(--accent);
 
-  /* Borders */
-  --border:        rgba(193, 198, 212, 0.7);
-  --border-strong: rgba(113, 119, 131, 0.45);
-  --border-input:  rgba(0, 40, 120, 0.16);
+  --bg:       #F3F3F3;
+  --card:     #FFFFFF;
+  --surface2: #F7F7F7;
 
-  /* Text */
-  --text:           #0B1C30;   /* on-surface */
-  --text-muted:     #414752;   /* on-surface-variant */
-  --text-faint:     #717783;   /* outline */
-  --text-on-accent: #FFFFFF;
+  --stroke:     rgba(0, 0, 0, 0.08);
+  --strokeSoft: rgba(0, 0, 0, 0.05);
 
-  /* Accent / Primary — deep blue for light surfaces */
-  --accent:        #004F96;
-  --accent-dark:   #0067C0;
-  --accent-glow:   rgba(0, 79, 150, 0.14);
-  --accent-subtle: rgba(0, 79, 150, 0.08);
+  --text:  #1B1B1B;
+  --text2: #4B4B4B;
+  --text3: #8A8A8A;
 
-  /* Scrollbar */
-  --scrollbar-thumb:       rgba(0, 40, 120, 0.14);
-  --scrollbar-thumb-hover: rgba(0, 40, 120, 0.26);
+  --hover:  rgba(0, 0, 0, 0.04);
+  --active: rgba(0, 0, 0, 0.07);
+
+  --ok:   #0F7B0F;
+  --warn: #9D5D00;
+  --err:  #C42B1C;
+
+  --shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
 /* Theme-invariant tokens */
 :root {
-  /* State colors */
-  --success:          #3DD68C;
-  --success-subtle:   rgba(61, 214, 140, 0.12);
-  --error:            #FF4D4D;
-  --error-subtle:     rgba(255, 77, 77, 0.12);
-  --warning:          #FFB547;
-  --warning-subtle:   rgba(255, 181, 71, 0.12);
-  --info:             #58A6FF;
-  --info-subtle:      rgba(88, 166, 255, 0.12);
-
   /* Spacing — 4px base grid */
   --space-1:   4px;
   --space-2:   8px;
@@ -129,4 +116,52 @@
   --sidebar-width:    220px;
   --statusbar-height: 26px;
   --header-height:    52px;
+}
+
+/* =============================================================================
+   Legacy aliases — removed when the last screen lands.
+   Every pre-redesign token name is kept, pointing at the closest token above,
+   so existing CSS modules keep working unchanged until each screen migrates
+   to the new names directly.
+   ============================================================================= */
+:root {
+  /* Surfaces */
+  --bg-base:    var(--bg);
+  --bg-panel:   var(--bg);
+  --bg-card:    var(--card);
+  --bg-surface: var(--surface2);
+  --bg-hover:   var(--hover);
+  --bg-active:  var(--active);
+  --bg-input:   var(--surface2);
+
+  /* Borders */
+  --border:        var(--strokeSoft);
+  --border-strong: var(--stroke);
+  --border-input:  var(--stroke);
+
+  /* Text */
+  --text-muted:     var(--text2);
+  --text-faint:     var(--text3);
+  --text-on-accent: var(--onAccent);
+
+  /* Accent / Primary */
+  --accent-dark:   var(--accentHi);
+  --accent-glow:   color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-subtle: color-mix(in srgb, var(--accent) 10%, transparent);
+
+  /* State colors */
+  --success:        var(--ok);
+  --success-subtle: color-mix(in srgb, var(--ok) 12%, transparent);
+  --error:          var(--err);
+  --error-subtle:   color-mix(in srgb, var(--err) 12%, transparent);
+  --warning:        var(--warn);
+  --warning-subtle: color-mix(in srgb, var(--warn) 12%, transparent);
+  /* No dedicated "info" hue in the new palette — the accent highlight is the
+     closest equivalent. */
+  --info:           var(--accentHi);
+  --info-subtle:    color-mix(in srgb, var(--accentHi) 12%, transparent);
+
+  /* Scrollbar */
+  --scrollbar-thumb:       var(--stroke);
+  --scrollbar-thumb-hover: var(--active);
 }

@@ -25,6 +25,12 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.config,
     },
 
+    system: {
+      accentColor: vi.fn().mockResolvedValue(null),
+      onAccentColorChanged: vi.fn().mockReturnValue(() => {}),
+      ...overrides.system,
+    },
+
     cache: {
       thumbSize: vi.fn().mockResolvedValue({ bytes: 0 }),
       clearThumbs: vi.fn().mockResolvedValue(undefined),

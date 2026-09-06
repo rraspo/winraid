@@ -13,6 +13,7 @@ import {
   shell,
   powerMonitor,
   net,
+  systemPreferences,
 } from 'electron'
 import { spawn } from 'child_process'
 import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
@@ -719,7 +720,7 @@ function registerIPC() {
     'localFolder', 'operation', 'folderMode', 'extensions', 'ignoredExtensions',
     'backup', 'connections', 'backupByConnection',
     'browse', 'playDefaults', 'snapshot', 'thumbSeek', 'activeConnectionId',
-    'favoritesByConnection',
+    'favoritesByConnection', 'appearance',
   ]
 
   ipcMain.handle('config:set', async (_e, key, value) => {
@@ -729,6 +730,28 @@ function registerIPC() {
     }
     const { setConfig } = await import('./config.js')
     return setConfig(key, value)
+  })
+
+  // -- System accent color (Settings > Appearance "System accent") ---------
+  // systemPreferences.getAccentColor() returns RRGGBBAA on Windows; the
+  // renderer only ever deals in opaque #RRGGBB, so the alpha channel is
+  // dropped here at the source.
+  function normalizeSystemAccent(color) {
+    if (typeof color !== 'string' || color.length < 6) return null
+    return `#${color.slice(0, 6).toUpperCase()}`
+  }
+
+  ipcMain.handle('system:accent-color', () => {
+    if (process.platform !== 'win32') return null
+    try {
+      return normalizeSystemAccent(systemPreferences.getAccentColor())
+    } catch {
+      return null
+    }
+  })
+
+  systemPreferences.on('accent-color-changed', (_event, color) => {
+    sendToRenderer('system:accent-color-changed', normalizeSystemAccent(color))
   })
 
   ipcMain.handle('watcher:start', async (_e, connectionId) => {
