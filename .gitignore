@@ -83,3 +83,6 @@ CLAUDE.md
 
 # Coverage output (vitest/c8)
 coverage/
+
+# ---- Renderer preview harness screenshots ------------------------------------
+screenshots/
