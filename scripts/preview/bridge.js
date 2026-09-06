@@ -315,42 +315,44 @@ function clickSelector(selector, description) {
   }
 }
 
-const FIRST_CONNECTION_BROWSE = '[data-testid^="sub-browse-"]'
-const FIRST_CONNECTION_BACKUP = '[data-testid^="sub-backup-"]'
-const FIRST_CONNECTION_SIZE = '[data-testid^="sub-size-"]'
+// Every screen is reached through the nav rail (Browse, Size map and
+// Backup open the active connection's tab); overlays and tabs are then
+// opened from inside the Browse screen.
 const FIRST_IMAGE_ENTRY = '[data-entry-path$=".jpg"]'
-const PLAY_BUTTON = '[aria-label="Play media slideshow"]'
+const FIRST_TEXT_ENTRY = '[data-entry-path$=".md"], [data-entry-path$=".txt"]'
 const VIEW_TOGGLE_BUTTON = '[class*="viewToggleBtn"]'
-const ADD_CONNECTION_BUTTON = '[class*="addBtn"]'
 
 const SCREEN_STEPS = {
   dashboard: [],
   connections: [
-    clickSelector(ADD_CONNECTION_BUTTON, 'open the add-connection form'),
+    clickNav('Connections'),
   ],
   queue: [
     clickNav('Queue'),
   ],
   browse: [
-    clickSelector(FIRST_CONNECTION_BROWSE, 'open the first connection\'s Browse tab'),
+    clickNav('Browse'),
     clickSelector(VIEW_TOGGLE_BUTTON, 'switch Browse to grid view'),
   ],
   'browse-list': [
-    clickSelector(FIRST_CONNECTION_BROWSE, 'open the first connection\'s Browse tab'),
+    clickNav('Browse'),
   ],
   'quick-look': [
-    clickSelector(FIRST_CONNECTION_BROWSE, 'open the first connection\'s Browse tab'),
+    clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),
   ],
+  editor: [
+    clickNav('Browse'),
+    clickSelector(FIRST_TEXT_ENTRY, 'open the first text entry in an editor tab'),
+  ],
   play: [
-    clickSelector(FIRST_CONNECTION_BROWSE, 'open the first connection\'s Browse tab'),
-    clickSelector(PLAY_BUTTON, 'start the media slideshow'),
+    clickNav('Play wall'),
   ],
   size: [
-    clickSelector(FIRST_CONNECTION_SIZE, 'open the first connection\'s Size tab'),
+    clickNav('Size map'),
   ],
   backup: [
-    clickSelector(FIRST_CONNECTION_BACKUP, 'open the first connection\'s Backup tab'),
+    clickNav('Backup'),
   ],
   logs: [
     clickNav('Logs'),
@@ -360,15 +362,24 @@ const SCREEN_STEPS = {
   ],
 }
 
+// A screen whose steps could not all run never becomes "ready": the shoot
+// script's wait then fails loudly instead of capturing whatever screen the
+// app happened to be on. The failed step is recorded on <html> for
+// diagnosis.
 async function driveToScreen(screenName) {
   const steps = SCREEN_STEPS[screenName]
   if (steps === undefined) {
     console.warn(`[preview] unknown screen "${screenName}" — known screens: ${SCREEN_NAMES.join(', ')}`)
-  } else {
-    for (const step of steps) {
-      // Steps are an ordered sequence (each depends on the previous one's
-      // result), so they run one at a time rather than in parallel.
-      await runStep(step)
+    document.documentElement.setAttribute('data-preview-error', `unknown screen "${screenName}"`)
+    return
+  }
+  for (const step of steps) {
+    // Steps are an ordered sequence (each depends on the previous one's
+    // result), so they run one at a time rather than in parallel.
+    const stepRan = await runStep(step)
+    if (!stepRan) {
+      document.documentElement.setAttribute('data-preview-error', step.description)
+      return
     }
   }
   document.documentElement.setAttribute('data-preview-ready', 'true')
