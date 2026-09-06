@@ -14,14 +14,16 @@ import { ACCENT_PALETTE } from './utils/accent'
 //   - the pre-redesign localStorage key 'winraid-theme' migrates once into
 //     appearance.theme and is removed
 
-vi.mock('./components/Sidebar',      () => ({ default: () => <div /> }))
-vi.mock('./components/Header',       () => ({ default: () => <div /> }))
-vi.mock('./components/StatusBar',    () => ({ default: () => <div /> }))
+vi.mock('./components/shell/TitleBar',  () => ({ default: () => <div /> }))
+vi.mock('./components/shell/NavRail',   () => ({ default: () => <div /> }))
+vi.mock('./components/shell/StatusBar', () => ({ default: () => <div /> }))
 vi.mock('./components/TabBar',       () => ({ default: () => <div /> }))
 vi.mock('./components/EditorView',   () => ({ default: () => <div /> }))
+vi.mock('./components/PlayOverlay',  () => ({ default: () => <div /> }))
 vi.mock('./components/ui/ToastHost', () => ({ default: () => <div /> }))
 vi.mock('./views/BrowseView',        () => ({ default: () => <div /> }))
 vi.mock('./views/ConnectionView',    () => ({ default: () => <div /> }))
+vi.mock('./views/ConnectionsView',   () => ({ default: () => <div /> }))
 vi.mock('./views/DashboardView',     () => ({ default: () => <div /> }))
 vi.mock('./views/QueueView',         () => ({ default: () => <div /> }))
 vi.mock('./views/BackupView',        () => ({ default: () => <div /> }))

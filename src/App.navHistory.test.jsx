@@ -14,11 +14,10 @@ const CONN_ID   = 'c1'
 // mounting every view and its IPC.
 // vi.mock factories are hoisted above the consts above, so they repeat the
 // path literals rather than closing over them.
-vi.mock('./components/Sidebar', () => ({
-  default: ({ onOpenTab, onNavigateFavorite }) => (
+vi.mock('./components/shell/NavRail', () => ({
+  default: ({ onNavigate }) => (
     <div>
-      <button data-testid="open-browse" onClick={() => onOpenTab('c1', 'browse')}>open</button>
-      <button data-testid="fav" onClick={() => onNavigateFavorite('c1', '/mnt/user/media/photos')}>fav</button>
+      <button data-testid="open-browse" onClick={() => onNavigate('browse')}>open</button>
     </div>
   ),
 }))
@@ -29,7 +28,7 @@ vi.mock('./components/Sidebar', () => ({
 vi.mock('./views/BrowseView', () => {
   // Named so the hooks below are linted as a component rather than a bare
   // arrow assigned to `default`.
-  function BrowseStub({ browseRestore, onHistoryPush, connectionId }) {
+  function BrowseStub({ browseRestore, onHistoryPush, connectionId, onNavigateFavorite }) {
     const pushedInitial = useRef(false)
     useEffect(() => {
       if (pushedInitial.current) return
@@ -45,18 +44,21 @@ vi.mock('./views/BrowseView', () => {
         >
           deeper
         </button>
+        <button data-testid="fav" onClick={() => onNavigateFavorite?.(connectionId, '/mnt/user/media/photos')}>fav</button>
       </div>
     )
   }
   return { default: BrowseStub }
 })
 
-vi.mock('./components/Header',       () => ({ default: () => <div /> }))
-vi.mock('./components/StatusBar',    () => ({ default: () => <div /> }))
+vi.mock('./components/shell/TitleBar',  () => ({ default: () => <div /> }))
+vi.mock('./components/shell/StatusBar', () => ({ default: () => <div /> }))
 vi.mock('./components/TabBar',       () => ({ default: () => <div /> }))
 vi.mock('./components/EditorView',   () => ({ default: () => <div /> }))
+vi.mock('./components/PlayOverlay',  () => ({ default: () => <div /> }))
 vi.mock('./components/ui/ToastHost', () => ({ default: () => <div /> }))
 vi.mock('./views/ConnectionView',    () => ({ default: () => <div /> }))
+vi.mock('./views/ConnectionsView',   () => ({ default: () => <div /> }))
 vi.mock('./views/DashboardView',     () => ({ default: () => <div /> }))
 vi.mock('./views/QueueView',         () => ({ default: () => <div /> }))
 vi.mock('./views/BackupView',        () => ({ default: () => <div /> }))
