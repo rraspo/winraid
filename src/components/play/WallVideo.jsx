@@ -10,7 +10,7 @@ import styles from './PlayWall.module.css'
  * single IntersectionObserver can track it without re-wiring on every
  * visibility flip.
  */
-export default function WallVideo({ connectionId, remotePath, onRatioKnown, playbackSuspended }) {
+export default function WallVideo({ connectionId, remotePath, onRatioKnown, onDurationKnown, onPlayingChange, playbackSuspended }) {
   const anchorRef = useRef(null)
   const videoRef  = useRef(null)
   const [isIntersecting, setIsIntersecting] = useState(false)
@@ -33,11 +33,22 @@ export default function WallVideo({ connectionId, remotePath, onRatioKnown, play
     videoRef.current?.play()?.catch(() => {})
   }, [shouldPlay])
 
+  // The playing indicator tracks the player's real playback state, not just
+  // the intent to play: it drops the moment the tile leaves view or the
+  // viewer covers the wall, and again if the whole tile unmounts.
+  useEffect(() => {
+    if (!shouldPlay) onPlayingChange?.(remotePath, false)
+    return () => onPlayingChange?.(remotePath, false)
+  }, [shouldPlay, remotePath, onPlayingChange])
+
   function handleLoadedMetadata(event) {
-    const { videoWidth, videoHeight } = event.target
-    if (!videoWidth || !videoHeight) return
-    onRatioKnown(remotePath, videoWidth / videoHeight)
+    const { videoWidth, videoHeight, duration } = event.target
+    if (videoWidth && videoHeight) onRatioKnown(remotePath, videoWidth / videoHeight)
+    if (Number.isFinite(duration)) onDurationKnown?.(remotePath, duration)
   }
+
+  function handlePlaying() { onPlayingChange?.(remotePath, true) }
+  function handlePause()   { onPlayingChange?.(remotePath, false) }
 
   return (
     <span ref={anchorRef} className={styles.tileVideoAnchor}>
@@ -52,6 +63,8 @@ export default function WallVideo({ connectionId, remotePath, onRatioKnown, play
           playsInline
           preload="metadata"
           onLoadedMetadata={handleLoadedMetadata}
+          onPlaying={handlePlaying}
+          onPause={handlePause}
         />
       )}
     </span>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, List, Shuffle, Maximize2, Loader, Square, CheckSquare, FolderInput, Trash2 } from 'lucide-react'
+import { ArrowLeft, List, Loader, Maximize2, Play, Shuffle, Square, CheckSquare, FolderInput, Trash2, X } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
 import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
@@ -12,7 +12,7 @@ import styles from './PlayWall.module.css'
 // Target column width; the real width stretches so the columns span the
 // container edge to edge instead of leaving a margin on the right.
 const TILE_TARGET_WIDTH   = 240
-const TILE_GAP            = 4
+const TILE_GAP            = 12
 const FALLBACK_COLUMNS    = 4
 const VIDEO_TILE_RATIO    = 16 / 9
 
@@ -26,6 +26,14 @@ function isAnimatedGif(remotePath) {
 function withVersion(url, version) {
   if (!version) return url
   return url + (url.includes('?') ? '&' : '?') + 'v=' + version
+}
+
+// Renders a video's duration, in whole seconds, as the wall badge's m:ss.
+function formatDuration(totalSeconds) {
+  const wholeSeconds = Math.round(totalSeconds)
+  const minutes = Math.floor(wholeSeconds / 60)
+  const seconds = wholeSeconds % 60
+  return `${minutes}:${String(seconds).padStart(2, '0')}`
 }
 
 function columnGeometry(containerWidth) {
@@ -58,6 +66,13 @@ export default function PlayWall({
   // its media once known; the ratio survives a video player being
   // dropped when its tile leaves view.
   const [mediaRatios,    setMediaRatios]    = useState(() => new Map())
+  // Keyed by remote path, the duration a wall video player reported
+  // through its loadedmetadata event, shown on the video badge as m:ss.
+  const [videoDurations, setVideoDurations] = useState(() => new Map())
+  // Remote paths whose wall player is actually playing right now, driving
+  // the playing indicator independently of whether a player is merely
+  // mounted (autoplay can still be pending or fail silently).
+  const [playingPaths,   setPlayingPaths]   = useState(() => new Set())
 
   useEffect(() => {
     const element = scrollContainerRef.current
@@ -92,6 +107,25 @@ export default function PlayWall({
     })
   }
 
+  function setVideoDuration(remotePath, duration) {
+    if (!Number.isFinite(duration)) return
+    setVideoDurations((previous) => {
+      if (previous.get(remotePath) === duration) return previous
+      const next = new Map(previous)
+      next.set(remotePath, duration)
+      return next
+    })
+  }
+
+  function setTilePlaying(remotePath, isPlaying) {
+    setPlayingPaths((previous) => {
+      if (previous.has(remotePath) === isPlaying) return previous
+      const next = new Set(previous)
+      if (isPlaying) next.add(remotePath); else next.delete(remotePath)
+      return next
+    })
+  }
+
   function handleThumbLoad(remotePath, event) {
     const { naturalWidth, naturalHeight } = event.target
     if (!naturalWidth || !naturalHeight) return
@@ -121,17 +155,20 @@ export default function PlayWall({
     return layoutMasonry(items, { columnCount, columnWidth, gap: TILE_GAP })
   }, [playlist, mediaRatios, columnCount, columnWidth])
 
-  const isEmpty     = !scanning && playlist.length === 0
-  const totalKnown  = playlist.length + poolSize
+  const isEmpty    = !scanning && playlist.length === 0
+  const totalKnown = playlist.length + poolSize
 
   return (
     <div className={styles.wallRoot} aria-hidden={hiddenFromViewer || undefined}>
       <div className={overlayStyles.topBar}>
         <div className={overlayStyles.topBarLeft}>
-          <div className={overlayStyles.fileNameRow}>
+          <h1 className={overlayStyles.title}>Play wall</h1>
+          <div className={overlayStyles.subtitleRow}>
             {scanning && (
-              <Loader size={14} className={overlayStyles.scanningSpinner} aria-label="Scanning" />
+              <Loader size={12} className={overlayStyles.scanningSpinner} aria-label="Scanning" />
             )}
+            <span className={overlayStyles.subtitleCount}>{totalKnown} files</span>
+            <span className={overlayStyles.subtitleDot}>&middot;</span>
             <span className={overlayStyles.filePath}>
               {buildPathSegments(scanRoot).map((segment, i) => (
                 <span key={segment.path} className={overlayStyles.pathCrumb}>
@@ -150,39 +187,50 @@ export default function PlayWall({
           </div>
         </div>
         <div className={overlayStyles.topBarRight}>
-          {playlist.length > 0 && (
-            <span className={styles.wallCounter}>
-              {playlist.length}&thinsp;/&thinsp;{totalKnown}{scanning ? '+' : ''}
-            </span>
-          )}
-          <Tooltip tip={recursive ? 'Flat (current folder only)' : 'Recursive (all subfolders)'} side="bottom">
-            <button
-              className={[overlayStyles.toggleBtn, recursive ? overlayStyles.toggleBtnOn : ''].filter(Boolean).join(' ')}
-              onClick={toggleRecursive}
-              aria-label="Toggle recursive scan"
-              aria-pressed={recursive}
-            >
-              <List size={15} />
-            </button>
-          </Tooltip>
           <Tooltip tip={shuffle ? 'Sequential order' : 'Shuffle'} side="bottom">
             <button
-              className={[overlayStyles.toggleBtn, shuffle ? overlayStyles.toggleBtnOn : ''].filter(Boolean).join(' ')}
+              type="button"
+              className={[overlayStyles.controlBtn, shuffle ? overlayStyles.controlBtnOn : ''].filter(Boolean).join(' ')}
               onClick={toggleShuffle}
               aria-label="Toggle shuffle"
               aria-pressed={shuffle}
             >
-              <Shuffle size={15} />
+              <Shuffle size={13} />
+              <span>Shuffle</span>
+            </button>
+          </Tooltip>
+          <Tooltip tip={recursive ? 'Flat (current folder only)' : 'Recursive (all subfolders)'} side="bottom">
+            <button
+              type="button"
+              className={[overlayStyles.controlBtn, recursive ? overlayStyles.controlBtnOn : ''].filter(Boolean).join(' ')}
+              onClick={toggleRecursive}
+              aria-label="Toggle recursive scan"
+              aria-pressed={recursive}
+            >
+              <List size={13} />
+              <span>Recursive</span>
             </button>
           </Tooltip>
           <Tooltip tip="Toggle fullscreen" side="bottom">
-            <button className={overlayStyles.toggleBtn} onClick={onToggleFullscreen} aria-label="Toggle fullscreen">
-              <Maximize2 size={15} />
+            <button
+              type="button"
+              className={overlayStyles.controlBtn}
+              onClick={onToggleFullscreen}
+              aria-label="Toggle fullscreen"
+            >
+              <Maximize2 size={13} />
+              <span>Fullscreen</span>
             </button>
           </Tooltip>
-          <Tooltip tip="Close (Esc)" side="bottom">
-            <button className={overlayStyles.closeBtn} onClick={onClose} aria-label="Close">
-              <X size={18} />
+          <Tooltip tip="Back to browser" side="bottom">
+            <button
+              type="button"
+              className={overlayStyles.controlBtn}
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <ArrowLeft size={13} />
+              <span>Back to browser</span>
             </button>
           </Tooltip>
         </div>
@@ -201,16 +249,24 @@ export default function PlayWall({
         {playlist.length > 0 && (
           <div className={styles.wallGrid} style={{ height }}>
             {playlist.map((file, tileIndex) => {
-              const position   = positions[tileIndex]
-              const name       = file.path.split('/').pop()
-              const streamUrl  = nasStreamUrl(connectionId, file.path)
-              const version    = fileVersions?.get(file.path)
-              const isSelected = selectedPaths.has(file.path)
-              const tileStyle  = position
+              const position    = positions[tileIndex]
+              const name        = file.path.split('/').pop()
+              const streamUrl   = nasStreamUrl(connectionId, file.path)
+              const version     = fileVersions?.get(file.path)
+              const isSelected  = selectedPaths.has(file.path)
+              const isGif       = file.type !== 'video' && isAnimatedGif(file.path)
+              const isPlaying   = playingPaths.has(file.path)
+              const duration    = videoDurations.get(file.path)
+              const tileStyle   = position
                 ? { left: position.left, top: position.top, width: position.width, height: position.height }
                 : { left: 0, top: 0, width: columnWidth, height: columnWidth }
               return (
-                <div key={file.path} className={styles.tileWrap} style={tileStyle}>
+                <div
+                  key={file.path}
+                  className={styles.tileWrap}
+                  style={tileStyle}
+                  data-playing={isPlaying ? 'true' : undefined}
+                >
                   <button
                     type="button"
                     className={styles.tile}
@@ -225,16 +281,34 @@ export default function PlayWall({
                         connectionId={connectionId}
                         remotePath={file.path}
                         onRatioKnown={setMediaRatio}
+                        onDurationKnown={setVideoDuration}
+                        onPlayingChange={setTilePlaying}
                         playbackSuspended={hiddenFromViewer}
                       />
                     ) : (
                       <img
                         className={styles.tileImage}
-                        src={isAnimatedGif(file.path) ? withVersion(streamUrl, version) : withVersion(withThumb(streamUrl), version)}
+                        src={isGif ? withVersion(streamUrl, version) : withVersion(withThumb(streamUrl), version)}
                         alt=""
                         loading="lazy"
                         onLoad={(event) => handleThumbLoad(file.path, event)}
                       />
+                    )}
+                    {file.type === 'video' && (
+                      <span className={styles.badge} data-badge="video">
+                        <Play size={9} fill="currentColor" />
+                        {duration != null && <span>{formatDuration(duration)}</span>}
+                      </span>
+                    )}
+                    {isGif && (
+                      <span className={[styles.badge, styles.badgeGif].join(' ')} data-badge="gif">GIF</span>
+                    )}
+                    {isPlaying && (
+                      <span className={styles.playingBadge} aria-hidden="true">
+                        <span className={styles.playingBar} />
+                        <span className={styles.playingBar} />
+                        <span className={styles.playingBar} />
+                      </span>
                     )}
                   </button>
                   <button
