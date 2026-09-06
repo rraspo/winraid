@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
 import Tooltip from '../components/ui/Tooltip'
+import ConnectionPicker from '../components/ConnectionPicker'
 import { formatSize } from '../utils/format'
 import { findNodeByPath, upsertLevel } from '../utils/sizeTree'
 import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
 
-export default function SizeView({ connectionId, connection, onBrowsePath }) {
+export default function SizeView({ connectionId, connection, connections, onSelectConnection, onBrowsePath }) {
   const [phase,      setPhase]      = useState(PHASE.IDLE)
   const [tree,       setTree]       = useState(null)
   const [focused,    setFocused]    = useState(null)
@@ -175,10 +176,26 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
     ? `Last scan: ${formatElapsed(Date.now() - scanMeta.scannedAt)} ago (${scanMeta.totalFolders} folders)`
     : 'Last scan: never'
 
+  // Header row carried by every phase — the picker names the connection
+  // being scanned and lets the caller re-target the tab without leaving it.
+  const header = (
+    <div className={styles.viewHeader}>
+      <span className={styles.viewTitle}>Size map</span>
+      {connections && (
+        <ConnectionPicker
+          connections={connections}
+          connectionId={connectionId}
+          onSelect={onSelectConnection}
+        />
+      )}
+    </div>
+  )
+
   // ── Idle ──────────────────────────────────────────────────────────────────
   if (phase === PHASE.IDLE) {
     return (
       <div className={styles.root}>
+        {header}
         <div className={styles.idleCard}>
           <div className={styles.idleIcon}>
             <HardDrive size={28} strokeWidth={1.5} />
@@ -204,6 +221,7 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
   if (phase === PHASE.SCANNING) {
     return (
       <div className={styles.root}>
+        {header}
         <div className={styles.scanningCard}>
           <div className={styles.spinnerRings}>
             <div className={`${styles.ring} ${styles.ring1}`} />
@@ -230,6 +248,7 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
   const legendNode = focused ? (findNodeByPath(tree, focused) ?? tree) : tree
   return (
     <div className={styles.root}>
+      {header}
       <div className={styles.toolbar}>
         <div className={styles.breadcrumb}>
           <button className={styles.crumb} onClick={() => setFocused(null)}>

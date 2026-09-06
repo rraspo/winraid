@@ -3,6 +3,7 @@ import { X, Plus, Download, Info } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Tooltip from '../components/ui/Tooltip'
 import RemotePathBrowser from '../components/RemotePathBrowser'
+import ConnectionPicker from '../components/ConnectionPicker'
 import styles from './BackupView.module.css'
 
 // ---------------------------------------------------------------------------
@@ -25,7 +26,7 @@ const HINTS = {
 // View
 // ---------------------------------------------------------------------------
 
-export default function BackupView({ connectionId, backupRun, setBackupRun }) {
+export default function BackupView({ connectionId, connections, onSelectConnection, backupRun, setBackupRun }) {
   const [form, setForm]           = useState(DEFAULT_FORM)
   const [loaded, setLoaded]       = useState(false)
   const [saving, setSaving]       = useState(false)
@@ -139,10 +140,26 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
 
   // -- render ----------------------------------------------------------------
 
+  const header = (
+    <div className={styles.viewHeader}>
+      <span className={styles.viewTitle}>Backup</span>
+      {connections && (
+        <ConnectionPicker
+          connections={connections}
+          connectionId={connectionId}
+          onSelect={onSelectConnection}
+        />
+      )}
+    </div>
+  )
+
   if (!loaded) {
     return (
-      <div className={styles.container} style={{ color: 'var(--text-muted)', padding: 'var(--space-6)' }}>
-        Loading…
+      <div className={styles.container}>
+        {header}
+        <div style={{ color: 'var(--text-muted)', padding: 'var(--space-6)' }}>
+          Loading…
+        </div>
       </div>
     )
   }
@@ -153,6 +170,7 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
 
   return (
     <div className={styles.container}>
+      {header}
       <div className={styles.scrollBody}>
 
         {/* Shared connection notice */}

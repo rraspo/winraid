@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { X, List, Shuffle, Maximize2, Loader, Square, CheckSquare, FolderInput, Trash2 } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
+import ConnectionPicker from '../ConnectionPicker'
 import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
 import { layoutMasonry } from '../../utils/masonry'
@@ -42,7 +43,7 @@ function columnGeometry(containerWidth) {
  * the viewer so scroll position and tiles survive opening/closing a file.
  */
 export default function PlayWall({
-  connectionId, scanRoot, playlist, scanning, poolSize,
+  connectionId, connections, onSelectConnection, scanRoot, playlist, scanning, poolSize,
   recursive, toggleRecursive, shuffle, toggleShuffle,
   error, retry, pageSize, fill,
   onSegmentClick, onOpenTile, onToggleFullscreen, onClose,
@@ -165,6 +166,13 @@ export default function PlayWall({
               <List size={15} />
             </button>
           </Tooltip>
+          {connections && (
+            <ConnectionPicker
+              connections={connections}
+              connectionId={connectionId}
+              onSelect={onSelectConnection}
+            />
+          )}
           <Tooltip tip={shuffle ? 'Sequential order' : 'Shuffle'} side="bottom">
             <button
               className={[overlayStyles.toggleBtn, shuffle ? overlayStyles.toggleBtnOn : ''].filter(Boolean).join(' ')}

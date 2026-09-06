@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  ChevronRight, ChevronDown, HardDrive, Download,
+  ChevronRight, HardDrive, Download,
   AlertCircle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
   ArrowLeft, ArrowRight, Home, Clock, CheckSquare, Plus, RefreshCw,
@@ -21,7 +21,7 @@ import PasteImageModal from '../components/modals/PasteImageModal'
 import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
-import ConnectionIcon from '../components/ConnectionIcon'
+import ConnectionPicker from '../components/ConnectionPicker'
 import { useBrowse } from '../hooks/useBrowse'
 import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
@@ -39,7 +39,8 @@ function parentFolder(remotePath) {
 
 export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
-  style, favorites = [], onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
+  style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
+  onBack, onForward, canGoBack = false, canGoForward = false,
 }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
@@ -108,54 +109,11 @@ export default function BrowseView({
   const [showPlay, setShowPlay]               = useState(false)
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
-  const [connMenuOpen, setConnMenuOpen]       = useState(false)
   const [favMenuOpen, setFavMenuOpen]         = useState(false)
   const [selectionMode, setSelectionMode]     = useState(false)
   const breadcrumbRef = useRef(null)
   const sortDropRef   = useRef(null)
-  const connDropRef   = useRef(null)
   const favDropRef    = useRef(null)
-
-  // ── Per-tab folder history (Back / Forward) ─────────────────────────────
-  // Local to this browse tab: every real navigate() that changes `path`
-  // (breadcrumb, folder open, sync-root jump) is recorded here so Back/
-  // Forward can walk it, independent of the app-wide nav-history stack
-  // (which drives cross-screen restore, not intra-folder movement).
-  const [pastPaths,   setPastPaths]   = useState([])
-  const [futurePaths, setFuturePaths] = useState([])
-  const lastHistoryPathRef = useRef(path)
-  const skipHistoryRef     = useRef(false)
-
-  useEffect(() => {
-    // Don't record history until the tab has settled on its first real
-    // path — otherwise the '/' -> cfgRemotePath initial jump would land a
-    // bogus "back to root" entry before the user has navigated anywhere.
-    if (!selectedId) { lastHistoryPathRef.current = path; return }
-    if (skipHistoryRef.current) { skipHistoryRef.current = false; lastHistoryPathRef.current = path; return }
-    if (lastHistoryPathRef.current !== path) {
-      setPastPaths((prev) => [...prev, lastHistoryPathRef.current])
-      setFuturePaths([])
-    }
-    lastHistoryPathRef.current = path
-  }, [path, selectedId])
-
-  function goBack() {
-    if (pastPaths.length === 0) return
-    const target = pastPaths[pastPaths.length - 1]
-    setPastPaths((prev) => prev.slice(0, -1))
-    setFuturePaths((prev) => [path, ...prev])
-    skipHistoryRef.current = true
-    navigate(target)
-  }
-
-  function goForward() {
-    if (futurePaths.length === 0) return
-    const target = futurePaths[0]
-    setFuturePaths((prev) => prev.slice(1))
-    setPastPaths((prev) => [...prev, path])
-    skipHistoryRef.current = true
-    navigate(target)
-  }
 
   // Contextual notices now live in the toast stack as sticky toasts (no inline
   // banner shifting the layout). They clear when the condition clears or the
@@ -197,15 +155,6 @@ export default function BrowseView({
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [sortDropOpen])
-
-  useEffect(() => {
-    if (!connMenuOpen) return
-    function onDown(e) {
-      if (!connDropRef.current?.contains(e.target)) setConnMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
-  }, [connMenuOpen])
 
   useEffect(() => {
     if (!favMenuOpen) return
@@ -301,7 +250,22 @@ export default function BrowseView({
     }
   }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
 
-  const faved = isFavorite(favorites, path)
+  // `favoritesByConnection` is the map the redesign favorites menu lists
+  // from — every connection's saved folders. `favorites` is the legacy
+  // single-connection array a caller can pass instead, scoped to whichever
+  // connection is open.
+  const favoritesMap    = favoritesByConnection ?? (selectedId ? { [selectedId]: favorites ?? [] } : {})
+  const openFavorites   = favoritesMap[selectedId] ?? []
+  const faved           = isFavorite(openFavorites, path)
+  // The open connection's favorites come first, every other connection's
+  // favorites follow in map order — each entry keeps the connection id it
+  // belongs to so picking one can jump there.
+  const favoriteEntries = [
+    ...openFavorites.map((favPath) => ({ connectionId: selectedId, path: favPath })),
+    ...Object.entries(favoritesMap)
+      .filter(([favConnId]) => favConnId !== selectedId)
+      .flatMap(([favConnId, paths]) => (paths ?? []).map((favPath) => ({ connectionId: favConnId, path: favPath }))),
+  ]
   const showSelectionBar = selectionMode || selected.size > 0
 
   return (
@@ -448,8 +412,8 @@ export default function BrowseView({
             type="button"
             className={styles.iconBtn}
             aria-label="Back"
-            onClick={goBack}
-            disabled={pastPaths.length === 0}
+            onClick={onBack}
+            disabled={!canGoBack}
           >
             <ArrowLeft size={15} />
           </button>
@@ -459,52 +423,21 @@ export default function BrowseView({
             type="button"
             className={styles.iconBtn}
             aria-label="Forward"
-            onClick={goForward}
-            disabled={futurePaths.length === 0}
+            onClick={onForward}
+            disabled={!canGoForward}
           >
             <ArrowRight size={15} />
           </button>
         </Tooltip>
 
-        <div className={styles.connWrap} ref={connDropRef}>
-          <Tooltip tip="Switch connection" side="bottom">
-            <button
-              type="button"
-              className={styles.connPill}
-              aria-label={`Connection: ${browse.selectedConn?.name ?? 'None'}`}
-              onClick={() => {
-                if (connections.length > 1 && (onOpenTab || onNavigate)) setConnMenuOpen((v) => !v)
-              }}
-            >
-              <ConnectionIcon icon={browse.selectedConn?.icon ?? null} size={13} />
-              <span className={styles.connPillName}>{browse.selectedConn?.name ?? 'No connection'}</span>
-              {connections.length > 1 && (onOpenTab || onNavigate) && <ChevronDown size={11} />}
-            </button>
-          </Tooltip>
-          {connMenuOpen && (
-            <div className={styles.connDrop} role="menu">
-              {connections.map((conn) => (
-                <button
-                  key={conn.id}
-                  type="button"
-                  role="menuitem"
-                  className={[styles.connItem, conn.id === selectedId ? styles.connItemActive : ''].join(' ')}
-                  onClick={() => {
-                    setConnMenuOpen(false)
-                    if (onOpenTab) onOpenTab(conn.id, 'browse')
-                    else onNavigate?.('connections')
-                  }}
-                >
-                  <ConnectionIcon icon={conn.icon ?? null} size={13} />
-                  <span className={styles.connItemLabel}>
-                    <span className={styles.connItemName}>{conn.name}</span>
-                    <span className={styles.connItemRoot}>{conn.sftp?.remotePath ?? conn.smb?.remotePath ?? ''}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <ConnectionPicker
+          connections={connections}
+          connectionId={selectedId}
+          onSelect={(connId) => {
+            if (onOpenTab) onOpenTab(connId, 'browse')
+            else onNavigate?.('connections')
+          }}
+        />
 
         <div className={styles.breadcrumb} ref={breadcrumbRef}>
           {breadcrumbOverflow && <span className={styles.crumbEllipsis}>...</span>}
@@ -544,19 +477,19 @@ export default function BrowseView({
           {favMenuOpen && (
             <div className={styles.favDrop} role="menu">
               <div className={styles.favSectionLabel}>FAVORITES</div>
-              {favorites.length === 0 && <div className={styles.favEmpty}>No favorites yet</div>}
-              {favorites.map((favPath) => (
+              {favoriteEntries.length === 0 && <div className={styles.favEmpty}>No favorites yet</div>}
+              {favoriteEntries.map(({ connectionId: favConnId, path: favPath }) => (
                 <button
-                  key={favPath}
+                  key={`${favConnId}:${favPath}`}
                   type="button"
                   role="menuitem"
                   className={styles.favItem}
-                  onClick={() => { setFavMenuOpen(false); onNavigateFavorite?.(selectedId, favPath) }}
+                  onClick={() => { setFavMenuOpen(false); onNavigateFavorite?.(favConnId, favPath) }}
                 >
                   <Star size={13} className={styles.favItemStar} fill="currentColor" />
                   <span className={styles.favItemLabel}>
-                    <span className={styles.favItemName}>{favName(favPath)}</span>
-                    <span className={styles.favItemConn}>{browse.selectedConn?.name}</span>
+                    <span className={styles.favItemName}>{favName(favPath)}</span>{' '}
+                    <span className={styles.favItemConn}>{connections.find((c) => c.id === favConnId)?.name ?? favConnId}</span>
                   </span>
                 </button>
               ))}

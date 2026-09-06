@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import TitleBar from './components/shell/TitleBar'
 import NavRail from './components/shell/NavRail'
 import StatusBar from './components/shell/StatusBar'
@@ -367,18 +367,16 @@ export default function App() {
     return () => { unsub?.() }
   }, [])
 
-  // --- Navigation history ---------------------------------------------------
-  const { push, back, forward } = useNavHistory()
-  const historyInitRef = useRef(false)
+  // --- Navigation history -----------------------------------------------------
+  // History is scoped per view: a browse tab, a size/backup tab, a global
+  // view or the play overlay each get their own back/forward trail, so
+  // walking one never drags the mouse side buttons into another's. Only
+  // browse tabs currently record entries (every real folder move); global
+  // views, size/backup tabs and the play overlay have no history of their
+  // own, so back/forward is a no-op while one of them is showing.
+  const { push, back, forward, canGoBack, canGoForward } = useNavHistory()
   const [browseRestore, setBrowseRestore] = useState(null)
   const [logNav, setLogNav] = useState(null)
-
-  // Push the initial entry once on mount
-  useEffect(() => {
-    if (historyInitRef.current) return
-    historyInitRef.current = true
-    push({ kind: 'view', view: 'dashboard' })
-  }, [push])
 
   function navigateView(view) {
     setConnEdit(null)
@@ -386,7 +384,6 @@ export default function App() {
     setActiveTabId(null)
     setBrowseRestore(null)
     if (view !== 'logs') setLogNav(null)
-    push({ kind: 'view', view })
   }
 
   function handleNavigateLogs({ filename, errorAt }) {
@@ -394,52 +391,42 @@ export default function App() {
     navigateView('logs')
   }
 
-  function restoreEntry(entry) {
-    if (entry.kind === 'view') {
-      setConnEdit(null)
-      setActiveView(entry.view)
-      setActiveTabId(null)
-      setBrowseRestore(null)
-    } else if (entry.kind === 'conn-edit') {
-      setConnEdit({ conn: entry.conn })
-    } else if (entry.kind === 'tab') {
-      setConnEdit(null)
-      setActiveView(null)
-      setOpenTabs((prev) => {
-        if (prev.find((t) => t.id === entry.id)) return prev
-        return [...prev, { id: entry.id, connId: entry.connId, type: entry.type }]
-      })
-      setActiveTabId(entry.id)
-      setBrowseRestore(null)
-    } else if (entry.kind === 'browse') {
-      // Browse entries carry a connectionId — restore the tab and navigate within it
-      const tabId = entry.connectionId ? `${entry.connectionId}:browse` : null
-      if (!tabId) return
-      setConnEdit(null)
-      setActiveView(null)
-      setOpenTabs((prev) => {
-        if (prev.find((t) => t.id === tabId)) return prev
-        return [...prev, { id: tabId, connId: entry.connectionId, type: 'browse' }]
-      })
-      setActiveTabId(tabId)
-      setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
-    }
+  // Applies a browse-scope history entry — the only kind ever pushed —
+  // opening (or activating) that entry's tab and jumping it to the
+  // recorded path.
+  function applyBrowseHistoryEntry(entry) {
+    const tabId = entry.connectionId ? `${entry.connectionId}:browse` : null
+    if (!tabId) return
+    setConnEdit(null)
+    setActiveView(null)
+    setOpenTabs((prev) => {
+      if (prev.find((t) => t.id === tabId)) return prev
+      return [...prev, { id: tabId, connId: entry.connectionId, type: 'browse' }]
+    })
+    setActiveTabId(tabId)
+    setBrowseRestore({ path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
   }
 
-  const onHistoryPush = useCallback((entry) => push(entry), [push])
+  // The scope the mouse side buttons act on: whichever tab or view is
+  // currently showing. A tab's scope is `${type}:${id}`, a global view's
+  // scope is the view id itself, and the play overlay's is 'play'.
+  const activeScopeTab = openTabs.find((t) => t.id === activeTabId) ?? null
+  const activeScopeKey = playTarget ? 'play' : activeScopeTab ? `${activeScopeTab.type}:${activeScopeTab.id}` : activeView ?? null
 
   useEffect(() => {
     function onMouseDown(e) {
-      if (e.button === 3) { e.preventDefault(); const entry = back();    if (entry) restoreEntry(entry) }
-      if (e.button === 4) { e.preventDefault(); const entry = forward(); if (entry) restoreEntry(entry) }
+      if (e.button !== 3 && e.button !== 4) return
+      e.preventDefault()
+      if (!activeScopeKey) return
+      const entry = e.button === 3 ? back(activeScopeKey) : forward(activeScopeKey)
+      if (entry) applyBrowseHistoryEntry(entry)
     }
     window.addEventListener('mousedown', onMouseDown)
     return () => window.removeEventListener('mousedown', onMouseDown)
-  }, [back, forward]) // restoreEntry uses only setters so it is stable
+  }, [activeScopeKey, back, forward])
 
   async function openConnEdit(conn) {
     setConnEdit({ conn: conn ?? null })
-    push({ kind: 'conn-edit', conn: conn ?? null })
   }
 
   async function handleConnSave() {
@@ -502,11 +489,7 @@ export default function App() {
   }
 
   // --- Tab helpers ----------------------------------------------------------
-  // `skipHistoryPush` is used by jumps that push their own `{kind:'browse'}`
-  // entry right after opening the tab (see navigateBrowseJump below) — a
-  // browse entry already recreates its tab on restore, so the tab's own
-  // pathless entry would just be a visible-nothing extra step on back.
-  function openTab(connId, type, { skipHistoryPush = false } = {}) {
+  function openTab(connId, type) {
     const id = `${connId}:${type}`
     setOpenTabs((prev) => {
       if (prev.find((t) => t.id === id)) return prev
@@ -514,18 +497,18 @@ export default function App() {
     })
     setActiveTabId(id)
     setActiveView(null)
-    if (!skipHistoryPush && id !== activeTabId) push({ kind: 'tab', id, connId, type })
   }
 
   // Jumps into browse from outside the browse view (favorites, activity
   // entries, "show in browse" from the queue/size views) bypass useBrowse's
   // navigate(), which is the only thing that normally records history for a
-  // browse move. Without this, those jumps never enter the nav stack and
-  // back walks straight past them to the tab's initial directory. This is
-  // the single place that opens the tab and records the jump together.
+  // browse move. Without this, those jumps never enter the tab's own nav
+  // scope and back walks straight past them to the tab's initial directory.
+  // This is the single place that opens the tab and records the jump
+  // together, directly into that connection's browse scope.
   function navigateBrowseJump(connId, path, highlightFile = null) {
-    openTab(connId, 'browse', { skipHistoryPush: true })
-    push({ kind: 'browse', path, connectionId: connId, quickLookFile: null, highlightFile })
+    openTab(connId, 'browse')
+    push(`browse:${connId}:browse`, { kind: 'browse', path, connectionId: connId, quickLookFile: null, highlightFile })
     setBrowseRestore({ path, quickLookFile: null, connectionId: connId, highlightFile, token: Date.now() })
   }
 
@@ -535,9 +518,6 @@ export default function App() {
     if (!tab) return
     setActiveTabId(id)
     setActiveView(null)
-    // Editor tabs aren't tracked in nav history (they lack the filePath needed
-    // to restore), so don't push them.
-    if (tab.type !== 'editor') push({ kind: 'tab', id: tab.id, connId: tab.connId, type: tab.type })
   }
 
   function closeTab(id) {
@@ -681,23 +661,30 @@ export default function App() {
             )}
 
             {/* Per-connection Browse tabs (lazy-mount, keep-alive) */}
-            {openTabs.filter((t) => t.type === 'browse').map((tab) => (
-              <BrowseView
-                key={tab.id}
-                style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none' }}
-                browseRestore={activeTabId === tab.id ? browseRestore : null}
-                onBrowseRestoreConsumed={() => setBrowseRestore(null)}
-                onHistoryPush={onHistoryPush}
-                connections={connections}
-                connectionId={tab.connId}
-                favorites={favorites[tab.connId] ?? []}
-                onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
-                onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
-                onNavigateFavorite={navigateFavorite}
-                onNavigate={navigate}
-                onOpenTab={openTab}
-              />
-            ))}
+            {openTabs.filter((t) => t.type === 'browse').map((tab) => {
+              const scopeKey = `browse:${tab.id}`
+              return (
+                <BrowseView
+                  key={tab.id}
+                  style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none' }}
+                  browseRestore={activeTabId === tab.id ? browseRestore : null}
+                  onBrowseRestoreConsumed={() => setBrowseRestore(null)}
+                  onHistoryPush={(entry) => push(scopeKey, entry)}
+                  onBack={() => { const entry = back(scopeKey); if (entry) applyBrowseHistoryEntry(entry) }}
+                  onForward={() => { const entry = forward(scopeKey); if (entry) applyBrowseHistoryEntry(entry) }}
+                  canGoBack={canGoBack(scopeKey)}
+                  canGoForward={canGoForward(scopeKey)}
+                  connections={connections}
+                  connectionId={tab.connId}
+                  favoritesByConnection={favorites}
+                  onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
+                  onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
+                  onNavigateFavorite={navigateFavorite}
+                  onNavigate={navigate}
+                  onOpenTab={openTab}
+                />
+              )
+            })}
 
             {/* Per-file editor tabs (lazy-mount, keep-alive) */}
             {openTabs.filter((t) => t.type === 'editor').map((tab) => (
@@ -719,6 +706,8 @@ export default function App() {
               <div key={tab.id} style={{ display: activeTabId === tab.id && connEdit === null ? 'flex' : 'none', flex: 1, minHeight: 0, flexDirection: 'column', overflow: 'hidden' }}>
                 <BackupView
                   connectionId={tab.connId}
+                  connections={connections}
+                  onSelectConnection={(connId) => openTab(connId, 'backup')}
                   backupRun={backupRun}
                   setBackupRun={setBackupRun}
                 />
@@ -736,6 +725,8 @@ export default function App() {
                   <SizeView
                     connectionId={tab.connId}
                     connection={conn}
+                    connections={connections}
+                    onSelectConnection={(connId) => openTab(connId, 'size')}
                     onBrowsePath={(remotePath) => {
                       navigateBrowseJump(tab.connId, remotePath)
                     }}
@@ -759,6 +750,13 @@ export default function App() {
         <PlayOverlay
           connectionId={playTarget.connectionId}
           path={playTarget.path}
+          connections={connections}
+          onSelectConnection={(connId) => {
+            const conn = connections.find((c) => c.id === connId)
+            if (!conn) return
+            const rootPath = conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath
+            setPlayTarget({ connectionId: connId, path: rootPath })
+          }}
           onClose={() => setPlayTarget(null)}
         />
       )}
