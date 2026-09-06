@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, List, Loader, Maximize2, Play, Shuffle, Square, CheckSquare, FolderInput, Trash2, X } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
+import ConnectionPicker from '../ConnectionPicker'
 import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
 import { layoutMasonry } from '../../utils/masonry'
@@ -57,6 +58,7 @@ export default function PlayWall({
   hiddenFromViewer, fileVersions,
   selectedPaths, onToggleSelect, onSelectRange, onClearSelection,
   onRequestBulkDelete, onRequestBulkMove, mutationInFlight,
+  connections, onSelectConnection,
 }) {
   const scrollContainerRef = useRef(null)
   const sentinelRef        = useRef(null)
@@ -187,6 +189,13 @@ export default function PlayWall({
           </div>
         </div>
         <div className={overlayStyles.topBarRight}>
+          {connections && (
+            <ConnectionPicker
+              connections={connections}
+              connectionId={connectionId}
+              onSelect={onSelectConnection}
+            />
+          )}
           <Tooltip tip={shuffle ? 'Sequential order' : 'Shuffle'} side="bottom">
             <button
               type="button"

@@ -3,6 +3,7 @@ import { X, Plus, Download, Info } from 'lucide-react'
 import Button from '../components/ui/Button'
 import Tooltip from '../components/ui/Tooltip'
 import RemotePathBrowser from '../components/RemotePathBrowser'
+import ConnectionPicker from '../components/ConnectionPicker'
 import styles from './BackupView.module.css'
 
 // ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ const HINTS = {
 // View
 // ---------------------------------------------------------------------------
 
-export default function BackupView({ connectionId, backupRun, setBackupRun }) {
+export default function BackupView({ connectionId, connections, onSelectConnection, backupRun, setBackupRun }) {
   const [form, setForm]           = useState(DEFAULT_FORM)
   const [loaded, setLoaded]       = useState(false)
   const [saving, setSaving]       = useState(false)
@@ -167,7 +168,16 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
       <div className={styles.scrollBody}>
 
         <header className={styles.header}>
-          <h1 className={styles.title}>Incremental backup</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>Incremental backup</h1>
+            {connections && (
+              <ConnectionPicker
+                connections={connections}
+                connectionId={connectionId}
+                onSelect={onSelectConnection}
+              />
+            )}
+          </div>
           <p className={styles.subtitle}>Pull NAS folders back to this PC — only what changed gets copied</p>
         </header>
 

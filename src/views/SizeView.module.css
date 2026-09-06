@@ -24,6 +24,15 @@
   min-width: 0;
 }
 
+/* The title sits beside the connection picker, so the screen always names
+   the connection it is scanning. */
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
 .title {
   font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);

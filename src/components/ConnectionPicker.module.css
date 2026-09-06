@@ -1,0 +1,107 @@
+/* ── Wrapper / trigger ────────────────────────────────────────────────────── */
+.wrap { position: relative; flex-shrink: 0; }
+
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  font-size: 12.5px;
+  color: var(--text2);
+  transition: background-color var(--transition);
+}
+
+.trigger:hover { background: var(--hover); }
+
+.triggerName { font-weight: 600; color: var(--text); white-space: nowrap; }
+
+.triggerRoot {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+/* ── Static label (single-connection screens) ────────────────────────────── */
+.staticLabel {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  color: var(--text2);
+  flex-shrink: 0;
+}
+
+.staticName { font-weight: 600; color: var(--text); white-space: nowrap; }
+
+.staticRoot {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Menu ─────────────────────────────────────────────────────────────────── */
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 60;
+  width: 260px;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  transition: background-color var(--transition);
+}
+
+.item:hover { background: var(--hover); }
+
+.itemActive { color: var(--accent); }
+
+.itemLabel { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+
+.itemName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemRoot {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trigger, .item {
+    transition: none;
+  }
+}

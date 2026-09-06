@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
+import ConnectionPicker from '../components/ConnectionPicker'
 import Tooltip from '../components/ui/Tooltip'
 import { formatSize } from '../utils/format'
 import { findNodeByPath, upsertLevel } from '../utils/sizeTree'
@@ -8,7 +9,7 @@ import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
 
-export default function SizeView({ connectionId, connection, onBrowsePath }) {
+export default function SizeView({ connectionId, connection, connections, onSelectConnection, onBrowsePath }) {
   const [phase,      setPhase]      = useState(PHASE.IDLE)
   const [tree,       setTree]       = useState(null)
   const [focused,    setFocused]    = useState(null)
@@ -185,7 +186,16 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
     <div className={styles.root}>
       <div className={styles.header}>
         <div className={styles.headerText}>
-          <h1 className={styles.title}>Size map</h1>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>Size map</h1>
+            {connections && (
+              <ConnectionPicker
+                connections={connections}
+                connectionId={connectionId}
+                onSelect={onSelectConnection}
+              />
+            )}
+          </div>
           <p className={styles.subtitle}>
             Where the space on {rootPath} goes — click a slice to inspect it · {lastScanLabel}
           </p>

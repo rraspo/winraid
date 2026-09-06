@@ -40,74 +40,6 @@
 .favBtnActive { color: var(--accent); }
 .favBtnActive:hover:not(:disabled) { color: var(--accent); }
 
-/* ── Connection picker ────────────────────────────────────────────────────── */
-.connWrap { position: relative; flex-shrink: 0; }
-
-.connPill {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  height: 30px;
-  padding: 0 10px;
-  border: 1px solid var(--stroke);
-  border-radius: 6px;
-  font-size: 12.5px;
-  color: var(--text2);
-  transition: background-color var(--transition);
-}
-
-.connPill:hover { background: var(--hover); }
-
-.connPillName { font-weight: 600; color: var(--text); white-space: nowrap; }
-
-.connDrop {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 60;
-  width: 240px;
-  background: var(--card);
-  border: 1px solid var(--stroke);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 5px;
-}
-
-.connItem {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 5px;
-  font-size: 12.5px;
-  color: var(--text);
-  text-align: left;
-  transition: background-color var(--transition);
-}
-
-.connItem:hover { background: var(--hover); }
-
-.connItemActive { color: var(--accent); }
-
-.connItemLabel { display: flex; flex-direction: column; min-width: 0; }
-
-.connItemName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.connItemRoot {
-  font-size: 11px;
-  color: var(--text3);
-  font-family: Consolas, monospace;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
 .breadcrumb {
   display: flex;
@@ -614,8 +546,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .iconBtn, .connPill, .crumb, .sortBtn, .sortOption, .selectBtn, .viewToggleBtn,
-  .bulkBtn, .footerCheckout, .connItem, .favItem, .favPinItem, .searchWrap {
+  .iconBtn, .crumb, .sortBtn, .sortOption, .selectBtn, .viewToggleBtn,
+  .bulkBtn, .footerCheckout, .favItem, .favPinItem, .searchWrap {
     transition: none;
   }
   .spinning { animation: none; }
