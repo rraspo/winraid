@@ -8,6 +8,7 @@ export const SCREEN_NAMES = [
   'browse',
   'browse-list',
   'quick-look',
+  'editor',
   'play',
   'size',
   'backup',

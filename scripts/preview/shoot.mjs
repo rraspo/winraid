@@ -57,7 +57,11 @@ async function shootScreen(browser, name) {
   try {
     await page.route('nas-stream://**', fulfillNasStream)
     await page.goto(`${BASE_URL}/?screen=${encodeURIComponent(name)}`, { waitUntil: 'domcontentloaded' })
-    await page.waitForSelector('html[data-preview-ready]', { timeout: 10000 })
+    // The bridge marks either ready or error; an error names the step that
+    // could not find its target so the failure is diagnosable from the log.
+    await page.waitForSelector('html[data-preview-ready], html[data-preview-error]', { timeout: 10000 })
+    const driveError = await page.getAttribute('html', 'data-preview-error')
+    if (driveError) throw new Error(`drive step failed: ${driveError}`)
     await page.screenshot({ path: path.join(SCREENSHOTS_DIR, `${name}.png`) })
     console.log(`[preview] ${name} -> screenshots/${name}.png`)
     return { name, ok: true }
