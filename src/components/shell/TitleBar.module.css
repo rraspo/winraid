@@ -1,0 +1,63 @@
+.bar {
+  height: 40px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  -webkit-app-region: drag;
+}
+
+.dragRegion {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 14px;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 12px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.controls {
+  display: flex;
+  height: 40px;
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+
+.control {
+  width: 46px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: var(--text2);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.control:hover {
+  background: var(--hover);
+}
+
+.close:hover {
+  background: #c42b1c;
+  color: #fff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control {
+    transition: none;
+  }
+}

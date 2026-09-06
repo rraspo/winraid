@@ -464,3 +464,40 @@
 .progressFillDanger {
   background: var(--error);
 }
+
+/* ---- Pause-all control (moved from the removed header) ---- */
+.pauseButton {
+  align-self: flex-start;
+  margin-top: var(--space-3);
+  padding: 6px var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  background: var(--error-subtle);
+  color: var(--error);
+  border: 1px solid color-mix(in srgb, var(--error) 25%, transparent);
+  transition: opacity var(--transition), background-color var(--transition);
+}
+
+.pauseButton:hover {
+  background: var(--error);
+  color: #fff;
+}
+
+.pauseButtonResume {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: none;
+}
+
+.pauseButtonResume:hover {
+  opacity: 0.88;
+  background: var(--accent);
+  color: var(--text-on-accent);
+}
+
+/* ---- Recent activity list (moved from the removed header) ---- */
+.activityList {
+  display: flex;
+  flex-direction: column;
+}

@@ -20,6 +20,21 @@ contextBridge.exposeInMainWorld('winraid', {
   // -- App -----------------------------------------------------------------
   getVersion: () => ipcRenderer.invoke('app:version'),
 
+  // -- Window controls (custom frameless title bar) -------------------------
+  window: {
+    /** Minimize the window. */
+    minimize: () => ipcRenderer.invoke('window:minimize'),
+    /** Toggle between maximized and restored. */
+    toggleMaximize: () => ipcRenderer.invoke('window:toggle-maximize'),
+    /** Close the window (the main process decides whether that hides to the tray or quits). */
+    close: () => ipcRenderer.invoke('window:close'),
+    /** Whether the window is currently maximized. */
+    isMaximized: () => ipcRenderer.invoke('window:is-maximized'),
+    /** Subscribe to maximize/restore changes pushed from the main process.
+     *  @returns {() => void} unsubscribe */
+    onMaximizedChanged: (cb) => on('window:maximized-changed', cb),
+  },
+
   // -- File utilities ------------------------------------------------------
   /** Returns the filesystem path for a File object from drag-and-drop. */
   getPathForFile: (file) => webUtils.getPathForFile(file),
