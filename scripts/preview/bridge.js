@@ -237,6 +237,17 @@ window.winraid = {
   // here as a documented, currently-inert namespace rather than left out.
   system: {
     accentColor: () => Promise.resolve(SYSTEM_ACCENT_COLOR),
+    onAccentColorChanged: () => () => {},
+  },
+
+  // Window chrome for the frameless shell. A browser tab has no window
+  // controls to drive, so these resolve without doing anything.
+  window: {
+    minimize: () => Promise.resolve(),
+    toggleMaximize: () => Promise.resolve(),
+    close: () => Promise.resolve(),
+    isMaximized: () => Promise.resolve(false),
+    onMaximizedChanged: () => () => {},
   },
 }
 
