@@ -1387,70 +1387,91 @@ export default function QuickLookOverlay({
   }
 
   // Single trim timeline, rendered directly below the video where the native
-  // seekbar would be (native controls are hidden while trimming).
+  // seekbar would be (native controls are hidden while trimming), wrapped in
+  // a card that also carries the kept-duration summary and the save actions
+  // — keeping the whole trim UI anchored under the video rather than in a
+  // page-level footer.
+  const trimKeptSeconds = Math.max(0, trimOut - trimIn)
   const trimBar = trimming ? (
-    <div className={styles.trimBar} data-testid="trim-bar">
-      <button
-        type="button"
-        className={styles.trimPlayBtn}
-        onClick={toggleTrimPlay}
-        disabled={trimSaving}
-        aria-label={trimPlaying ? 'Pause preview' : 'Play selection'}
-      >
-        {trimPlaying ? <Pause size={14} /> : <Play size={14} />}
-      </button>
-      <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
-      <div
-        className={styles.trimTrack}
-        data-testid="trim-track"
-        ref={trimTrackRef}
-        onPointerDown={handleTrackPointerDown}
-        onPointerMove={handleTrackPointerMove}
-        onPointerUp={handleTrackPointerUp}
-      >
-        <div
-          className={styles.trimSelected}
-          style={{ left: `${trimPct(trimIn)}%`, right: `${100 - trimPct(trimOut)}%` }}
-        />
-        <div
-          className={styles.trimPlayhead}
-          data-testid="trim-playhead"
-          style={{ left: `${trimPct(Math.min(trimPos, trimDur))}%` }}
-        />
+    <div className={styles.trimCard}>
+      <div className={styles.trimBar} data-testid="trim-bar">
         <button
           type="button"
-          className={`${styles.trimHandle} ${styles.trimHandleStart}`}
-          style={{ left: `${trimPct(trimIn)}%` }}
-          role="slider"
-          aria-label="Trim start"
-          aria-valuemin={0}
-          aria-valuemax={Math.round(trimDur)}
-          aria-valuenow={Math.round(trimIn)}
-          aria-valuetext={fmtClock(trimIn)}
+          className={styles.trimPlayBtn}
+          onClick={toggleTrimPlay}
           disabled={trimSaving}
-          onPointerDown={handleDragDown('start')}
-          onPointerMove={handleDragMove('start')}
-          onPointerUp={handleDragUp}
-          onKeyDown={handleHandleKey('start')}
-        />
-        <button
-          type="button"
-          className={`${styles.trimHandle} ${styles.trimHandleEnd}`}
-          style={{ left: `${trimPct(trimOut)}%` }}
-          role="slider"
-          aria-label="Trim end"
-          aria-valuemin={0}
-          aria-valuemax={Math.round(trimDur)}
-          aria-valuenow={Math.round(trimOut)}
-          aria-valuetext={fmtClock(trimOut)}
-          disabled={trimSaving}
-          onPointerDown={handleDragDown('end')}
-          onPointerMove={handleDragMove('end')}
-          onPointerUp={handleDragUp}
-          onKeyDown={handleHandleKey('end')}
-        />
+          aria-label={trimPlaying ? 'Pause preview' : 'Play selection'}
+        >
+          {trimPlaying ? <Pause size={14} /> : <Play size={14} />}
+        </button>
+        <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
+        <div
+          className={styles.trimTrack}
+          data-testid="trim-track"
+          ref={trimTrackRef}
+          onPointerDown={handleTrackPointerDown}
+          onPointerMove={handleTrackPointerMove}
+          onPointerUp={handleTrackPointerUp}
+        >
+          <div
+            className={styles.trimSelected}
+            style={{ left: `${trimPct(trimIn)}%`, right: `${100 - trimPct(trimOut)}%` }}
+          />
+          <div
+            className={styles.trimPlayhead}
+            data-testid="trim-playhead"
+            style={{ left: `${trimPct(Math.min(trimPos, trimDur))}%` }}
+          />
+          <button
+            type="button"
+            className={`${styles.trimHandle} ${styles.trimHandleStart}`}
+            style={{ left: `${trimPct(trimIn)}%` }}
+            role="slider"
+            aria-label="Trim start"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(trimDur)}
+            aria-valuenow={Math.round(trimIn)}
+            aria-valuetext={fmtClock(trimIn)}
+            disabled={trimSaving}
+            onPointerDown={handleDragDown('start')}
+            onPointerMove={handleDragMove('start')}
+            onPointerUp={handleDragUp}
+            onKeyDown={handleHandleKey('start')}
+          />
+          <button
+            type="button"
+            className={`${styles.trimHandle} ${styles.trimHandleEnd}`}
+            style={{ left: `${trimPct(trimOut)}%` }}
+            role="slider"
+            aria-label="Trim end"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(trimDur)}
+            aria-valuenow={Math.round(trimOut)}
+            aria-valuetext={fmtClock(trimOut)}
+            disabled={trimSaving}
+            onPointerDown={handleDragDown('end')}
+            onPointerMove={handleDragMove('end')}
+            onPointerUp={handleDragUp}
+            onKeyDown={handleHandleKey('end')}
+          />
+        </div>
+        <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
       </div>
-      <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
+      <div className={styles.trimCardFooter}>
+        <span className={styles.trimSummary}>
+          Lossless trim · {trimKeptSeconds.toFixed(1)} s kept · happens on the server
+        </span>
+        <span className={styles.trimCardSpacer} />
+        <button type="button" className={styles.trimCardCancel} onClick={exitTrimMode} disabled={trimSaving}>
+          Cancel
+        </button>
+        <button type="button" className={styles.trimSaveBtn} onClick={() => handleTrimSave(false)} disabled={trimSaving || trimOut <= trimIn}>
+          Save as new
+        </button>
+        <button type="button" className={styles.trimOverwriteBtn} onClick={() => handleTrimSave(true)} disabled={trimSaving || trimOut <= trimIn}>
+          Overwrite
+        </button>
+      </div>
     </div>
   ) : null
 
@@ -1507,18 +1528,16 @@ export default function QuickLookOverlay({
       {/* Top bar */}
       <div className={styles.topBar}>
         <div className={styles.topBarLeft}>
-          <Tooltip tip={relPath} side="bottom">
-            <button className={styles.fileName} onClick={handleCopyPath}>
-              {file.name}
-              {copied && <span className={styles.copiedBadge}>Copied</span>}
-            </button>
-          </Tooltip>
-          <span className={styles.fileMeta}>
-            {type !== 'unknown' && <span className={styles.fileType}>{type.toUpperCase()}</span>}
-            <span>{formatSize(file.size)}</span>
-            <span className={styles.metaSep}>·</span>
-            <span>{formatDate(file.modified)}</span>
-          </span>
+          <button className={styles.fileName} onClick={handleCopyPath}>
+            {file.name}
+            {copied && <span className={styles.copiedBadge}>Copied</span>}
+          </button>
+          {(files.length > 1 || hasMoreBeyondList) && (
+            <span className={styles.counter}>
+              {currentIdx + 1} / {files.length}{hasMoreBeyondList ? '+' : ''}
+            </span>
+          )}
+          <span className={styles.path}>{relPath}</span>
           {folderNavigation && (
             <span className={styles.folderPath}>
               {buildPathSegments(file.path.split('/').slice(0, -1).join('/') || '/').map((segment, segmentIndex) => (
@@ -1540,70 +1559,77 @@ export default function QuickLookOverlay({
             </span>
           )}
         </div>
-        {type === 'image' && !cropping && (
-          <Tooltip tip="Crop" side="bottom">
-            <button
-              className={styles.fileMenuBtn}
-              onClick={enterCropMode}
-              aria-label="Crop image"
-            >
-              <Crop size={16} />
-            </button>
-          </Tooltip>
-        )}
-        {type === 'image' && !cropping && (
-          <Tooltip tip="Rotate 90° clockwise" side="bottom">
-            <button
-              className={styles.fileMenuBtn}
-              onClick={beginImageRotate}
-              disabled={!!imageRotateJob}
-              aria-label="Rotate image"
-            >
-              {imageRotateJob ? <Loader size={16} /> : <RotateCw size={16} />}
-            </button>
-          </Tooltip>
-        )}
-        {type === 'video' && (
-          <Tooltip tip="Save snapshot of current frame" side="bottom">
-            <button
-              className={styles.fileMenuBtn}
-              onClick={handleSnapshot}
-              aria-label="Save video snapshot"
-            >
-              <Camera size={16} />
-            </button>
-          </Tooltip>
-        )}
+        <span className={styles.topBarSpacer} />
         {type === 'video' && canServerEdit && !trimming && !videoCropping && (
           <Tooltip tip="Trim" side="bottom">
             <button
-              className={styles.fileMenuBtn}
+              className={styles.toolBtn}
               onClick={enterTrimMode}
               aria-label="Trim video"
             >
-              <Scissors size={16} />
+              <Scissors size={14} />
+              <span>Trim</span>
             </button>
           </Tooltip>
         )}
         {type === 'video' && canServerEdit && !trimming && !videoCropping && isRotatableVideo(file.name) && (
           <Tooltip tip="Rotate" side="bottom">
             <button
-              className={styles.fileMenuBtn}
+              className={styles.toolBtn}
               onClick={enterRotateMode}
               aria-label="Rotate video"
             >
-              <RotateCw size={16} />
+              <RotateCw size={14} />
+              <span>Rotate</span>
             </button>
           </Tooltip>
         )}
         {type === 'video' && canServerEdit && !trimming && !rotating && !videoCropping && (
           <Tooltip tip="Crop" side="bottom">
             <button
-              className={styles.fileMenuBtn}
+              className={styles.toolBtn}
               onClick={enterVideoCropMode}
               aria-label="Crop video"
             >
-              <Crop size={16} />
+              <Crop size={14} />
+              <span>Crop</span>
+            </button>
+          </Tooltip>
+        )}
+        {type === 'video' && (
+          <Tooltip tip="Save snapshot of current frame" side="bottom">
+            <button
+              className={styles.toolBtn}
+              onClick={handleSnapshot}
+              aria-label="Save video snapshot"
+            >
+              <Camera size={14} />
+              <span>Snapshot</span>
+            </button>
+          </Tooltip>
+        )}
+        {type === 'image' && !cropping && (
+          <Tooltip tip="Rotate 90° clockwise" side="bottom">
+            <button
+              className={styles.toolBtn}
+              onClick={beginImageRotate}
+              disabled={!!imageRotateJob}
+              aria-label="Rotate image"
+            >
+              {imageRotateJob ? <Loader size={14} /> : <RotateCw size={14} />}
+              <span>Rotate</span>
+            </button>
+          </Tooltip>
+        )}
+        {type === 'image' && !cropping && (
+          <Tooltip tip="Crop" side="bottom">
+            <button
+              className={styles.toolBtn}
+              onClick={enterCropMode}
+              aria-label="Crop image"
+            >
+              <Crop size={14} />
+              <span>Crop</span>
             </button>
           </Tooltip>
         )}
@@ -1659,13 +1685,6 @@ export default function QuickLookOverlay({
             </button>
           </div>
         )}
-        {trimming && (
-          <div className={styles.trimToolbar}>
-            <button className={styles.cropCancelBtn} onClick={exitTrimMode} disabled={trimSaving}>Cancel</button>
-            <button className={styles.cropSaveBtn} onClick={() => handleTrimSave(false)} disabled={trimSaving || trimOut <= trimIn}>Save as new</button>
-            <button className={styles.cropOverwriteBtn} onClick={() => handleTrimSave(true)} disabled={trimSaving || trimOut <= trimIn}>Overwrite</button>
-          </div>
-        )}
         <FileMenu file={file} onDelete={onDelete} loop={loop} onLoopChange={handleLoopChange} wheelMode={wheelMode} onWheelModeChange={handleWheelModeChange} invertPan={invertPan} onInvertPanChange={handleInvertPanChange} />
         <Tooltip tip="Close (Esc)" side="bottom">
         <button
@@ -1683,12 +1702,12 @@ export default function QuickLookOverlay({
         {/* Prev arrow */}
         <Tooltip tip="Previous (Left arrow)" side="right">
           <button
-            className={[styles.navBtn, styles.navBtnLeft].join(' ')}
+            className={styles.navBtn}
             onClick={handlePrev}
             disabled={!hasPrev || cropping || trimming || videoCropping}
             aria-label="Previous file"
           >
-            <ChevronLeft size={22} />
+            <ChevronLeft size={20} />
           </button>
         </Tooltip>
 
@@ -1724,20 +1743,24 @@ export default function QuickLookOverlay({
         {/* Next arrow */}
         <Tooltip tip="Next (Right arrow)" side="left">
           <button
-            className={[styles.navBtn, styles.navBtnRight].join(' ')}
+            className={styles.navBtn}
             onClick={handleNext}
             disabled={!hasNext || cropping || trimming || videoCropping}
             aria-label="Next file"
           >
-            <ChevronRight size={22} />
+            <ChevronRight size={20} />
           </button>
         </Tooltip>
       </div>
 
-      {/* File counter */}
-      {(files.length > 1 || hasMoreBeyondList) && (
-        <div className={styles.counter}>
-          {currentIdx + 1} / {files.length}{hasMoreBeyondList ? '+' : ''}
+      {/* Bottom hint: only when no editing surface already occupies this
+          space (the trim card lives under the video itself, see trimBar) */}
+      {!trimming && !cropping && !videoCropping && !rotating && (
+        <div className={styles.bottomBar}>
+          <span className={styles.hint}>
+            <span>← → to step through the folder</span>
+            {canServerEdit && <span className={styles.hintSuffix}> · edits save on the server, no re-upload</span>}
+          </span>
         </div>
       )}
 
@@ -1746,34 +1769,37 @@ export default function QuickLookOverlay({
 
       {/* Trim engine setup: no ffmpeg on the NAS or this PC */}
       {trimSetup && (
-        <div className={modalStyles.modalOverlay} data-testid="trim-setup-modal">
-          <div className={modalStyles.modal}>
-            <div className={modalStyles.modalHeader}>
-              <span className={modalStyles.modalIconWrap}><Scissors size={20} /></span>
-              <div>
-                <h2 className={modalStyles.modalTitle}>The NAS has no ffmpeg</h2>
-                <p className={modalStyles.modalSubtitle}>
-                  The cut can still happen on this PC: WinRaid downloads the
-                  video, trims it locally, and uploads the result.{' '}
-                  {trimSetup.canLocalTrim
-                    ? 'An ffmpeg is already available on this PC.'
-                    : 'That needs an ffmpeg on this PC — download the official build once (~35 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
-                </p>
-              </div>
+        <div className={styles.ffCard} data-testid="trim-setup-modal">
+          <div className={styles.ffCardHeader}>
+            <Scissors size={16} className={styles.ffCardIcon} />
+            <span className={styles.ffCardTitle}>The NAS has no ffmpeg</span>
+          </div>
+          <p className={styles.ffCardBody}>
+            The cut can still happen on this PC: WinRaid downloads the
+            video, trims it locally, and uploads the result.{' '}
+            {trimSetup.canLocalTrim
+              ? 'An ffmpeg is already available on this PC.'
+              : 'That needs an ffmpeg on this PC — download the official build once (~35 MB), or point WinRaid at an ffmpeg.exe you already have here.'}
+          </p>
+
+          {trimSetup.error && (
+            <div className={styles.ffCardError}>
+              <AlertCircle size={14} />
+              <span>{trimSetup.error}</span>
             </div>
+          )}
 
-            {trimSetup.error && (
-              <div className={modalStyles.modalWarning}>
-                <AlertCircle size={14} />
-                <span>{trimSetup.error}</span>
-              </div>
-            )}
-
-            {trimSetup.phase === 'downloading' ? (
-              <div className={modalStyles.modalActions}>
+          {trimSetup.phase === 'downloading' ? (
+            <>
+              <div className={styles.ffCardProgressRow}>
                 <span className={styles.trimTime}>
                   Downloading ffmpeg… {Math.round((trimSetup.pct ?? 0) * 100)}%
                 </span>
+              </div>
+              <div className={styles.ffCardProgressTrack}>
+                <div className={styles.ffCardProgressFill} style={{ width: `${Math.round((trimSetup.pct ?? 0) * 100)}%` }} />
+              </div>
+              <div className={styles.ffCardActions}>
                 <button
                   className={modalStyles.modalCancel}
                   onClick={() => window.winraid?.remote.cancelFfmpegDownload?.()}
@@ -1781,22 +1807,22 @@ export default function QuickLookOverlay({
                   Cancel
                 </button>
               </div>
-            ) : (
-              <div className={modalStyles.modalActions}>
-                <button className={modalStyles.modalCancel} onClick={() => setTrimSetup(null)}>Cancel</button>
-                <button className={modalStyles.modalSecondary} onClick={handleFfmpegLocate}>Locate on this PC…</button>
-                <button
-                  className={trimSetup.canLocalTrim ? modalStyles.modalSecondary : modalStyles.modalConfirmAccent}
-                  onClick={handleFfmpegDownload}
-                >
-                  Download (~35 MB)
-                </button>
-                {trimSetup.canLocalTrim && (
-                  <button className={modalStyles.modalConfirmAccent} onClick={handleLocalTrimChoice}>Trim locally</button>
-                )}
-              </div>
-            )}
-          </div>
+            </>
+          ) : (
+            <div className={styles.ffCardActions}>
+              <button className={modalStyles.modalCancel} onClick={() => setTrimSetup(null)}>Cancel</button>
+              <button className={modalStyles.modalSecondary} onClick={handleFfmpegLocate}>Locate on this PC…</button>
+              <button
+                className={trimSetup.canLocalTrim ? modalStyles.modalSecondary : modalStyles.modalConfirmAccent}
+                onClick={handleFfmpegDownload}
+              >
+                Download (~35 MB)
+              </button>
+              {trimSetup.canLocalTrim && (
+                <button className={modalStyles.modalConfirmAccent} onClick={handleLocalTrimChoice}>Trim locally</button>
+              )}
+            </div>
+          )}
         </div>
       )}
 

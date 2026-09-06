@@ -7,7 +7,7 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.82);
+  background: color-mix(in oklab, var(--bg) 82%, transparent);
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(6px);
@@ -18,29 +18,37 @@
 .topBar {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  background: rgba(0, 0, 0, 0.45);
-  border-bottom: 1px solid var(--border-strong);
-  flex-shrink: 0;
+  gap: 14px;
+  height: 54px;
+  flex: none;
+  padding: 0 var(--space-5);
 }
 
 .topBarLeft {
   flex: 1;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+
+.topBarSpacer {
+  flex: 1;
 }
 
 .fileName {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-medium);
+  font-size: 13.5px;
+  font-weight: var(--font-weight-semibold);
   color: var(--text);
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  flex-shrink: 2;
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-sm);
@@ -62,26 +70,21 @@
   animation: fadeSlide 0.15s ease;
 }
 
-.fileMeta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
+.counter {
+  font-size: 11.5px;
+  color: var(--text3);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-.fileType {
-  font-size: 10px;
-  font-weight: var(--font-weight-semibold);
-  letter-spacing: 0.06em;
-  padding: 1px 5px;
-  border-radius: var(--radius-xs);
-  background: var(--accent-subtle);
-  color: var(--accent);
-}
-
-.metaSep {
-  color: var(--text-faint);
+.path {
+  font-size: 11.5px;
+  color: var(--text3);
+  min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .folderPath {
@@ -138,6 +141,31 @@
 .closeBtn:hover {
   color: var(--text);
   background: var(--bg-hover);
+}
+
+/* ── Top-bar tool pills (Rotate/Crop/Trim/Snapshot): icon + visible label ── */
+.toolBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  font-size: 12.5px;
+  color: var(--text);
+  background: transparent;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background-color var(--transition);
+}
+
+.toolBtn:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--text) 10%, transparent);
+}
+
+.toolBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── File menu (three-dot) ───────────────────────────────────────────────── */
@@ -209,7 +237,7 @@
 
 .cropError {
   font-size: var(--font-size-xs);
-  color: var(--danger, #f87171);
+  color: var(--error);
   padding: 0 var(--space-2);
 }
 
@@ -247,7 +275,7 @@
 }
 
 .cropOverwriteBtn {
-  color: #fff;
+  color: var(--onAccent);
   background: var(--accent);
 }
 
@@ -301,12 +329,15 @@
   cursor: default;
 }
 
-/* ── Trim mode: actions in the top bar, timeline below the video ── */
-.trimToolbar {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex-wrap: wrap;
+/* ── Trim mode: a card anchored under the video, holding the timeline, the
+   kept-duration summary and the save actions ── */
+.trimCard {
+  width: min(720px, 100%);
+  margin-top: var(--space-3);
+  background: color-mix(in oklab, var(--card) 90%, transparent);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
 }
 
 .trimBar {
@@ -314,7 +345,83 @@
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  padding-top: var(--space-3);
+}
+
+.trimCardFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.trimSummary {
+  font-size: 11.5px;
+  color: var(--text2);
+}
+
+.trimCardSpacer {
+  flex: 1;
+}
+
+.trimCardCancel {
+  padding: 0 var(--space-2);
+  height: 28px;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  background: transparent;
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.trimCardCancel:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.trimCardCancel:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.trimSaveBtn {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  font-size: var(--font-size-xs);
+  color: var(--text);
+  background: transparent;
+  transition: background-color var(--transition);
+}
+
+.trimSaveBtn:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.trimSaveBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.trimOverwriteBtn {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  color: var(--onAccent);
+  background: var(--btnAccent);
+  transition: opacity var(--transition);
+}
+
+.trimOverwriteBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.trimOverwriteBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .trimPlayBtn {
@@ -393,7 +500,7 @@
   border-radius: 50%;
   background: var(--accent);
   border: 2px solid var(--bg-panel);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow);
   cursor: ew-resize;
   touch-action: none;
 }
@@ -420,7 +527,7 @@
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+  box-shadow: var(--shadow);
   z-index: 10;
   padding: var(--space-1) 0;
 }
@@ -482,24 +589,29 @@
   flex: 1;
   min-height: 0;
   display: flex;
-  align-items: stretch;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 0 var(--space-5);
   position: relative;
 }
 
-/* ── Navigation buttons ──────────────────────────────────────────────────── */
+/* ── Navigation buttons — large translucent circles flanking the media ── */
 .navBtn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
-  color: var(--text-muted);
-  transition: color var(--transition), background-color var(--transition);
+  border-radius: 50%;
+  color: var(--text);
+  background: color-mix(in oklab, var(--text) 8%, transparent);
+  transition: background-color var(--transition);
 }
 
 .navBtn:hover:not(:disabled) {
-  color: var(--text);
-  background: rgba(255, 255, 255, 0.05);
+  background: color-mix(in oklab, var(--text) 18%, transparent);
 }
 
 .navBtn:disabled {
@@ -507,18 +619,15 @@
   cursor: default;
 }
 
-.navBtnLeft  { border-right: 1px solid var(--border); }
-.navBtnRight { border-left:  1px solid var(--border); }
-
 /* ── Preview area ────────────────────────────────────────────────────────── */
 .previewArea {
   flex: 1;
   min-width: 0;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: var(--space-4);
 }
 
 .previewAreaZoom   { cursor: zoom-in; }
@@ -541,7 +650,7 @@
   height: auto;
   object-fit: contain;
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow);
   display: block;
 }
 
@@ -560,7 +669,7 @@
   height: auto;
   object-fit: contain;
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow);
   display: block;
 }
 
@@ -569,12 +678,12 @@
   max-width: 100%;
   max-height: calc(100vh - 140px);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 48px rgba(0, 0, 0, 0.6);
+  box-shadow: var(--shadow);
   display: block;
   outline: none;
 }
 
-/* Column that shrink-wraps to the video's rendered width so the trim bar
+/* Column that shrink-wraps to the video's rendered width so the trim card
    below stays aligned with it */
 .videoCol {
   display: inline-flex;
@@ -584,7 +693,7 @@
   min-width: 0;
 }
 
-/* Leave room for the trim bar below the video */
+/* Leave room for the trim card below the video */
 .previewVideoTrimming {
   max-height: calc(100vh - 200px);
 }
@@ -630,20 +739,6 @@
 .previewAudio {
   width: 320px;
   max-width: 100%;
-}
-
-/* ── PDF ─────────────────────────────────────────────────────────────────── */
-.pdfWrap {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: stretch;
-}
-
-.previewPdf {
-  flex: 1;
-  border: none;
-  background: var(--bg);
 }
 
 /* ── Text ────────────────────────────────────────────────────────────────── */
@@ -750,30 +845,107 @@
   margin-top: var(--space-2);
 }
 
-/* ── File counter ────────────────────────────────────────────────────────── */
-.counter {
+/* ── Bottom bar (keyboard hint under the media) ──────────────────────────── */
+.bottomBar {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
+
+.hint {
+  font-size: 11.5px;
+  color: var(--text3);
+  text-align: center;
+}
+
+.hintSuffix {
+  color: var(--text3);
+}
+
+/* ── ffmpeg download card — floating, bottom-left, non-blocking ─────────── */
+.ffCard {
   position: absolute;
-  bottom: var(--space-4);
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  background: rgba(0, 0, 0, 0.55);
-  padding: 2px 10px;
-  border-radius: var(--radius-xl);
-  pointer-events: none;
-  user-select: none;
+  left: var(--space-5);
+  bottom: var(--space-5);
+  z-index: 5;
+  width: 300px;
+  max-width: calc(100vw - 40px);
+  background: color-mix(in oklab, var(--card) 97%, transparent);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  box-shadow: var(--shadow);
+}
+
+.ffCardHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ffCardIcon {
+  color: var(--text);
+  flex-shrink: 0;
+}
+
+.ffCardTitle {
+  font-size: 12.5px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.ffCardBody {
+  font-size: 11.5px;
+  color: var(--text2);
+  line-height: 1.5;
+  margin: var(--space-2) 0 0;
+}
+
+.ffCardError {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: 11.5px;
+  color: var(--error);
+}
+
+.ffCardProgressRow {
+  margin-top: var(--space-2);
+}
+
+.ffCardProgressTrack {
+  height: 3px;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--text) 15%, transparent);
+  margin-top: var(--space-2);
+  overflow: hidden;
+}
+
+.ffCardProgressFill {
+  height: 100%;
+  background: var(--accentHi);
+  transition: width var(--transition);
+}
+
+.ffCardActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
 }
 
 .snapToast {
   position: absolute;
   top: var(--space-5);
   right: var(--space-5);
-  background: rgba(0, 0, 0, 0.78);
+  background: color-mix(in oklab, var(--bg) 78%, transparent);
   color: var(--text);
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-md);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in oklab, var(--text) 12%, transparent);
   font-size: var(--font-size-sm);
   pointer-events: none;
   animation: snapToastFade 2.2s ease forwards;
