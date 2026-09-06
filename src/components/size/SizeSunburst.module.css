@@ -17,17 +17,17 @@
 }
 
 .centerHole:hover {
-  fill: var(--bg-card);
+  fill: var(--surface2);
 }
 
 .tooltip {
   position: absolute;
   pointer-events: none;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
+  background: var(--card);
+  border: 1px solid var(--strokeSoft);
   border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  box-shadow: var(--shadow);
   white-space: nowrap;
   z-index: 10;
 }
@@ -40,6 +40,6 @@
 
 .tooltipDetail {
   font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  color: var(--text3);
   margin-top: 2px;
 }
