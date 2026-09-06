@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Download, ChevronRight, Check } from 'lucide-react'
+import { RefreshCw, Download, Check } from 'lucide-react'
 
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
 import SegmentedControl from '../components/ui/SegmentedControl'
 import { formatSize } from '../utils/format'
 import { SNAPSHOT_FORMATS } from '../utils/snapshotFormats'
-import { readAccordionMode, setAccordionMode } from '../utils/accordionMode'
 import { ACCENT_PALETTE, normalizeAppearance, resolveAccentHex } from '../utils/accent'
 import styles from './SettingsView.module.css'
 
@@ -15,10 +14,15 @@ const HINTS = {
   stopWatcher:  'Pause scanning. Already-queued transfers still complete; new files are ignored until resumed.',
 }
 
+const DIRECTORY_CACHE_OPTIONS = [
+  { value: 'stale', label: 'Stale while revalidate', desc: 'Show cached entries immediately, then refresh in background.' },
+  { value: 'tree',  label: 'Full tree on connect',   desc: 'Fetch entire directory tree via SSH on connection, navigate from cache. SFTP only.' },
+  { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
+]
+
 export default function SettingsView() {
   const [watching, setWatching] = useState(false)
   const [version, setVersion] = useState('')
-  const [accordionsMode, setAccordionsMode] = useState(() => readAccordionMode())
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
   const [cacheBytes, setCacheBytes] = useState(0)
   const [clearing, setClearing] = useState(false)
@@ -33,9 +37,6 @@ export default function SettingsView() {
   const [sortPersistence, setSortPersistence] = useState('default')
   const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
   const [systemAccentHex, setSystemAccentHex] = useState(null)
-  const [advancedOpen, setAdvancedOpen] = useState(
-    () => localStorage.getItem('settings-advanced-open') === 'true'
-  )
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -172,11 +173,6 @@ export default function SettingsView() {
     await window.winraid?.config.set('browse.dirsFirst', next)
   }
 
-  function handleAccordionsChange(next) {
-    setAccordionsMode(next)
-    setAccordionMode(next)
-  }
-
   async function handleSortPersistenceChange(value) {
     setSortPersistence(value)
     await window.winraid?.config.set('browse.sortPersistence', value)
@@ -195,10 +191,14 @@ export default function SettingsView() {
     await window.winraid?.config.set('thumbSeek', { mode, value })
   }
 
-  function toggleAdvanced() {
-    const next = !advancedOpen
-    setAdvancedOpen(next)
-    localStorage.setItem('settings-advanced-open', String(next))
+  function handleDirectoryCacheKeyDown(e) {
+    const currentIndex = DIRECTORY_CACHE_OPTIONS.findIndex((o) => o.value === cacheMode)
+    if (currentIndex < 0) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    const direction = e.key === 'ArrowDown' ? 1 : -1
+    const next = (currentIndex + direction + DIRECTORY_CACHE_OPTIONS.length) % DIRECTORY_CACHE_OPTIONS.length
+    handleCacheModeChange(DIRECTORY_CACHE_OPTIONS[next].value)
   }
 
   const status = updateStatus?.status
@@ -223,254 +223,256 @@ export default function SettingsView() {
   return (
     <div className={styles.container}>
       <div className={styles.scrollBody}>
+        <h1 className={styles.title}>Settings</h1>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>Interface</div>
-          <div className={styles.sectionBody}>
-            <SegmentedControl
-              label="Connections on startup"
-              value={accordionsMode}
-              onChange={handleAccordionsChange}
-              options={[
-                { value: 'expanded',  label: 'Expanded',  desc: 'Open every connection on launch.' },
-                { value: 'collapsed', label: 'Collapsed', desc: 'Start with every connection closed.' },
-                { value: 'remember',  label: 'Remember',  desc: 'Restore each connection’s last open or closed state.' },
-              ]}
-            />
-          </div>
-        </section>
+        <div className={styles.grid}>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>Play</div>
-          <div className={styles.sectionBody}>
-            <SegmentedControl
-              label="Default scan depth"
-              value={playRecursive}
-              onChange={handlePlayRecursiveChange}
-              options={[
-                { value: true,  label: 'Recursive' },
-                { value: false, label: 'Top level' },
-              ]}
-            />
-            <SegmentedControl
-              label="Default order"
-              value={playShuffle}
-              onChange={handlePlayShuffleChange}
-              options={[
-                { value: true,  label: 'Shuffle' },
-                { value: false, label: 'In order' },
-              ]}
-            />
-          </div>
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>Snapshot</div>
-          <div className={styles.sectionBody}>
-            <SegmentedControl
-              label="Video snapshot format"
-              value={snapshotFormat}
-              onChange={handleSnapshotFormatChange}
-              options={[
-                { value: 'jpeg', label: 'JPEG', desc: 'Smallest files for photo-like frames. Slight quality loss.' },
-                { value: 'png',  label: 'PNG',  desc: 'Lossless. Larger files, best for screenshots and graphics.' },
-                { value: 'webp', label: 'WebP', desc: 'Smaller than JPEG at similar quality. Modern format.' },
-              ]}
-            />
-          </div>
-        </section>
-
-        <section className={styles.section}>
-          <button
-            type="button"
-            className={styles.advancedHeader}
-            aria-expanded={advancedOpen}
-            onClick={toggleAdvanced}
-          >
-            <span>Advanced settings</span>
-            <ChevronRight
-              size={16}
-              className={`${styles.chevron} ${advancedOpen ? styles.chevronOpen : ''}`}
-            />
-          </button>
-          {advancedOpen && (
-            <div className={styles.advancedBody}>
-              <div className={styles.subGroup}>
-                <div className={styles.subGroupHeader}>Browse</div>
-                <div className={styles.subGroupBody}>
-                  <SegmentedControl
-                    label="Directory cache"
-                    value={cacheMode}
-                    onChange={handleCacheModeChange}
-                    options={[
-                      { value: 'stale', label: 'Stale while revalidate', desc: 'Show cached entries immediately, then refresh in background.' },
-                      { value: 'tree',  label: 'Full tree on connect',   desc: 'Fetch entire directory tree via SSH on connection, navigate from cache. SFTP only.' },
-                      { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
-                    ]}
-                  />
-                  <SegmentedControl
-                    label="On folder mutation"
-                    value={cacheMutation}
-                    onChange={handleCacheMutationChange}
-                    options={[
-                      { value: 'update',  label: 'Update in place', desc: 'Directly splice entries on create, delete, and move — no re-fetch.' },
-                      { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
-                    ]}
-                  />
-                  <div className={styles.stackedField}>
-                    <span className={styles.stackedLabel}>Video thumbnail position</span>
-                    <div className={styles.thumbSeekRow}>
-                      <input
-                        type="number"
-                        min={0}
-                        step={thumbSeekMode === 'percent' ? 1 : 0.5}
-                        max={thumbSeekMode === 'percent' ? 100 : undefined}
-                        className={styles.thumbSeekInput}
-                        value={thumbSeekValue}
-                        onChange={(e) => {
-                          const v = parseFloat(e.target.value)
-                          if (!isNaN(v) && v >= 0) handleThumbSeekChange(thumbSeekMode, v)
-                        }}
-                      />
-                      <div className={styles.thumbSeekToggle}>
-                        <button
-                          type="button"
-                          className={[styles.thumbSeekBtn, thumbSeekMode === 'seconds' ? styles.thumbSeekBtnActive : ''].join(' ')}
-                          onClick={() => handleThumbSeekChange('seconds', thumbSeekValue)}
-                        >s</button>
-                        <button
-                          type="button"
-                          className={[styles.thumbSeekBtn, thumbSeekMode === 'percent' ? styles.thumbSeekBtnActive : ''].join(' ')}
-                          onClick={() => handleThumbSeekChange('percent', thumbSeekValue)}
-                        >%</button>
-                      </div>
-                    </div>
-                  </div>
-                  <SegmentedControl
-                    label="Folder order"
-                    value={dirsFirst}
-                    onChange={handleDirsFirstChange}
-                    options={[
-                      { value: true,  label: 'Dirs first' },
-                      { value: false, label: 'Files first' },
-                    ]}
-                  />
-                  <SegmentedControl
-                    label="Sort persistence"
-                    value={sortPersistence}
-                    onChange={handleSortPersistenceChange}
-                    options={[
-                      { value: 'default',  label: 'Default only', desc: 'All folders use the same sort. Changing sort applies everywhere.' },
-                      { value: 'folder',   label: 'Per folder',   desc: 'Each folder remembers its own sort independently.' },
-                      { value: 'siblings', label: 'Per siblings', desc: 'Changing sort in a folder applies to all siblings under the same parent.' },
-                    ]}
-                  />
-                </div>
-              </div>
-
-              <div className={styles.subGroup}>
-                <div className={styles.subGroupHeader}>Storage</div>
-                <div className={styles.subGroupBody}>
-                  <div className={styles.cacheRow}>
-                    <span className={styles.cacheSize}>{formatSize(cacheBytes)}</span>
-                    <Button size="sm" variant="ghost" onClick={handleClearCache} disabled={clearing}>
-                      {clearing ? 'Clearing...' : 'Clear cache'}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>About</div>
-          <div className={styles.sectionBody}>
-            <div className={styles.aboutRow}>
-              <div className={styles.aboutVersion}>
-                <span className={styles.aboutLabel}>WinRaid</span>
-                {version && <span className={styles.aboutTag}>v{version}</span>}
-              </div>
-              <div className={styles.aboutActions}>
-                <Button size="sm" variant="ghost" onClick={() => window.winraid?.whatsNew?.open()}>
-                  What’s new
+          <section className={styles.card} aria-label="Startup & background">
+            <h2 className={styles.cardTitle}>Startup & background</h2>
+            <div className={styles.cardBody}>
+              <Tooltip tip={watching ? HINTS.stopWatcher : HINTS.startWatcher}>
+                <Button variant={watching ? 'danger' : 'secondary'} onClick={handleWatcherToggle}>
+                  {watching ? 'Stop scanner' : 'Start scanner'}
                 </Button>
-                {isReady ? (
-                  <Button size="sm" onClick={handleInstall}>
-                    <Download size={14} strokeWidth={1.75} />
-                    Install & restart
-                  </Button>
-                ) : (
-                  <Button size="sm" variant="ghost" onClick={handleCheckUpdate} disabled={isBusy}>
-                    <RefreshCw size={14} strokeWidth={1.75} className={isChecking ? styles.spinning : undefined} />
-                    {isBusy ? 'Checking...' : 'Check for updates'}
-                  </Button>
-                )}
-              </div>
+              </Tooltip>
+              <p className={styles.hint}>Closing the window keeps WinRaid running in the tray — watchers stay armed.</p>
             </div>
-            {renderUpdateInfo()}
-          </div>
-        </section>
+          </section>
 
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>Appearance</div>
-          <div className={styles.sectionBody}>
-            <SegmentedControl
-              label="Theme"
-              value={appearance.theme}
-              onChange={(value) => handleAppearanceChange({ theme: value })}
-              options={[
-                { value: 'system', label: 'System' },
-                { value: 'dark',   label: 'Dark' },
-                { value: 'light',  label: 'Light' },
-              ]}
-            />
-            <div className={styles.accentField}>
-              <span className={styles.stackedLabel}>Accent</span>
-              <div className={styles.accentSwatches}>
-                <button
-                  type="button"
-                  className={styles.swatch}
-                  aria-label="System accent"
-                  aria-pressed={appearance.accent === 'system'}
-                  data-accent={resolveAccentHex('system', systemAccentHex)}
-                  disabled={systemAccentHex == null}
-                  title={systemAccentHex == null ? 'System accent is not available on this platform' : undefined}
-                  onClick={() => handleAppearanceChange({ accent: 'system' })}
-                >
-                  <span
-                    className={styles.swatchColor}
-                    style={{ background: resolveAccentHex('system', systemAccentHex) }}
-                  />
-                  {appearance.accent === 'system' && <Check size={14} className={styles.swatchCheck} />}
-                </button>
-                {ACCENT_PALETTE.map((entry) => (
+          <section className={styles.card} aria-label="Appearance">
+            <h2 className={styles.cardTitle}>Appearance</h2>
+            <div className={styles.cardBody}>
+              <SegmentedControl
+                label="Theme"
+                value={appearance.theme}
+                onChange={(value) => handleAppearanceChange({ theme: value })}
+                options={[
+                  { value: 'system', label: 'System' },
+                  { value: 'dark',   label: 'Dark' },
+                  { value: 'light',  label: 'Light' },
+                ]}
+              />
+              <div className={styles.accentField}>
+                <span className={styles.fieldLabel}>Accent</span>
+                <div className={styles.accentSwatches}>
                   <button
-                    key={entry.id}
                     type="button"
                     className={styles.swatch}
-                    aria-label={`${entry.label} accent`}
-                    aria-pressed={appearance.accent === entry.id}
-                    data-accent={entry.hex}
-                    onClick={() => handleAppearanceChange({ accent: entry.id })}
+                    aria-label="System accent"
+                    aria-pressed={appearance.accent === 'system'}
+                    data-accent={resolveAccentHex('system', systemAccentHex)}
+                    disabled={systemAccentHex == null}
+                    title={systemAccentHex == null ? 'System accent is not available on this platform' : undefined}
+                    onClick={() => handleAppearanceChange({ accent: 'system' })}
                   >
-                    <span className={styles.swatchColor} style={{ background: entry.hex }} />
-                    {appearance.accent === entry.id && <Check size={14} className={styles.swatchCheck} />}
+                    <span
+                      className={styles.swatchColor}
+                      style={{ background: resolveAccentHex('system', systemAccentHex) }}
+                    />
+                    {appearance.accent === 'system' && <Check size={14} className={styles.swatchCheck} />}
                   </button>
-                ))}
+                  {ACCENT_PALETTE.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className={styles.swatch}
+                      aria-label={`${entry.label} accent`}
+                      aria-pressed={appearance.accent === entry.id}
+                      data-accent={entry.hex}
+                      onClick={() => handleAppearanceChange({ accent: entry.id })}
+                    >
+                      <span className={styles.swatchColor} style={{ background: entry.hex }} />
+                      {appearance.accent === entry.id && <Check size={14} className={styles.swatchCheck} />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        </section>
+          </section>
 
-      </div>
+          <section className={styles.card} aria-label="Play">
+            <h2 className={styles.cardTitle}>Play</h2>
+            <div className={styles.cardBody}>
+              <SegmentedControl
+                label="Default scan depth"
+                value={playRecursive}
+                onChange={handlePlayRecursiveChange}
+                options={[
+                  { value: true,  label: 'Recursive' },
+                  { value: false, label: 'Top level' },
+                ]}
+              />
+              <SegmentedControl
+                label="Default order"
+                value={playShuffle}
+                onChange={handlePlayShuffleChange}
+                options={[
+                  { value: true,  label: 'Shuffle' },
+                  { value: false, label: 'In order' },
+                ]}
+              />
+            </div>
+          </section>
 
-      <div className={styles.footer}>
-        <Tooltip tip={watching ? HINTS.stopWatcher : HINTS.startWatcher} side="left">
-          <Button variant={watching ? 'danger' : 'secondary'} onClick={handleWatcherToggle}>
-            {watching ? 'Stop scanner' : 'Start scanner'}
-          </Button>
-        </Tooltip>
+          <section className={styles.card} aria-label="Snapshot">
+            <h2 className={styles.cardTitle}>Snapshot</h2>
+            <div className={styles.cardBody}>
+              <SegmentedControl
+                label="Video snapshot format"
+                value={snapshotFormat}
+                onChange={handleSnapshotFormatChange}
+                options={[
+                  { value: 'jpeg', label: 'JPEG', desc: 'Smallest files for photo-like frames. Slight quality loss.' },
+                  { value: 'png',  label: 'PNG',  desc: 'Lossless. Larger files, best for screenshots and graphics.' },
+                  { value: 'webp', label: 'WebP', desc: 'Smaller than JPEG at similar quality. Modern format.' },
+                ]}
+              />
+            </div>
+          </section>
+
+          <section className={styles.card} aria-label="Thumbnails">
+            <h2 className={styles.cardTitle}>Thumbnails</h2>
+            <div className={styles.cardBody}>
+              <div className={styles.stackedField}>
+                <span className={styles.fieldLabel}>Video thumbnail frame</span>
+                <div className={styles.thumbSeekRow}>
+                  <SegmentedControl
+                    aria-label="Video thumbnail frame"
+                    value={thumbSeekMode}
+                    onChange={(mode) => handleThumbSeekChange(mode, thumbSeekValue)}
+                    options={[
+                      { value: 'seconds', label: 'Seconds' },
+                      { value: 'percent', label: 'Percent' },
+                    ]}
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    step={thumbSeekMode === 'percent' ? 1 : 0.5}
+                    max={thumbSeekMode === 'percent' ? 100 : undefined}
+                    className={styles.thumbSeekInput}
+                    value={thumbSeekValue}
+                    onChange={(e) => {
+                      const v = parseFloat(e.target.value)
+                      if (!isNaN(v) && v >= 0) handleThumbSeekChange(thumbSeekMode, v)
+                    }}
+                  />
+                  <span className={styles.thumbSeekUnit}>{thumbSeekMode === 'percent' ? '%' : 's'}</span>
+                </div>
+              </div>
+              <div className={styles.cacheRow}>
+                <span className={styles.fieldLabel}>Cache — {formatSize(cacheBytes)}</span>
+                <Button size="sm" variant="ghost" onClick={handleClearCache} disabled={clearing}>
+                  {clearing ? 'Clearing...' : 'Clear'}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          <section className={styles.card} aria-label="Remote browser">
+            <h2 className={styles.cardTitle}>Remote browser</h2>
+            <div className={styles.cardBody}>
+              <div className={styles.stackedField}>
+                <span className={styles.fieldLabel}>Directory cache</span>
+                <div
+                  className={styles.radioList}
+                  role="radiogroup"
+                  aria-label="Directory cache"
+                  onKeyDown={handleDirectoryCacheKeyDown}
+                >
+                  {DIRECTORY_CACHE_OPTIONS.map((option) => {
+                    const isActive = option.value === cacheMode
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={isActive}
+                        aria-label={option.label}
+                        tabIndex={isActive ? 0 : -1}
+                        className={styles.radioRow}
+                        onClick={() => { if (!isActive) handleCacheModeChange(option.value) }}
+                      >
+                        <span className={styles.radioDot} aria-hidden="true">
+                          {isActive && <span className={styles.radioDotFill} />}
+                        </span>
+                        <span className={styles.radioRowText}>
+                          <span className={styles.radioRowLabel}>{option.label}</span>
+                          <span className={styles.radioRowDesc}>{option.desc}</span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <SegmentedControl
+                label="On folder mutation"
+                value={cacheMutation}
+                onChange={handleCacheMutationChange}
+                options={[
+                  { value: 'update',  label: 'Update in place', desc: 'Directly splice entries on create, delete, and move — no re-fetch.' },
+                  { value: 'refetch', label: 'Re-fetch',        desc: 'Always reload the directory listing after any change.' },
+                ]}
+              />
+              <SegmentedControl
+                label="Folder order"
+                value={dirsFirst}
+                onChange={handleDirsFirstChange}
+                options={[
+                  { value: true,  label: 'Dirs first' },
+                  { value: false, label: 'Files first' },
+                ]}
+              />
+              <SegmentedControl
+                label="Sort persistence"
+                value={sortPersistence}
+                onChange={handleSortPersistenceChange}
+                options={[
+                  { value: 'default',  label: 'Default only', desc: 'All folders use the same sort. Changing sort applies everywhere.' },
+                  { value: 'folder',   label: 'Per folder',   desc: 'Each folder remembers its own sort independently.' },
+                  { value: 'siblings', label: 'Per siblings', desc: 'Changing sort in a folder applies to all siblings under the same parent.' },
+                ]}
+              />
+            </div>
+          </section>
+
+          <section className={styles.card} aria-label="Updates">
+            <h2 className={styles.cardTitle}>Updates</h2>
+            <div className={styles.cardBody}>
+              <div className={styles.aboutRow}>
+                <div className={styles.aboutVersion}>
+                  <span className={styles.aboutLabel}>WinRaid</span>
+                  {version && <span className={styles.aboutTag}>v{version}</span>}
+                </div>
+                <div className={styles.aboutActions}>
+                  {isReady ? (
+                    <Button size="sm" onClick={handleInstall}>
+                      <Download size={14} strokeWidth={1.75} />
+                      Install & restart
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={handleCheckUpdate} disabled={isBusy}>
+                      <RefreshCw size={14} strokeWidth={1.75} className={isChecking ? styles.spinning : undefined} />
+                      {isBusy ? 'Checking...' : 'Check for updates'}
+                    </Button>
+                  )}
+                </div>
+              </div>
+              {renderUpdateInfo()}
+              <Button size="sm" variant="ghost" onClick={() => window.winraid?.whatsNew?.open()}>
+                What’s new
+              </Button>
+            </div>
+          </section>
+
+          <section className={styles.card} aria-label="Security">
+            <h2 className={styles.cardTitle}>Security</h2>
+            <div className={styles.cardBody}>
+              <p className={styles.hint}>Passwords and key passphrases are encrypted with Windows credential protection (DPAPI) — never stored in plain text.</p>
+            </div>
+          </section>
+
+        </div>
       </div>
     </div>
   )
