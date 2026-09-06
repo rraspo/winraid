@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { FolderInput } from 'lucide-react'
 import RemotePathBrowser from '../RemotePathBrowser'
 import styles from './modals.module.css'
@@ -30,6 +30,7 @@ export default function MoveModal({ target, sftpCfg, onConfirm, onCancel }) {
   const [ext, setExt]         = useState(initial.ext)
   const [folder, setFolder]   = useState(dirOf(target.path))
   const [browsing, setBrowsing] = useState(false)
+  const titleId = useId()
 
   const trimmedName   = `${stem.trim()}${ext.trim()}`
   const trimmedFolder = folder.trim().replace(/\/+$/, '') || '/'
@@ -46,13 +47,13 @@ export default function MoveModal({ target, sftpCfg, onConfirm, onCancel }) {
   return (
     <>
       <div className={styles.modalOverlay}>
-        <div className={styles.modal}>
+        <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId}>
           <div className={styles.modalHeader}>
             <span className={styles.modalIconWrap}>
               <FolderInput size={20} />
             </span>
             <div>
-              <h2 className={styles.modalTitle}>Move / Rename</h2>
+              <h2 id={titleId} className={styles.modalTitle}>Move / Rename</h2>
               <p className={styles.modalSubtitle}>
                 Rename or move <strong>{target.name}</strong>.
               </p>

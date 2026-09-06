@@ -1,7 +1,7 @@
 .track {
   width: 100%;
   height: 4px;
-  background-color: var(--bg-hover);
+  background-color: var(--hover);
   border-radius: 2px;
   overflow: hidden;
   flex-shrink: 0;
@@ -16,7 +16,7 @@
   background-image: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.15) 50%,
+    color-mix(in oklab, white 15%, transparent) 50%,
     transparent 100%
   );
   background-size: 200% 100%;
@@ -26,14 +26,18 @@
   animation: shimmer 1.4s linear infinite;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .fill.active { animation: none; }
+}
+
 .fill.done {
-  background-color: var(--success);
+  background-color: var(--ok);
   background-image: none;
   animation: none;
 }
 
 .fill.error {
-  background-color: var(--error);
+  background-color: var(--err);
   background-image: none;
   animation: none;
 }

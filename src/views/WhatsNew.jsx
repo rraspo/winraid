@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
   ArrowUpDown, Search, Filter, PencilLine, MousePointerClick,
-  Film, PieChart, Sparkles,
+  Film, PieChart,
 } from 'lucide-react'
+import iconSrc from '../../assets/winraid_icon_32x32.png'
+import Button from '../components/ui/Button'
 import styles from './WhatsNew.module.css'
 
 // Highlights for the current release. Keep entries short and friendly —
@@ -47,32 +49,36 @@ const HIGHLIGHTS = [
 
 export default function WhatsNew() {
   const [version, setVersion] = useState('')
+  const [updateReady, setUpdateReady] = useState(false)
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    return window.winraid?.update?.onStatus?.((payload) => {
+      setUpdateReady(payload?.status === 'ready')
+    })
   }, [])
 
   function handleClose() {
     window.winraid?.whatsNew?.close()
   }
 
+  function handleRestart() {
+    window.winraid?.update?.install()
+  }
+
   return (
     <div className={styles.root}>
       <div className={styles.hero}>
-        <span className={styles.heroIcon}>
-          <Sparkles size={22} />
-        </span>
-        <div>
-          <h1 className={styles.title}>What’s new</h1>
-          <p className={styles.subtitle}>
-            WinRaid {version && <span className={styles.version}>{version}</span>}
-          </p>
-        </div>
+        <img src={iconSrc} alt="" className={styles.heroIcon} />
+        <h1 className={styles.title}>What&apos;s new in {version}</h1>
       </div>
 
-      <div className={styles.list}>
+      <ul className={styles.list}>
         {HIGHLIGHTS.map(({ icon: Icon, title, body }) => (
-          <div key={title} className={styles.item}>
+          <li key={title} className={styles.item}>
             <span className={styles.itemIcon}>
               <Icon size={16} />
             </span>
@@ -80,14 +86,15 @@ export default function WhatsNew() {
               <h2 className={styles.itemTitle}>{title}</h2>
               <p className={styles.itemBody}>{body}</p>
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
 
       <div className={styles.footer}>
-        <button className={styles.gotItBtn} onClick={handleClose}>
-          Got it
-        </button>
+        <Button variant="secondary" onClick={handleClose}>Close</Button>
+        {updateReady && (
+          <Button variant="primary" onClick={handleRestart}>Restart to install</Button>
+        )}
       </div>
     </div>
   )
