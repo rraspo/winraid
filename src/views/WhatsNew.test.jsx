@@ -29,9 +29,9 @@ describe('WhatsNew window', () => {
     expect(screen.getByText(/Smarter rename/i)).toBeInTheDocument()
   })
 
-  it('closes the window when "Got it" is clicked', async () => {
+  it('closes the window when "Close" is clicked', async () => {
     render(<WhatsNew />)
-    fireEvent.click(screen.getByRole('button', { name: /got it/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
     expect(window.winraid.whatsNew.close).toHaveBeenCalled()
   })
 })
