@@ -14,7 +14,7 @@ const BrowseGrid = memo(function BrowseGrid({
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd,
   rubberBand,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
-  localMirrorOf, checkLocalExists, onRevealLocal,
+  localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
 }) {
   const entries = entriesWithPaths
   const [gridScrollEl, setGridScrollEl] = useState(null)
@@ -232,6 +232,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       localCandidate={localMirrorOf?.(entryPath) ?? null}
                       checkLocalExists={checkLocalExists}
                       onRevealLocal={onRevealLocal}
+                      onMiddleClickFolder={onMiddleClickFolder}
                       onDragStart={handleDragStart}
                       onDragEnd={handleDragEnd}
                       onDragOver={handleDragOverFolder}

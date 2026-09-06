@@ -25,6 +25,15 @@ function NavButton({ id, label, Icon, activeView, onNavigate }) {
       className={[styles.item, isActive ? styles.active : ''].filter(Boolean).join(' ')}
       aria-current={isActive ? 'page' : undefined}
       onClick={() => onNavigate(id)}
+      onMouseDown={(e) => {
+        // Middle click opens another tab of the same kind, the way a
+        // browser tab strip does — a plain click still calls onNavigate
+        // with a single argument, so it can't be told apart from the old
+        // click-only contract by callers that don't care about tabs.
+        if (e.button !== 1) return
+        e.preventDefault()
+        onNavigate(id, { newTab: true })
+      }}
     >
       {isActive && <span className={styles.activeBar} />}
       <Icon size={20} strokeWidth={1.6} />

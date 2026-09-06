@@ -13,7 +13,7 @@ const BrowseList = memo(function BrowseList({
   navigate, openQuickLook, handleItemPointer, toggleSelectAll,
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
-  localMirrorOf, checkLocalExists, onRevealLocal,
+  localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
@@ -235,6 +235,7 @@ const BrowseList = memo(function BrowseList({
                 localCandidate={localMirrorOf?.(entry.entryPath) ?? null}
                 checkLocalExists={checkLocalExists}
                 onRevealLocal={onRevealLocal}
+                onMiddleClickFolder={onMiddleClickFolder}
               />
             )
           })}

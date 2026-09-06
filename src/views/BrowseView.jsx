@@ -40,7 +40,7 @@ function parentFolder(remotePath) {
 export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
-  onBack, onForward, canGoBack = false, canGoForward = false,
+  onSelectConnection, onBack, onForward, canGoBack = false, canGoForward = false,
 }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
@@ -94,6 +94,12 @@ export default function BrowseView({
 
   // "Reveal in Explorer" for mirrored connections: map a remote entry to its
   // local mirror copy, gate on existence, and open it in the OS file manager.
+  // Middle click on a folder opens it in a background tab of the same
+  // connection, without disturbing the tab in front.
+  const handleMiddleClickFolder = (entryPath) => {
+    onOpenTab?.(selectedId, 'browse', { path: entryPath, newTab: true, background: true })
+  }
+
   const localMirrorOf  = (entryPath) => localMirrorPath(browse.selectedConn, entryPath)
   // Optional-call (?.()) so a preload that predates this surface (dev restart,
   // version skew) degrades to "no reveal item" instead of throwing.
@@ -434,7 +440,8 @@ export default function BrowseView({
           connections={connections}
           connectionId={selectedId}
           onSelect={(connId) => {
-            if (onOpenTab) onOpenTab(connId, 'browse')
+            if (onSelectConnection) onSelectConnection(connId)
+            else if (onOpenTab) onOpenTab(connId, 'browse')
             else onNavigate?.('connections')
           }}
         />
@@ -695,6 +702,7 @@ export default function BrowseView({
               localMirrorOf={localMirrorOf}
               checkLocalExists={checkLocalExists}
               onRevealLocal={revealLocal}
+              onMiddleClickFolder={handleMiddleClickFolder}
             />
           )}
           {viewMode === 'grid' && (
@@ -737,6 +745,7 @@ export default function BrowseView({
               localMirrorOf={localMirrorOf}
               checkLocalExists={checkLocalExists}
               onRevealLocal={revealLocal}
+              onMiddleClickFolder={handleMiddleClickFolder}
             />
           )}
           </div>
