@@ -4,11 +4,11 @@
   display: flex;
   align-items: stretch;
   background: var(--bg);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--strokeSoft);
   overflow-x: auto;
   scrollbar-width: none;
   flex-shrink: 0;
-  padding: 0 var(--space-2);
+  padding: 0 8px;
   gap: 2px;
 }
 
@@ -19,15 +19,15 @@
 .tab {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
+  gap: 8px;
+  padding: 0 12px;
   height: 36px;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border-radius: 6px 6px 0 0;
   border: 1px solid transparent;
   border-bottom: none;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-faint);
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text3);
   white-space: nowrap;
   cursor: pointer;
   flex-shrink: 0;
@@ -37,18 +37,18 @@
 }
 
 .tab:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-muted);
+  background-color: var(--hover);
+  color: var(--text2);
 }
 
 .tabActive {
   color: var(--text);
-  background-color: var(--bg-panel);
-  border-color: var(--border);
+  background-color: var(--card);
+  border-color: var(--strokeSoft);
 }
 
 .tabActive:hover {
-  background-color: var(--bg-panel);
+  background-color: var(--card);
   color: var(--text);
 }
 
@@ -61,18 +61,18 @@
   right: 0;
   height: 2px;
   background: var(--accent);
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border-radius: 6px 6px 0 0;
 }
 
 .tabType {
   font-size: 10px;
-  font-weight: var(--font-weight-semibold);
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--text-faint);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xs);
+  color: var(--text3);
+  background: var(--surface2);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 2px;
   padding: 1px 5px;
   line-height: 1.4;
   flex-shrink: 0;
@@ -80,12 +80,12 @@
 
 .tabActive .tabType {
   color: var(--accent);
-  background: var(--accent-subtle);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .dirtyDot {
-  color: var(--warning);
+  color: var(--warn);
   font-size: 9px;
   line-height: 1;
   flex-shrink: 0;
@@ -97,19 +97,25 @@
   justify-content: center;
   width: 16px;
   height: 16px;
-  border-radius: var(--radius-xs);
+  border-radius: 2px;
   color: transparent;
-  margin-left: var(--space-1);
+  margin-left: 4px;
   flex-shrink: 0;
   transition: background-color var(--transition), color var(--transition);
 }
 
 .tab:hover .closeBtn,
 .tabActive .closeBtn {
-  color: var(--text-faint);
+  color: var(--text3);
 }
 
 .closeBtn:hover {
-  background-color: var(--bg-hover);
+  background-color: var(--hover);
   color: var(--text) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab, .closeBtn {
+    transition: none;
+  }
 }

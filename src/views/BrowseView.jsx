@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import {
-  ChevronRight, HardDrive, Download, RefreshCw,
+  ChevronRight, ChevronDown, HardDrive, Download,
   AlertCircle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
+  ArrowLeft, ArrowRight, Home, Clock, CheckSquare, Plus, RefreshCw,
 } from 'lucide-react'
-import { isFavorite } from '../utils/favorites'
+import { isFavorite, favName } from '../utils/favorites'
 import { normalizeForSearch } from '../utils/normalizeForSearch'
 import { isEditableFile } from '../utils/fileTypes'
 import { localMirrorPath } from '../utils/mirrorPath'
@@ -20,6 +21,7 @@ import PasteImageModal from '../components/modals/PasteImageModal'
 import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
+import ConnectionIcon from '../components/ConnectionIcon'
 import { useBrowse } from '../hooks/useBrowse'
 import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
@@ -35,7 +37,10 @@ function parentFolder(remotePath) {
   return lastSlash > 0 ? remotePath.slice(0, lastSlash) : '/'
 }
 
-export default function BrowseView({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId, style, favorites = [], onToggleFavorite, onOpenEditor }) {
+export default function BrowseView({
+  onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
+  style, favorites = [], onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
+}) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
     connections, selectedId, path, entries, loading, error,
@@ -103,8 +108,54 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
   const [showPlay, setShowPlay]               = useState(false)
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
+  const [connMenuOpen, setConnMenuOpen]       = useState(false)
+  const [favMenuOpen, setFavMenuOpen]         = useState(false)
+  const [selectionMode, setSelectionMode]     = useState(false)
   const breadcrumbRef = useRef(null)
   const sortDropRef   = useRef(null)
+  const connDropRef   = useRef(null)
+  const favDropRef    = useRef(null)
+
+  // ── Per-tab folder history (Back / Forward) ─────────────────────────────
+  // Local to this browse tab: every real navigate() that changes `path`
+  // (breadcrumb, folder open, sync-root jump) is recorded here so Back/
+  // Forward can walk it, independent of the app-wide nav-history stack
+  // (which drives cross-screen restore, not intra-folder movement).
+  const [pastPaths,   setPastPaths]   = useState([])
+  const [futurePaths, setFuturePaths] = useState([])
+  const lastHistoryPathRef = useRef(path)
+  const skipHistoryRef     = useRef(false)
+
+  useEffect(() => {
+    // Don't record history until the tab has settled on its first real
+    // path — otherwise the '/' -> cfgRemotePath initial jump would land a
+    // bogus "back to root" entry before the user has navigated anywhere.
+    if (!selectedId) { lastHistoryPathRef.current = path; return }
+    if (skipHistoryRef.current) { skipHistoryRef.current = false; lastHistoryPathRef.current = path; return }
+    if (lastHistoryPathRef.current !== path) {
+      setPastPaths((prev) => [...prev, lastHistoryPathRef.current])
+      setFuturePaths([])
+    }
+    lastHistoryPathRef.current = path
+  }, [path, selectedId])
+
+  function goBack() {
+    if (pastPaths.length === 0) return
+    const target = pastPaths[pastPaths.length - 1]
+    setPastPaths((prev) => prev.slice(0, -1))
+    setFuturePaths((prev) => [path, ...prev])
+    skipHistoryRef.current = true
+    navigate(target)
+  }
+
+  function goForward() {
+    if (futurePaths.length === 0) return
+    const target = futurePaths[0]
+    setFuturePaths((prev) => prev.slice(1))
+    setPastPaths((prev) => [...prev, path])
+    skipHistoryRef.current = true
+    navigate(target)
+  }
 
   // Contextual notices now live in the toast stack as sticky toasts (no inline
   // banner shifting the layout). They clear when the condition clears or the
@@ -146,6 +197,24 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [sortDropOpen])
+
+  useEffect(() => {
+    if (!connMenuOpen) return
+    function onDown(e) {
+      if (!connDropRef.current?.contains(e.target)) setConnMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [connMenuOpen])
+
+  useEffect(() => {
+    if (!favMenuOpen) return
+    function onDown(e) {
+      if (!favDropRef.current?.contains(e.target)) setFavMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [favMenuOpen])
 
   const SORT_OPTIONS = [
     { value: 'nameAsc',  label: 'Name A-Z' },
@@ -231,6 +300,9 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
       clearTimeout(cursorClearTimerRef.current)
     }
   }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
+
+  const faved = isFavorite(favorites, path)
+  const showSelectionBar = selectionMode || selected.size > 0
 
   return (
     <div
@@ -369,117 +441,261 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
         </div>
       )}
 
-      {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
+      {/* Toolbar */}
+      <div className={styles.toolbar} role="toolbar" aria-label="Browser">
+        <Tooltip tip="Back" side="bottom">
           <button
-            className={styles.newFolderBtn}
+            type="button"
+            className={styles.iconBtn}
+            aria-label="Back"
+            onClick={goBack}
+            disabled={pastPaths.length === 0}
+          >
+            <ArrowLeft size={15} />
+          </button>
+        </Tooltip>
+        <Tooltip tip="Forward" side="bottom">
+          <button
+            type="button"
+            className={styles.iconBtn}
+            aria-label="Forward"
+            onClick={goForward}
+            disabled={futurePaths.length === 0}
+          >
+            <ArrowRight size={15} />
+          </button>
+        </Tooltip>
+
+        <div className={styles.connWrap} ref={connDropRef}>
+          <Tooltip tip="Switch connection" side="bottom">
+            <button
+              type="button"
+              className={styles.connPill}
+              aria-label={`Connection: ${browse.selectedConn?.name ?? 'None'}`}
+              onClick={() => {
+                if (connections.length > 1 && (onOpenTab || onNavigate)) setConnMenuOpen((v) => !v)
+              }}
+            >
+              <ConnectionIcon icon={browse.selectedConn?.icon ?? null} size={13} />
+              <span className={styles.connPillName}>{browse.selectedConn?.name ?? 'No connection'}</span>
+              {connections.length > 1 && (onOpenTab || onNavigate) && <ChevronDown size={11} />}
+            </button>
+          </Tooltip>
+          {connMenuOpen && (
+            <div className={styles.connDrop} role="menu">
+              {connections.map((conn) => (
+                <button
+                  key={conn.id}
+                  type="button"
+                  role="menuitem"
+                  className={[styles.connItem, conn.id === selectedId ? styles.connItemActive : ''].join(' ')}
+                  onClick={() => {
+                    setConnMenuOpen(false)
+                    if (onOpenTab) onOpenTab(conn.id, 'browse')
+                    else onNavigate?.('connections')
+                  }}
+                >
+                  <ConnectionIcon icon={conn.icon ?? null} size={13} />
+                  <span className={styles.connItemLabel}>
+                    <span className={styles.connItemName}>{conn.name}</span>
+                    <span className={styles.connItemRoot}>{conn.sftp?.remotePath ?? conn.smb?.remotePath ?? ''}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className={styles.breadcrumb} ref={breadcrumbRef}>
+          {breadcrumbOverflow && <span className={styles.crumbEllipsis}>...</span>}
+          {crumbs.map((c, i) => (
+            <span key={c.path} className={styles.crumbGroup}>
+              {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
+              <button
+                type="button"
+                className={[
+                  styles.crumb,
+                  c.path === path ? styles.crumbActive : '',
+                ].join(' ')}
+                title={c.path === path ? 'Copy full path' : undefined}
+                onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
+                onDragOver={(e) => handleDragOverFolder(e, c.path)}
+                onDragLeave={handleDragLeaveFolder}
+                onDrop={(e) => handleDrop(e, c.path)}
+              >
+                {i === 0 ? <HardDrive size={11} /> : c.label}
+              </button>
+            </span>
+          ))}
+        </div>
+
+        <div className={styles.favWrap} ref={favDropRef}>
+          <Tooltip tip="Favorites" side="bottom">
+            <button
+              type="button"
+              className={[styles.iconBtn, faved ? styles.favBtnActive : ''].join(' ')}
+              aria-label="Favorites"
+              onClick={() => setFavMenuOpen((v) => !v)}
+              disabled={noConfig}
+            >
+              <Star size={14} fill={faved ? 'currentColor' : 'none'} />
+            </button>
+          </Tooltip>
+          {favMenuOpen && (
+            <div className={styles.favDrop} role="menu">
+              <div className={styles.favSectionLabel}>FAVORITES</div>
+              {favorites.length === 0 && <div className={styles.favEmpty}>No favorites yet</div>}
+              {favorites.map((favPath) => (
+                <button
+                  key={favPath}
+                  type="button"
+                  role="menuitem"
+                  className={styles.favItem}
+                  onClick={() => { setFavMenuOpen(false); onNavigateFavorite?.(selectedId, favPath) }}
+                >
+                  <Star size={13} className={styles.favItemStar} fill="currentColor" />
+                  <span className={styles.favItemLabel}>
+                    <span className={styles.favItemName}>{favName(favPath)}</span>
+                    <span className={styles.favItemConn}>{browse.selectedConn?.name}</span>
+                  </span>
+                </button>
+              ))}
+              <button
+                type="button"
+                role="menuitem"
+                className={styles.favPinItem}
+                onClick={() => { setFavMenuOpen(false); onToggleFavorite?.(path) }}
+              >
+                <Plus size={13} />
+                <span>{faved ? 'Remove current folder' : 'Add current folder'}</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        <Tooltip tip="Jump to sync root" side="bottom">
+          <button
+            type="button"
+            className={styles.iconBtn}
+            aria-label="Jump to sync root"
+            onClick={() => navigate(cfgRemotePath)}
+            disabled={!cfgRemotePath || path === cfgRemotePath || noConfig}
+          >
+            <Home size={15} />
+          </button>
+        </Tooltip>
+
+        <div className={styles.toolbarSpacer} />
+
+        <SearchInput value={searchQuery} onChange={setSearchQuery} />
+
+        <div className={styles.sortWrap} ref={sortDropRef}>
+          <Tooltip tip="Sort order" side="bottom">
+            <button
+              className={styles.sortBtn}
+              onClick={() => setSortDropOpen((v) => !v)}
+              aria-label="Sort order"
+            >
+              <ArrowUpDown size={13} />
+              <span className={styles.sortLabel}>
+                {SORT_OPTIONS.find((o) => o.value === sortMode)?.label ?? 'Sort'}
+              </span>
+            </button>
+          </Tooltip>
+          {sortDropOpen && (
+            <div className={styles.sortDrop}>
+              {SORT_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  className={[styles.sortOption, sortMode === opt.value ? styles.sortOptionActive : ''].join(' ')}
+                  onClick={() => { setSortMode(opt.value); setSortDropOpen(false) }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Tooltip tip="Toggle selection mode" side="bottom">
+          <button
+            type="button"
+            className={[styles.selectBtn, selectionMode ? styles.selectBtnActive : ''].join(' ')}
+            aria-label="Select"
+            aria-pressed={selectionMode}
+            onClick={() => setSelectionMode((v) => !v)}
+          >
+            <CheckSquare size={13} />
+            <span>Select</span>
+          </button>
+        </Tooltip>
+
+        <Tooltip tip="Play media slideshow" side="bottom">
+          <button
+            className={styles.iconBtn}
+            onClick={() => setShowPlay(true)}
+            aria-label="Play media slideshow"
+          >
+            <Play size={14} />
+          </button>
+        </Tooltip>
+
+        <Tooltip tip="New folder" side="bottom">
+          <button
+            className={styles.iconBtn}
+            aria-label="New folder"
             onClick={() => setNewFolderName('')}
             disabled={busy || loading || noConfig || mergerfsWarning}
           >
-            <FolderPlus size={13} />
-            New Folder
+            <FolderPlus size={15} />
           </button>
-          <Tooltip tip={viewMode === 'list' ? 'Switch to grid view' : 'Switch to list view'} side="bottom">
-            <button
-              className={styles.viewToggleBtn}
-              onClick={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-            >
-              {viewMode === 'list' ? <LayoutGrid size={14} /> : <List size={14} />}
-            </button>
-          </Tooltip>
-          <Tooltip tip="Refresh" side="bottom">
-            <button
-              className={styles.refreshBtn}
-              onClick={() => fetchDir(path)}
-              disabled={loading || noConfig}
-            >
-              <RefreshCw size={13} className={loading ? styles.spinning : ''} />
-            </button>
-          </Tooltip>
-          <Tooltip tip="Play media slideshow" side="bottom">
-            <button
-              className={styles.playBtn}
-              onClick={() => setShowPlay(true)}
-              aria-label="Play media slideshow"
-            >
-              <Play size={14} />
-            </button>
-          </Tooltip>
-          {(() => {
-            const faved = isFavorite(favorites, path)
-            return (
-              <Tooltip tip={faved ? 'Remove from favorites' : 'Add folder to favorites'} side="bottom">
-                <button
-                  className={[styles.favBtn, faved ? styles.favBtnActive : ''].filter(Boolean).join(' ')}
-                  onClick={() => onToggleFavorite?.(path)}
-                  disabled={noConfig}
-                  aria-label={faved ? 'Remove from favorites' : 'Add folder to favorites'}
-                  aria-pressed={faved}
-                >
-                  <Star size={14} fill={faved ? 'currentColor' : 'none'} />
-                </button>
-              </Tooltip>
-            )
-          })()}
-          <div className={styles.sortWrap} ref={sortDropRef}>
-            <Tooltip tip="Sort order" side="bottom">
-              <button
-                className={styles.sortBtn}
-                onClick={() => setSortDropOpen((v) => !v)}
-                aria-label="Sort order"
-              >
-                <ArrowUpDown size={13} />
-                <span className={styles.sortLabel}>
-                  {SORT_OPTIONS.find((o) => o.value === sortMode)?.label ?? 'Sort'}
-                </span>
-              </button>
-            </Tooltip>
-            {sortDropOpen && (
-              <div className={styles.sortDrop}>
-                {SORT_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    className={[styles.sortOption, sortMode === opt.value ? styles.sortOptionActive : ''].join(' ')}
-                    onClick={() => { setSortMode(opt.value); setSortDropOpen(false) }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <SearchInput value={searchQuery} onChange={setSearchQuery} />
-        </div>
+        </Tooltip>
 
-        <div className={styles.headerRight}>
-          {!noConfig && (
-            <>
-              {cfgRemotePath && path !== cfgRemotePath && (
-                <Tooltip tip={`Jump to sync root: ${cfgRemotePath}`} side="bottom">
-                  <button
-                    className={styles.goRootBtn}
-                    onClick={() => navigate(cfgRemotePath)}
-                    disabled={loading}
-                  >
-                    &uarr; Go to root
-                  </button>
-                </Tooltip>
-              )}
-              {localFolder && (
-                <Tooltip tip={`Check out current folder structure to ${localFolder}`} side="bottom">
-                  <button
-                    className={styles.checkoutBtn}
-                    onClick={() => handleCheckout(path)}
-                    disabled={busy || loading}
-                  >
-                    <Download size={13} />
-                    Check out here
-                  </button>
-                </Tooltip>
-              )}
-            </>
-          )}
+        <Tooltip tip="Activity" side="bottom">
+          <button
+            type="button"
+            className={styles.iconBtn}
+            aria-label="Activity"
+            onClick={() => onNavigate?.('dashboard')}
+          >
+            <Clock size={15} />
+          </button>
+        </Tooltip>
+
+        <Tooltip tip="Refresh" side="bottom">
+          <button
+            type="button"
+            className={styles.iconBtn}
+            aria-label="Refresh"
+            onClick={() => fetchDir(path)}
+          >
+            <RefreshCw size={15} />
+          </button>
+        </Tooltip>
+
+        <div className={styles.viewToggleGroup}>
+          <Tooltip tip="Grid view" side="bottom">
+            <button
+              type="button"
+              className={[styles.viewToggleBtn, viewMode === 'grid' ? styles.viewToggleBtnActive : ''].join(' ')}
+              aria-label="Grid view"
+              aria-pressed={viewMode === 'grid'}
+              onClick={() => setViewMode('grid')}
+            >
+              <LayoutGrid size={14} />
+            </button>
+          </Tooltip>
+          <Tooltip tip="List view" side="bottom">
+            <button
+              type="button"
+              className={[styles.viewToggleBtn, viewMode === 'list' ? styles.viewToggleBtnActive : ''].join(' ')}
+              aria-label="List view"
+              aria-pressed={viewMode === 'list'}
+              onClick={() => setViewMode('list')}
+            >
+              <List size={14} />
+            </button>
+          </Tooltip>
         </div>
       </div>
 
@@ -495,29 +711,6 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
         </div>
       ) : (
         <>
-          {/* Breadcrumb */}
-          <div className={styles.breadcrumb} ref={breadcrumbRef}>
-            {breadcrumbOverflow && <span className={styles.crumbEllipsis}>...</span>}
-            {crumbs.map((c, i) => (
-              <span key={c.path} className={styles.crumbGroup}>
-                {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
-                <button
-                  className={[
-                    styles.crumb,
-                    c.path === path ? styles.crumbActive : '',
-                  ].join(' ')}
-                  title={c.path === path ? 'Copy full path' : undefined}
-                  onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
-                  onDragOver={(e) => handleDragOverFolder(e, c.path)}
-                  onDragLeave={handleDragLeaveFolder}
-                  onDrop={(e) => handleDrop(e, c.path)}
-                >
-                  {i === 0 ? <HardDrive size={11} /> : c.label}
-                </button>
-              </span>
-            ))}
-          </div>
-
           <div className={styles.listArea}>
             {externalDropActive && (
               <div className={styles.dropOverlay}>
@@ -541,6 +734,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               selectedId={browse.selectedId}
               busy={browse.busy}
               selected={browse.selected}
+              selectionMode={selectionMode}
               dragSourcePaths={dragSourcePaths}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
@@ -582,6 +776,7 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
               selectedId={browse.selectedId}
               busy={browse.busy}
               selected={browse.selected}
+              selectionMode={selectionMode}
               dragSourcePaths={dragSourcePaths}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
@@ -613,67 +808,64 @@ export default function BrowseView({ onHistoryPush, browseRestore, onBrowseResto
           )}
           </div>
 
-          {/* Entry count bar */}
-          {!loading && !error && entries.length > 0 && (
-            <div className={styles.countBar}>
-              {dirCount  > 0 && <span>{dirCount}  {dirCount  === 1 ? 'folder' : 'folders'}</span>}
-              {fileCount > 0 && <span>{fileCount} {fileCount === 1 ? 'file'   : 'files'}</span>}
-              {dirCount  > 0 && fileCount > 0 && <span className={styles.countTotal}>{entries.length} total</span>}
-              {diskUsage?.ok && (
-                <span className={styles.diskPill}>
-                  {formatSize(diskUsage.free)} free of {formatSize(diskUsage.total)}
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Bulk action drawer */}
-          <div className={[styles.bulkBar, selected.size > 0 ? styles.bulkBarOpen : ''].join(' ')}>
-            <label className={styles.bulkSelectToggle}>
-              <span className={styles.bulkCheckbox}>
-                <input
-                  type="checkbox"
-                  checked={entries.length > 0 && selected.size === entries.length}
-                  ref={(el) => { if (el) el.indeterminate = selected.size > 0 && selected.size < entries.length }}
-                  onChange={toggleSelectAll}
-                />
-                <span className={styles.bulkCheckmark} />
-              </span>
-              <span className={styles.bulkCount}>
-                {selected.size} selected
-              </span>
-            </label>
-            <div className={styles.bulkActions}>
-              <Tooltip tip="Download selected" side="top">
-                <button className={styles.bulkBtn} onClick={handleBulkCheckout} disabled={busy}>
+          {/* Selection bar */}
+          {showSelectionBar && (
+            <div className={styles.bulkBar} role="toolbar" aria-label="Selection">
+              <span className={styles.bulkCount}>{selected.size} selected</span>
+              <div className={styles.bulkActions}>
+                <button type="button" className={styles.bulkBtn} onClick={handleBulkCheckout} disabled={busy}>
                   <Download size={13} />
+                  Download
                 </button>
-              </Tooltip>
-              <Tooltip tip="Move selected" side="top">
                 <button
+                  type="button"
                   className={styles.bulkBtn}
                   onClick={() => { setBulkAction('move'); setBulkMoveDest(path) }}
                   disabled={busy}
                 >
                   <FolderInput size={13} />
+                  Move…
                 </button>
-              </Tooltip>
-              <Tooltip tip="Delete selected" side="top">
                 <button
+                  type="button"
                   className={[styles.bulkBtn, styles.bulkBtnDanger].join(' ')}
                   onClick={() => setBulkAction('delete')}
                   disabled={busy}
                 >
                   <Trash2 size={13} />
+                  Delete
                 </button>
-              </Tooltip>
-              <Tooltip tip="Clear selection" side="top">
-                <button className={styles.bulkBtn} onClick={clearSelection}>
+                <button
+                  type="button"
+                  className={styles.bulkBtn}
+                  onClick={() => { clearSelection(); setSelectionMode(false) }}
+                >
                   <XIcon size={13} />
+                  Done
                 </button>
-              </Tooltip>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* Footer */}
+          <footer className={styles.footer}>
+            <span className={styles.footerCount}>
+              {dirCount} {dirCount === 1 ? 'folder' : 'folders'} · {fileCount} {fileCount === 1 ? 'file' : 'files'}
+              {diskUsage?.ok && ` · ${formatSize(diskUsage.free)} free of ${formatSize(diskUsage.total)}`}
+            </span>
+            <span className={styles.footerSpacer} />
+            <span className={styles.footerHint}>Drop files from Explorer or paste an image / URL to upload here</span>
+            {localFolder && (
+              <button
+                type="button"
+                className={styles.footerCheckout}
+                onClick={() => handleCheckout(path)}
+                disabled={busy || loading}
+              >
+                Check out to local mirror
+              </button>
+            )}
+          </footer>
         </>
       )}
     </div>

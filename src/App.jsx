@@ -694,6 +694,8 @@ export default function App() {
                 onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
                 onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
                 onNavigateFavorite={navigateFavorite}
+                onNavigate={navigate}
+                onOpenTab={openTab}
               />
             ))}
 
