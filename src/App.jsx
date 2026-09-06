@@ -657,6 +657,7 @@ export default function App() {
           onNavigate={navigate}
           theme={resolvedTheme}
           onThemeToggle={toggleTheme}
+          onOpenTray={window.winraid?.tray ? () => window.winraid?.tray?.openFlyout?.() : undefined}
         />
         <div className={styles.main}>
           <TabBar

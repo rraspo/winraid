@@ -14,4 +14,5 @@ export const SCREEN_NAMES = [
   'backup',
   'logs',
   'settings',
+  'tray',
 ]

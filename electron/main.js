@@ -14,6 +14,7 @@ import {
   powerMonitor,
   net,
   systemPreferences,
+  screen,
 } from 'electron'
 import { spawn } from 'child_process'
 import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
@@ -38,7 +39,7 @@ import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationC
 import { runCrop } from './video-crop.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
 import { createWindowOpenHandler, createWillNavigateHandler } from './window-guards.js'
-import { init as initIpcBridge, sendToRenderer, notify } from './ipc-bridge.js'
+import { init as initIpcBridge, sendToRenderer as sendToMainWindow, notify } from './ipc-bridge.js'
 import * as watcher from './watcher.js'
 import * as queue from './queue.js'
 import { deletesLocalAfterUpload } from './folder-mode.js'
@@ -91,7 +92,7 @@ if (!app.requestSingleInstanceLock()) {
 // ---------------------------------------------------------------------------
 let mainWindow  = null
 let tray        = null
-let isPaused    = false
+let isQuitting  = false  // set before app.quit() so the close handler lets the window close instead of hiding to tray
 let _backupCurrentToken = null  // per-run cancellation token for backup:run
 let _backupCurrentConn  = null  // active SSH Client during backup:run — used to interrupt fastGet
 
@@ -99,6 +100,20 @@ let _backupCurrentConn  = null  // active SSH Client during backup:run — used 
 // used by resume-all to restart only those connections.
 let _watchingBeforePause = new Set()
 
+// The tray flyout window, created lazily on first open — see
+// createTrayFlyoutWindow() below.
+let trayFlyoutWindow = null
+
+// Forwards to the main window (via ipc-bridge) and, when it is open, the
+// tray flyout window too — the flyout subscribes to the same watcher/queue
+// channels the main window does, so every existing sendToRenderer call
+// site reaches it for free.
+function sendToRenderer(channel, payload) {
+  sendToMainWindow(channel, payload)
+  if (trayFlyoutWindow?.webContents && !trayFlyoutWindow.webContents.isDestroyed()) {
+    trayFlyoutWindow.webContents.send(channel, payload)
+  }
+}
 
 /** Active size scans: connectionId → { cancelled: boolean } */
 const _sizeScans = new Map()
@@ -380,8 +395,10 @@ function createWindow() {
   initLogger(sendToRenderer)
   initActivity(sendToRenderer)
 
-  // Minimize to tray on close
+  // Minimize to tray on close, unless a real quit is in progress (tray
+  // flyout's Quit, or any other app.quit() path that sets isQuitting first).
   mainWindow.on('close', (e) => {
+    if (isQuitting) return
     e.preventDefault()
     mainWindow.hide()
   })
@@ -532,6 +549,84 @@ function createWhatsNewWindow() {
 }
 
 // ---------------------------------------------------------------------------
+// Tray flyout — a small frameless window anchored near the tray icon that
+// replaces the tray's right-click context menu. Created once and reused:
+// shown near the icon and hidden (not destroyed) on blur, so a reopen after
+// the first one sends 'tray:opened' to let the renderer refresh its state
+// (config/watcher/queue may have changed while it was hidden).
+// ---------------------------------------------------------------------------
+function createTrayFlyoutWindow() {
+  if (trayFlyoutWindow && !trayFlyoutWindow.isDestroyed()) return trayFlyoutWindow
+
+  trayFlyoutWindow = new BrowserWindow({
+    width: 330,
+    height: 300,
+    show: false,
+    frame: false,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    transparent: true,
+    backgroundColor: '#00000000',
+    icon: join(__dirname, '../../assets/winraid_icon.ico'),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  })
+  trayFlyoutWindow.setMenuBarVisibility(false)
+  trayFlyoutWindow.on('closed', () => { trayFlyoutWindow = null })
+  // Acts like a menu: dismiss as soon as it loses focus.
+  trayFlyoutWindow.on('blur', () => {
+    if (trayFlyoutWindow && !trayFlyoutWindow.isDestroyed()) trayFlyoutWindow.hide()
+  })
+
+  // Same navigation guards as the main window — see createWindow().
+  trayFlyoutWindow.webContents.setWindowOpenHandler(createWindowOpenHandler())
+  trayFlyoutWindow.webContents.on('will-navigate', createWillNavigateHandler(appEntryUrl()))
+
+  if (!app.isPackaged) {
+    trayFlyoutWindow.loadURL('http://localhost:5173/#tray')
+  } else {
+    trayFlyoutWindow.loadFile(join(__dirname, '../renderer/index.html'), { hash: 'tray' })
+  }
+  return trayFlyoutWindow
+}
+
+// Anchors the flyout just above the tray icon, nudging it below when the
+// icon sits at the top of the screen, and clamps it inside the work area of
+// the display the icon is on so it never lands off-screen near an edge.
+function positionTrayFlyout(win) {
+  if (!tray) return
+  const trayBounds   = tray.getBounds()
+  const windowBounds = win.getBounds()
+  const workArea     = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y }).workArea
+
+  let x = Math.round(trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2)
+  let y = Math.round(trayBounds.y - windowBounds.height)
+  if (y < workArea.y) y = trayBounds.y + trayBounds.height
+
+  x = Math.min(Math.max(x, workArea.x), workArea.x + workArea.width - windowBounds.width)
+  y = Math.min(Math.max(y, workArea.y), workArea.y + workArea.height - windowBounds.height)
+
+  win.setBounds({ x, y, width: windowBounds.width, height: windowBounds.height })
+}
+
+function showTrayFlyout() {
+  const isReopen = !!(trayFlyoutWindow && !trayFlyoutWindow.isDestroyed())
+  const win = createTrayFlyoutWindow()
+  positionTrayFlyout(win)
+  win.show()
+  win.focus()
+  if (isReopen) win.webContents.send('tray:opened')
+}
+
+// ---------------------------------------------------------------------------
 // System tray — optional; skipped gracefully if no icon asset is found
 // ---------------------------------------------------------------------------
 function createTray() {
@@ -561,73 +656,10 @@ function createTray() {
 
   tray = new Tray(icon)
   tray.setToolTip('WinRaid')
-  rebuildTrayMenu()
+  // Left click opens the flyout (replaces the old right-click context menu);
+  // double-click still shows the main window.
+  tray.on('click', () => { showTrayFlyout() })
   tray.on('double-click', () => { mainWindow.show(); mainWindow.focus() })
-}
-
-function rebuildTrayMenu() {
-  if (!tray) return
-
-  // Determine label: any watcher running or worker active => "Pause syncing"
-  // otherwise "Resume syncing"
-  const syncingLabel = isPaused ? 'Resume syncing' : 'Pause syncing'
-
-  const menu = Menu.buildFromTemplate([
-    {
-      label: 'Show WinRaid',
-      click: () => { mainWindow.show(); mainWindow.focus() },
-    },
-    {
-      label: syncingLabel,
-      click: async () => {
-        if (isPaused) {
-          // Resume — delegate to the IPC handler logic
-          isPaused = false
-          const { getConfig } = await import('./config.js')
-          const cfg = getConfig()
-          const w = watcher
-          for (const connectionId of _watchingBeforePause) {
-            const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
-            if (!conn?.localFolder) continue
-            try {
-              if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
-            } catch { continue }
-            w.startWatcher(
-              connectionId,
-              conn.localFolder,
-              makeFileDetectedCallback(connectionId),
-              () => sendToRenderer('watcher:status', w.listWatcherStates()),
-            )
-          }
-          _watchingBeforePause.clear()
-          const { ensureWorkerRunning } = await import('./worker.js')
-          ensureWorkerRunning()
-          sendToRenderer('watcher:status', w.listWatcherStates())
-        } else {
-          // Pause — stop all watchers and the worker
-          isPaused = true
-          const w = watcher
-          _watchingBeforePause = new Set(
-            Object.entries(w.listWatcherStates())
-              .filter(([, s]) => s.watching)
-              .map(([id]) => id)
-          )
-          w.stopAllWatchers()
-          const { stopWorker } = await import('./worker.js')
-          stopWorker()
-          sendToRenderer('watcher:status', w.listWatcherStates())
-        }
-        rebuildTrayMenu()
-      },
-    },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => { mainWindow.destroy(); app.quit() },
-    },
-  ])
-
-  tray.setContextMenu(menu)
 }
 
 // ---------------------------------------------------------------------------
@@ -804,7 +836,6 @@ function registerIPC() {
       () => sendToRenderer('watcher:status', w.listWatcherStates()),
     )
     sendToRenderer('watcher:status', w.listWatcherStates())
-    rebuildTrayMenu()
     // Kick the worker for any PENDING jobs that were skipped by hasActiveJob
     const q = queue
     if (q.listJobs().some((j) => j.status === 'PENDING')) {
@@ -821,7 +852,6 @@ function registerIPC() {
     const w = watcher
     w.stopWatcher(connectionId)
     sendToRenderer('watcher:status', w.listWatcherStates())
-    rebuildTrayMenu()
     return { ok: true }
   })
 
@@ -844,7 +874,6 @@ function registerIPC() {
   })
 
   ipcMain.handle('watcher:pause-all', async () => {
-    isPaused = true
     const w = watcher
     // Capture which connections were watching so resume-all can restart them
     _watchingBeforePause = new Set(
@@ -856,12 +885,10 @@ function registerIPC() {
     const { stopWorker } = await import('./worker.js')
     stopWorker()
     sendToRenderer('watcher:status', w.listWatcherStates())
-    rebuildTrayMenu()
     return { ok: true }
   })
 
   ipcMain.handle('watcher:resume-all', async () => {
-    isPaused = false
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
     const w = watcher
@@ -882,7 +909,25 @@ function registerIPC() {
     const { ensureWorkerRunning } = await import('./worker.js')
     ensureWorkerRunning()
     sendToRenderer('watcher:status', w.listWatcherStates())
-    rebuildTrayMenu()
+    return { ok: true }
+  })
+
+  // -- Tray flyout -----------------------------------------------------------
+  ipcMain.handle('tray:open-flyout', () => {
+    showTrayFlyout()
+    return { ok: true }
+  })
+
+  ipcMain.handle('tray:show-main', () => {
+    mainWindow.show()
+    mainWindow.focus()
+    if (trayFlyoutWindow && !trayFlyoutWindow.isDestroyed()) trayFlyoutWindow.hide()
+    return { ok: true }
+  })
+
+  ipcMain.handle('tray:quit', () => {
+    isQuitting = true
+    app.quit()
     return { ok: true }
   })
 
