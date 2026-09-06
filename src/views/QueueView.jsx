@@ -1,12 +1,5 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  flexRender,
-  createColumnHelper,
-} from '@tanstack/react-table'
-import { File, Video, Image, FileText, Archive, X, RotateCcw, ArrowUp, ArrowDown } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { File, Video, Image, FileText, Archive, X, RotateCcw, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import Tooltip from '../components/ui/Tooltip'
 import styles from './QueueView.module.css'
 import { formatSize } from '../utils/format'
@@ -22,7 +15,7 @@ function relativeTime(ts) {
   return `${Math.floor(s / 3600)}h ago`
 }
 
-// The directory shown next to a job's filename in the queue view.
+// The directory shown next to a waiting job's filename.
 // For drop-uploads the queue records relPath including any folder
 // hierarchy the user dragged in (e.g. "myFolder/sub/photo.jpg"); the
 // display must include that prefix so a file dropped inside a folder
@@ -52,23 +45,25 @@ function getFileIcon(filename) {
   return <File size={18} />
 }
 
-const STATUS_META = {
-  PENDING:     { label: 'Pending',     cls: 'pending',      pri: 1 },
-  TRANSFERRING:{ label: 'Transferring',cls: 'transferring', pri: 0 },
-  DONE:        { label: 'Done',        cls: 'done',         pri: 3 },
-  ERROR:       { label: 'Error',       cls: 'error',        pri: 2 },
+// Connection name and size, kept as separate leaf elements (not one joined
+// string) so a caller can find either piece of text on its own.
+function RowMeta({ name, size }) {
+  if (!name && !size) return null
+  return (
+    <span className={styles.rowMeta}>
+      {name && <span>{name}</span>}
+      {name && size ? ' · ' : null}
+      {size && <span>{size}</span>}
+    </span>
+  )
 }
-
-const columnHelper = createColumnHelper()
 
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
 export default function QueueView({ connections = [], onBrowsePath, onNavigateLogs }) {
   const [jobs, setJobs] = useState([])
-  const [sorting, setSorting] = useState([])
-  const [columnSizing, setColumnSizing] = useState({})
-  const scrollRef = useRef(null)
+  const [activeConnectionId, setActiveConnectionId] = useState(null)
 
   const connMap = useMemo(() => {
     const m = {}
@@ -158,278 +153,250 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
     }
   }, [refresh])
 
-  // Default sort: active first, then pending, done, error
-  const sorted = useMemo(() => {
-    if (sorting.length > 0) return jobs
-    return [...jobs].sort((a, b) => {
-      const priA = STATUS_META[a.status]?.pri ?? 4
-      const priB = STATUS_META[b.status]?.pri ?? 4
-      return priA - priB
-    })
-  }, [jobs, sorting])
+  // Filtering by connection hides other connections' jobs from every group;
+  // it is only offered when there is more than one connection to tell apart.
+  const visibleJobs = useMemo(
+    () => (activeConnectionId ? jobs.filter((j) => j.connectionId === activeConnectionId) : jobs),
+    [jobs, activeConnectionId]
+  )
 
-  const columns = useMemo(() => [
-    columnHelper.display({
-      id: 'icon',
-      size: 32,
-      minSize: 32,
-      maxSize: 32,
-      enableResizing: false,
-      enableSorting: false,
-      header: () => null,
-      cell: ({ row }) => (
-        <div className={styles.fileIconWrap}>
-          {getFileIcon(row.original.filename)}
+  const transferring = visibleJobs.filter((j) => j.status === 'TRANSFERRING')
+  const waiting       = visibleJobs.filter((j) => j.status === 'PENDING')
+  const failed        = visibleJobs.filter((j) => j.status === 'ERROR')
+  const done          = visibleJobs.filter((j) => j.status === 'DONE')
+
+  const totalTransferring = jobs.filter((j) => j.status === 'TRANSFERRING').length
+  const totalWaiting      = jobs.filter((j) => j.status === 'PENDING').length
+  const subtitle = jobs.length === 0
+    ? 'Nothing queued'
+    : `${totalTransferring} transferring · ${totalWaiting} waiting`
+
+  function connMetaFor(job) {
+    return { name: connMap[job.connectionId] ?? null, size: job.size != null ? formatSize(job.size) : null }
+  }
+
+  function cancel(id) { window.winraid?.queue.cancel(id) }
+  function retry(id) { window.winraid?.queue.retry(id) }
+  function remove(id) { window.winraid?.queue.remove(id) }
+
+  if (jobs.length === 0) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.header}>
+          <h1 className={styles.title}>Queue</h1>
+          <p className={styles.subtitle}>{subtitle}</p>
         </div>
-      ),
-    }),
-    columnHelper.accessor('filename', {
-      id: 'file',
-      header: 'File / Path',
-      size: 200,
-      minSize: 120,
-      enableResizing: true,
-      sortingFn: 'alphanumeric',
-      cell: ({ row }) => {
-        const { filename, errorMsg, status, progress } = row.original
-        const dir = jobDisplayDir(row.original)
-        const isActive = status === 'TRANSFERRING'
-        const percent = Math.round((progress ?? 0) * 100)
-        return (
-          <div className={styles.fileInfo}>
-            <Tooltip tip={filename} side="bottom" onlyWhenTruncated>
-              <span className={styles.filename}>{filename}</span>
-            </Tooltip>
-            {dir && (
-              <Tooltip tip={dir} side="bottom" onlyWhenTruncated>
-                <span className={styles.filepath}>{dir}</span>
-              </Tooltip>
-            )}
-            {errorMsg && <span className={styles.errorMsg}>{errorMsg}</span>}
-            {isActive && (
-              <div className={styles.progressTrack}>
-                <div className={styles.progressFill} style={{ transform: `scaleX(${percent / 100})` }} />
-              </div>
-            )}
-          </div>
-        )
-      },
-    }),
-    columnHelper.accessor('connectionId', {
-      id: 'connection',
-      header: 'Connection',
-      size: 120,
-      minSize: 60,
-      enableResizing: true,
-      sortingFn: (rowA, rowB) => {
-        const a = connMap[rowA.original.connectionId] ?? ''
-        const b = connMap[rowB.original.connectionId] ?? ''
-        return a.localeCompare(b)
-      },
-      cell: ({ row }) => {
-        const name = connMap[row.original.connectionId] ?? null
-        return (
-          <div className={styles.connCell}>
-            {name && <span className={styles.connTag}>{name}</span>}
-          </div>
-        )
-      },
-    }),
-    columnHelper.accessor('status', {
-      id: 'status',
-      header: () => <span style={{ width: '100%', textAlign: 'center' }}>Status</span>,
-      size: 96,
-      minSize: 70,
-      enableResizing: true,
-      sortingFn: (rowA, rowB) => {
-        const priA = STATUS_META[rowA.original.status]?.pri ?? 4
-        const priB = STATUS_META[rowB.original.status]?.pri ?? 4
-        return priA - priB
-      },
-      cell: ({ row }) => {
-        const { status, progress } = row.original
-        const meta = STATUS_META[status] ?? STATUS_META.PENDING
-        const isActive = status === 'TRANSFERRING'
-        const percent = Math.round((progress ?? 0) * 100)
-        return (
-          <div className={styles.statusCell}>
-            <span className={[styles.statusBadge, styles[`status_${meta.cls}`]].join(' ')}>
-              {isActive ? `${percent}%` : meta.label}
-            </span>
-          </div>
-        )
-      },
-    }),
-    columnHelper.accessor('size', {
-      id: 'size',
-      header: () => <span style={{ width: '100%', textAlign: 'right', paddingRight: 'var(--space-2)' }}>Size</span>,
-      size: 80,
-      minSize: 50,
-      enableResizing: true,
-      sortingFn: 'basic',
-      cell: ({ row }) => (
-        <div className={styles.sizeCell}>{formatSize(row.original.size)}</div>
-      ),
-    }),
-    columnHelper.accessor('createdAt', {
-      id: 'added',
-      header: () => <span style={{ width: '100%', textAlign: 'right', paddingRight: 'var(--space-2)' }}>Added</span>,
-      size: 70,
-      minSize: 50,
-      enableResizing: true,
-      sortingFn: 'basic',
-      cell: ({ row }) => (
-        <div className={styles.timeCell}>{relativeTime(row.original.createdAt)}</div>
-      ),
-    }),
-    columnHelper.display({
-      id: 'actions',
-      size: 64,
-      minSize: 64,
-      maxSize: 64,
-      enableResizing: false,
-      enableSorting: false,
-      header: () => null,
-      cell: ({ row }) => {
-        const { id, status } = row.original
-        return (
-          <div className={styles.actionsCell}>
-            {status === 'ERROR' && (
-              <>
-                <Tooltip tip="Retry" side="bottom">
-                  <button className={styles.retryBtn} onClick={(e) => { e.stopPropagation(); window.winraid?.queue.retry(id) }}>
-                    <RotateCcw size={13} />
-                  </button>
-                </Tooltip>
-                <Tooltip tip="Remove" side="bottom">
-                  <button className={styles.removeBtn} onClick={(e) => { e.stopPropagation(); window.winraid?.queue.remove(id) }}>
-                    <X size={13} />
-                  </button>
-                </Tooltip>
-              </>
-            )}
-            {(status === 'PENDING' || status === 'TRANSFERRING') && (
-              <Tooltip tip="Cancel" side="bottom">
-                <button className={styles.cancelBtn} onClick={(e) => { e.stopPropagation(); window.winraid?.queue.cancel(id) }}>
-                  <X size={13} />
-                </button>
-              </Tooltip>
-            )}
-          </div>
-        )
-      },
-    }),
-  ], [connMap])
-
-  const table = useReactTable({
-    data: sorted,
-    columns,
-    state: { sorting, columnSizing },
-    onSortingChange: setSorting,
-    onColumnSizingChange: setColumnSizing,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    columnResizeMode: 'onChange',
-    enableColumnResizing: true,
-  })
-
-  const doneCount = jobs.filter((j) => j.status === 'DONE').length
-  const pendingCount = jobs.filter((j) => j.status === 'PENDING' || j.status === 'TRANSFERRING').length
+        <div className={styles.empty}>
+          <File size={32} strokeWidth={1} className={styles.emptyIcon} />
+          <span>No transfers yet</span>
+          <span className={styles.emptyHint}>Add a connection with a watch folder to get started.</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className={styles.container}>
-      {/* Header */}
       <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <span className={styles.title}>Transfer Queue</span>
-          {pendingCount > 0 && (
-            <span className={styles.countBadge}>{pendingCount} pending</span>
-          )}
-        </div>
-        <div className={styles.headerRight}>
-          <button
-            className={styles.clearBtn}
-            onClick={() => window.winraid?.queue.clearStale()}
-          >
-            Clear stale
-          </button>
-          {doneCount > 0 && (
-            <button
-              className={styles.clearBtn}
-              onClick={() => window.winraid?.queue.clearDone()}
-            >
-              Clear {doneCount} done
-            </button>
-          )}
-        </div>
+        <h1 className={styles.title}>Queue</h1>
+        <p className={styles.subtitle}>{subtitle}</p>
       </div>
 
-      {/* List */}
-      <div ref={scrollRef} className={styles.list}>
-        {/* Column headers — inside scrollable list so they scroll horizontally in sync */}
-        {jobs.length > 0 && (
-          <div className={styles.colHeader}>
-            {table.getHeaderGroups().map((hg) =>
-              hg.headers.map((header) => {
-                const isFlex = header.id === 'file'
-                return (
-                  <div
-                    key={header.id}
-                    className={[
-                      styles.colHeaderCell,
-                      header.column.getCanSort() ? styles.colSortable : '',
-                    ].join(' ')}
-                    style={isFlex ? { flex: 1, minWidth: 0, overflow: 'hidden' } : { width: header.getSize(), flexShrink: 0 }}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getIsSorted() === 'asc' && <ArrowUp size={11} className={styles.sortIcon} />}
-                    {header.column.getIsSorted() === 'desc' && <ArrowDown size={11} className={styles.sortIcon} />}
-                    {header.column.getCanResize() && (
-                      <div
-                        className={[styles.resizer, header.column.getIsResizing() ? styles.resizerActive : ''].join(' ')}
-                        onMouseDown={header.getResizeHandler()}
-                        onTouchStart={header.getResizeHandler()}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    )}
+      {connections.length > 1 && (
+        <div className={styles.chipRow}>
+          <button
+            type="button"
+            className={[styles.chip, activeConnectionId === null ? styles.chipActive : ''].join(' ')}
+            aria-pressed={activeConnectionId === null}
+            onClick={() => setActiveConnectionId(null)}
+          >
+            All
+          </button>
+          {connections.map((conn) => (
+            <button
+              key={conn.id}
+              type="button"
+              className={[styles.chip, activeConnectionId === conn.id ? styles.chipActive : ''].join(' ')}
+              aria-pressed={activeConnectionId === conn.id}
+              onClick={() => setActiveConnectionId(conn.id)}
+            >
+              {connMap[conn.id]}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={styles.groups}>
+
+        {/* Transferring */}
+        <section className={styles.group} aria-label="Transferring">
+          <h2 className={styles.groupHeading}>Transferring</h2>
+          {transferring.length === 0 ? (
+            <p className={styles.emptyGroup}>Nothing transferring</p>
+          ) : (
+            transferring.map((job, idx) => {
+              const percent = Math.round((job.progress ?? 0) * 100)
+              const meta = connMetaFor(job)
+              return (
+                <div
+                  key={job.id}
+                  className={[styles.row, idx > 0 ? styles.rowBordered : ''].join(' ')}
+                  onClick={() => handleRowClick(job)}
+                >
+                  <div className={styles.rowIcon}>{getFileIcon(job.filename)}</div>
+                  <div className={styles.rowMain}>
+                    <Tooltip tip={job.filename} side="bottom" onlyWhenTruncated>
+                      <span className={styles.rowName}>{job.filename}</span>
+                    </Tooltip>
+                    <RowMeta name={meta.name} size={meta.size} />
+                    <div className={styles.progressTrack}>
+                      <div className={styles.progressFill} style={{ transform: `scaleX(${percent / 100})` }} />
+                    </div>
                   </div>
-                )
-              })
-            )}
-          </div>
-        )}
-        {jobs.length === 0 ? (
-          <div className={styles.empty}>
-            <File size={32} strokeWidth={1} className={styles.emptyIcon} />
-            <span>No transfers yet</span>
-            <span className={styles.emptyHint}>Add a connection with a watch folder to get started.</span>
-          </div>
-        ) : (
-          table.getRowModel().rows.map((row) => {
-            const isActive = row.original.status === 'TRANSFERRING'
+                  <span className={styles.percent}>{percent}%</span>
+                  <Tooltip tip="Cancel" side="bottom">
+                    <button
+                      type="button"
+                      className={styles.cancelBtn}
+                      aria-label="Cancel"
+                      onClick={(e) => { e.stopPropagation(); cancel(job.id) }}
+                    >
+                      <X size={13} />
+                    </button>
+                  </Tooltip>
+                </div>
+              )
+            })
+          )}
+        </section>
+
+        {/* Waiting */}
+        <section className={styles.group} aria-label="Waiting">
+          <h2 className={styles.groupHeading}>Waiting · {waiting.length}</h2>
+          {waiting.map((job, idx) => {
+            const dir = jobDisplayDir(job)
+            const meta = connMetaFor(job)
             return (
               <div
-                key={row.id}
-                className={[styles.row, isActive ? styles.rowActive : ''].join(' ')}
-                onClick={() => handleRowClick(row.original)}
-                style={{ cursor: 'pointer' }}
+                key={job.id}
+                className={[styles.row, idx > 0 ? styles.rowBordered : ''].join(' ')}
+                onClick={() => handleRowClick(job)}
               >
-                {row.getVisibleCells().map((cell) => {
-                  const isFlex = cell.column.id === 'file'
-                  return (
-                    <div
-                      key={cell.id}
-                      style={isFlex ? { flex: 1, minWidth: 0, overflow: 'hidden' } : { width: cell.column.getSize(), flexShrink: 0 }}
-                    >
-                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                    </div>
-                  )
-                })}
+                <div className={styles.rowIcon}><Clock size={16} /></div>
+                <div className={styles.rowMain}>
+                  <Tooltip tip={job.filename} side="bottom" onlyWhenTruncated>
+                    <span className={styles.rowName}>{job.filename}</span>
+                  </Tooltip>
+                  <RowMeta name={meta.name} size={meta.size} />
+                  {dir && (
+                    <Tooltip tip={dir} side="bottom" onlyWhenTruncated>
+                      <span className={styles.rowDest}>{dir}</span>
+                    </Tooltip>
+                  )}
+                </div>
+                <span className={styles.srOnly}>Pending</span>
+                <Tooltip tip="Cancel" side="bottom">
+                  <button
+                    type="button"
+                    className={styles.cancelBtn}
+                    aria-label="Cancel"
+                    onClick={(e) => { e.stopPropagation(); cancel(job.id) }}
+                  >
+                    <X size={13} />
+                  </button>
+                </Tooltip>
               </div>
             )
-          })
-        )}
+          })}
+        </section>
+
+        {/* Failed */}
+        <section className={styles.group} aria-label="Failed">
+          <h2 className={styles.groupHeading}>Failed · {failed.length}</h2>
+          {failed.map((job, idx) => (
+            <div
+              key={job.id}
+              className={[styles.row, idx > 0 ? styles.rowBordered : ''].join(' ')}
+              onClick={() => handleRowClick(job)}
+            >
+              <div className={styles.rowIcon}><AlertTriangle size={16} /></div>
+              <div className={styles.rowMain}>
+                <Tooltip tip={job.filename} side="bottom" onlyWhenTruncated>
+                  <span className={styles.rowName}>{job.filename}</span>
+                </Tooltip>
+                <span className={styles.rowError}>{job.errorMsg}</span>
+              </div>
+              <span className={styles.srOnly}>Error</span>
+              <Tooltip tip="Retry" side="bottom">
+                <button
+                  type="button"
+                  className={styles.retryBtn}
+                  aria-label="Retry"
+                  onClick={(e) => { e.stopPropagation(); retry(job.id) }}
+                >
+                  <RotateCcw size={13} />
+                </button>
+              </Tooltip>
+              <Tooltip tip="Remove" side="bottom">
+                <button
+                  type="button"
+                  className={styles.removeBtn}
+                  aria-label="Remove"
+                  onClick={(e) => { e.stopPropagation(); remove(job.id) }}
+                >
+                  <X size={13} />
+                </button>
+              </Tooltip>
+            </div>
+          ))}
+        </section>
+
+        {/* Completed today */}
+        <section className={styles.group} aria-label="Completed today">
+          <div className={styles.groupHeaderRow}>
+            <h2 className={styles.groupHeading}>Completed today · {done.length}</h2>
+            <div className={styles.groupHeaderActions}>
+              {done.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.clearBtn}
+                  aria-label="Clear done"
+                  onClick={() => window.winraid?.queue.clearDone()}
+                >
+                  Clear {done.length} done
+                </button>
+              )}
+              <button
+                type="button"
+                className={styles.clearBtn}
+                onClick={() => window.winraid?.queue.clearStale()}
+              >
+                Clear stale
+              </button>
+            </div>
+          </div>
+          {done.map((job, idx) => {
+            const meta = connMetaFor(job)
+            return (
+              <div
+                key={job.id}
+                className={[styles.row, idx > 0 ? styles.rowBordered : ''].join(' ')}
+                onClick={() => handleRowClick(job)}
+              >
+                <div className={styles.rowIcon}><CheckCircle2 size={16} /></div>
+                <div className={styles.rowMain}>
+                  <Tooltip tip={job.filename} side="bottom" onlyWhenTruncated>
+                    <span className={styles.rowName}>{job.filename}</span>
+                  </Tooltip>
+                  <RowMeta name={meta.name} size={meta.size} />
+                </div>
+                <span className={styles.srOnly}>Done</span>
+                {job.completedAt && <span className={styles.rowTime}>{relativeTime(job.completedAt)}</span>}
+              </div>
+            )
+          })}
+        </section>
+
       </div>
     </div>
   )
