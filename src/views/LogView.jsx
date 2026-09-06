@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { FolderOpen, Search } from 'lucide-react'
+import { FolderOpen, Search, Trash2 } from 'lucide-react'
 import Tooltip from '../components/ui/Tooltip'
 import styles from './LogView.module.css'
 
@@ -12,11 +12,19 @@ export default function LogView({ logNav = null }) {
   const [confirmClear, setConfirmClear] = useState(false)
   const clearTimer = useRef(null)
   const [filter, setFilter] = useState('')
+  const [logPath, setLogPath] = useState('')
 
   // Pre-fill filter when navigated from queue error
   useEffect(() => {
     if (logNav?.filename) setFilter(logNav.filename)
   }, [logNav])
+
+  // Resolve the current log file's path for the "<name> · tailing" marker
+  useEffect(() => {
+    window.winraid?.log.getPath?.()?.then((path) => {
+      if (path) setLogPath(path)
+    })
+  }, [])
 
   // Load history then subscribe to live entries
   useEffect(() => {
@@ -31,6 +39,8 @@ export default function LogView({ logNav = null }) {
       })
     })
   }, [])
+
+  const logFileName = useMemo(() => logPath.split(/[\\/]/).pop() ?? '', [logPath])
 
   // Auto-scroll when new entries arrive, only if near bottom and no filter active
   useEffect(() => {
@@ -71,12 +81,7 @@ export default function LogView({ logNav = null }) {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <span className={styles.title}>Logs</span>
-        {filtered.length > 0 && (
-          <span className={styles.entryCount}>
-            {filter ? `${filtered.length} / ${entries.length}` : `${entries.length}`} entries
-          </span>
-        )}
+        <h1 className={styles.title}>Logs</h1>
         <div className={styles.searchWrap}>
           <Search size={12} className={styles.searchIcon} />
           <input
@@ -89,7 +94,7 @@ export default function LogView({ logNav = null }) {
         <div className={styles.spacer} />
         <Tooltip tip="Open log file in Explorer" side="bottom">
           <button
-            className={styles.openBtn}
+            className={styles.iconBtn}
             onClick={() => window.winraid?.log.reveal()}
           >
             <FolderOpen size={13} />
@@ -97,7 +102,7 @@ export default function LogView({ logNav = null }) {
           </button>
         </Tooltip>
         <button
-          className={`${styles.clearBtn} ${confirmClear ? styles.clearConfirm : ''}`}
+          className={`${styles.iconBtn} ${confirmClear ? styles.clearConfirm : ''}`}
           onClick={() => {
             if (confirmClear) {
               setEntries([])
@@ -111,41 +116,49 @@ export default function LogView({ logNav = null }) {
           }}
           disabled={entries.length === 0}
         >
+          <Trash2 size={13} />
           {confirmClear ? 'Clear file?' : 'Clear'}
         </button>
+        {logFileName && (
+          <span className={styles.tailMarker}>{logFileName} · tailing</span>
+        )}
       </div>
 
-      <div className={styles.log} onScroll={handleScroll}>
-        {filtered.length === 0 ? (
-          <div className={styles.empty}>
-            {filter ? 'No entries match filter.' : 'Log is empty.'}
-          </div>
-        ) : (
-          filtered.map((entry) => {
-            const isHighlighted = entry.ts === highlightTs
-            return (
-              <div
-                key={entry.key ?? entry.ts}
-                data-ts={entry.ts}
-                className={[
-                  styles.entry,
-                  styles[entry.level] ?? '',
-                  isHighlighted ? styles.highlighted : '',
-                  isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
-                ].filter(Boolean).join(' ')}
-              >
-                <span className={styles.ts}>
-                  {new Date(entry.ts).toLocaleTimeString([], {
-                    hour: '2-digit', minute: '2-digit', second: '2-digit',
-                  })}
-                </span>
-                <span className={styles.lvl}>{entry.level?.toUpperCase()}</span>
-                <span className={styles.msg}>{entry.message}</span>
-              </div>
-            )
-          })
-        )}
-        <div ref={bottomRef} />
+      <div className={styles.logCard}>
+        <div className={styles.log} onScroll={handleScroll}>
+          {filtered.length === 0 ? (
+            <div className={styles.empty}>
+              {filter ? 'No entries match filter.' : 'Log is empty.'}
+            </div>
+          ) : (
+            <ol className={styles.entries} aria-label="Log entries">
+              {filtered.map((entry) => {
+                const isHighlighted = entry.ts === highlightTs
+                return (
+                  <li
+                    key={entry.key ?? entry.ts}
+                    data-ts={entry.ts}
+                    data-level={entry.level}
+                    className={[
+                      styles.entry,
+                      isHighlighted ? styles.highlighted : '',
+                      isHighlighted ? 'shimmer shimmer-border shimmer-once' : '',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    <span className={styles.ts}>
+                      {new Date(entry.ts).toLocaleTimeString([], {
+                        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+                      })}
+                    </span>
+                    <span className={styles.lvl}>{entry.level?.toUpperCase()}</span>
+                    <span className={styles.msg}>{entry.message}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          )}
+          <div ref={bottomRef} />
+        </div>
       </div>
     </div>
   )
