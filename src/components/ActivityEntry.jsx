@@ -1,19 +1,4 @@
-import {
-  Upload, FolderInput, PenLine, Trash2, FolderPlus, Download, FileQuestion, Activity,
-} from 'lucide-react'
-import ConnectionIcon from './ConnectionIcon'
 import styles from './ActivityEntry.module.css'
-
-const TYPE_ICON = {
-  upload:           Upload,
-  move:             FolderInput,
-  rename:           PenLine,
-  delete:           Trash2,
-  mkdir:            FolderPlus,
-  checkout:         Download,
-  download:         Download,
-  'verify-missing': FileQuestion,
-}
 
 function relativeTime(ts) {
   const s = Math.floor((Date.now() - ts) / 1000)
@@ -24,11 +9,10 @@ function relativeTime(ts) {
   return `${Math.floor(s / 86400)}d ago`
 }
 
-// One row of the activity feed — moved out of the removed Header so the
-// dashboard's "Recent activity" block can render the same entries.
-export default function ActivityEntry({ entry, connections, onNavigate }) {
-  const Icon = TYPE_ICON[entry.type] ?? Activity
-  const conn = connections.find((c) => c.id === entry.connectionId)
+// One row of the "Recent activity" card on the Dashboard: a fixed-width
+// time column and a single-line message, after the prototype's activity
+// feed row.
+export default function ActivityEntry({ entry, onNavigate }) {
   const clickable = !!entry.nav
 
   const className = [
@@ -39,22 +23,11 @@ export default function ActivityEntry({ entry, connections, onNavigate }) {
 
   const inner = (
     <>
-      <div className={styles.activityEntryIcon}><Icon size={13} /></div>
-      <div className={styles.activityEntryContent}>
-        <p className={styles.activityEntryMsg}>
-          <span className={styles.activityEntryTitle}>{entry.title}</span>
-          {entry.detail && <span className={styles.activityEntryDetail}>{entry.detail}</span>}
-        </p>
-        <div className={styles.activityEntryMeta}>
-          {conn && (
-            <span className={styles.activityPill} title={conn.name}>
-              <ConnectionIcon icon={conn.icon ?? null} size={10} />
-              <span className={styles.activityPillName}>{conn.name}</span>
-            </span>
-          )}
-          <span className={styles.activityEntryTs}>{relativeTime(entry.ts)}</span>
-        </div>
-      </div>
+      <span className={styles.activityEntryTime}>{relativeTime(entry.ts)}</span>
+      <span className={styles.activityEntryMsg}>
+        <span className={styles.activityEntryTitle}>{entry.title}</span>
+        {entry.detail && <span className={styles.activityEntryDetail}> — {entry.detail}</span>}
+      </span>
     </>
   )
 
