@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import Sidebar from './components/Sidebar'
-import Header from './components/Header'
-import StatusBar from './components/StatusBar'
+import TitleBar from './components/shell/TitleBar'
+import NavRail from './components/shell/NavRail'
+import StatusBar from './components/shell/StatusBar'
 import TabBar from './components/TabBar'
 import ConnectionView from './views/ConnectionView'
+import ConnectionsView from './views/ConnectionsView'
 import DashboardView from './views/DashboardView'
 import QueueView from './views/QueueView'
 import BrowseView from './views/BrowseView'
@@ -12,20 +13,26 @@ import SizeView from './views/SizeView'
 import SettingsView from './views/SettingsView'
 import LogView from './views/LogView'
 import EditorView from './components/EditorView'
+import PlayOverlay from './components/PlayOverlay'
 import ToastHost from './components/ui/ToastHost'
 import { useNavHistory } from './hooks/useNavHistory'
 import { normalizeAppearance, resolveTheme, resolveAccentHex, onAccentTextColor } from './utils/accent'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
-// View registry (BrowseView and BackupView are excluded — mounted per-tab)
+// View registry (BrowseView, BackupView, SizeView are excluded — mounted per-tab)
 // ---------------------------------------------------------------------------
 const VIEW_COMPONENTS = {
-  dashboard: DashboardView,
-  queue:     QueueView,
-  settings:  SettingsView,
-  logs:      LogView,
+  dashboard:   DashboardView,
+  connections: ConnectionsView,
+  queue:       QueueView,
+  settings:    SettingsView,
+  logs:        LogView,
 }
+
+// Global views the nav rail switches between directly, as opposed to the
+// per-connection tabs (browse/size/backup) and the Play overlay.
+const GLOBAL_VIEWS = new Set(['dashboard', 'connections', 'queue', 'logs', 'settings'])
 
 // ---------------------------------------------------------------------------
 // Root component
@@ -320,7 +327,7 @@ export default function App() {
     })
   }, [])
 
-  // --- Connection state (shared between sidebar + dashboard) ----------------
+  // --- Connection state (shared between the nav rail and the views) ---------
   const [connEdit,    setConnEdit]    = useState(null)  // null | { conn }
   const [connections, setConnections] = useState([])
   // Per-connection favorite directory paths: { [connId]: string[] }
@@ -333,12 +340,31 @@ export default function App() {
   useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
   const [queuePaused, setQueuePaused] = useState(false)
 
+  // The Play wall, opened as a full-screen overlay on top of whatever the
+  // nav rail was showing — that view is left untouched underneath, so
+  // closing Play returns to it without any extra bookkeeping. Null when
+  // Play is closed; { connectionId, path } once its target resolves.
+  const [playTarget, setPlayTarget] = useState(null)
+
   useEffect(() => {
     window.winraid?.config.get().then((cfg) => {
       if (!cfg) return
       setConnections(cfg.connections ?? [])
       setFavorites(cfg.favoritesByConnection ?? {})
     })
+  }, [])
+
+  // --- Activity feed (moved out of the removed Header) -----------------------
+  const [activityEntries, setActivityEntries] = useState([])
+
+  useEffect(() => {
+    window.winraid?.activity?.tail?.(20)?.then((entries) => {
+      if (entries?.length) setActivityEntries(entries)
+    })
+    const unsub = window.winraid?.activity?.onEntry?.((entry) => {
+      setActivityEntries((prev) => [entry, ...prev].slice(0, 20))
+    })
+    return () => { unsub?.() }
   }, [])
 
   // --- Navigation history ---------------------------------------------------
@@ -529,6 +555,48 @@ export default function App() {
     })
   }
 
+  // --- Nav rail routing -------------------------------------------------------
+  // Reads config fresh rather than off React state — the nav rail can be
+  // clicked before the initial connections load settles, and a config read
+  // is cheap and always current.
+  async function resolveActiveConnection() {
+    const cfg   = await window.winraid?.config.get()
+    const conns = cfg?.connections ?? []
+    return conns.find((c) => c.id === cfg?.activeConnectionId) ?? conns[0] ?? null
+  }
+
+  // Opens (or activates) the Browse/Size/Backup tab for the active connection.
+  async function openConnectionTab(type) {
+    const conn = await resolveActiveConnection()
+    if (conn) openTab(conn.id, type)
+  }
+
+  // Opens the Play wall as an overlay on top of whatever the nav rail was
+  // showing — that view/tab is left untouched, so onClose restores it.
+  async function openPlayWall() {
+    const conn = await resolveActiveConnection()
+    if (!conn) return
+    const path = conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath
+    setPlayTarget({ connectionId: conn.id, path })
+  }
+
+  // Single router for every nav rail click: global views switch activeView,
+  // the per-connection screens open (or activate) that tab for the active
+  // connection, and Play opens as an overlay.
+  function navigate(viewId) {
+    if (GLOBAL_VIEWS.has(viewId)) {
+      navigateView(viewId)
+      return
+    }
+    if (viewId === 'browse' || viewId === 'size' || viewId === 'backup') {
+      openConnectionTab(viewId)
+      return
+    }
+    if (viewId === 'play') {
+      openPlayWall()
+    }
+  }
+
   // --- Global watcher + queue toggle ----------------------------------------
   async function handleGlobalToggle() {
     if (queuePaused) {
@@ -546,12 +614,18 @@ export default function App() {
   const ActiveView = VIEW_COMPONENTS[activeView] ?? DashboardView
   const activeViewProps =
     activeView === 'dashboard' ? {
-      watcherStatus, onNavigate: navigateView,
+      watcherStatus, onNavigate: navigate,
       onEditConnection: openConnEdit,
       connections, onOpenTab: openTab,
+      queuePaused, onGlobalToggle: handleGlobalToggle,
+      activityEntries, onActivityNavigate: handleActivityNavigate,
+    } :
+    activeView === 'connections' ? {
+      connections, watcherStatuses: watcherStatus,
+      onEditConnection: openConnEdit, onOpenTab: openTab,
     } :
     activeView === 'queue' ? {
-      connections, onNavigate: navigateView,
+      connections, onNavigate: navigate,
       onNavigateLogs: handleNavigateLogs,
       onBrowsePath: (connId, remotePath, highlightFile) => {
         navigateBrowseJump(connId, remotePath, highlightFile ?? null)
@@ -560,38 +634,31 @@ export default function App() {
     activeView === 'logs' ? { logNav } :
     {}
 
+  // The active tab's type stands in for the global view when a tab (rather
+  // than a global screen) is what's showing — editor tabs read as Browse
+  // since that's where they're opened from.
+  const activeTab = openTabs.find((t) => t.id === activeTabId) ?? null
+  const navActiveView = playTarget
+    ? 'play'
+    : connEdit !== null
+      ? null
+      : activeView !== null
+        ? activeView
+        : activeTab
+          ? (activeTab.type === 'editor' ? 'browse' : activeTab.type)
+          : null
+
   return (
     <div className={styles.shell}>
+      <TitleBar />
       <div className={styles.body}>
-        <Sidebar
-          activeView={connEdit !== null ? null : activeView}
-          onNavigate={navigateView}
+        <NavRail
+          activeView={navActiveView}
+          onNavigate={navigate}
           theme={resolvedTheme}
           onThemeToggle={toggleTheme}
-          onEditConnection={openConnEdit}
-          connections={connections}
-          openTabs={openTabs}
-          activeTabId={activeTabId}
-          onOpenTab={openTab}
-          editingConnId={connEdit !== null ? (connEdit.conn?.id ?? null) : null}
-          watcherStatuses={watcherStatus}
-          favorites={favorites}
-          onNavigateFavorite={navigateFavorite}
-          onRemoveFavorite={toggleFavoriteDir}
         />
         <div className={styles.main}>
-          <Header
-            watcherStatus={watcherStatus}
-            activeTransfers={activeTransfers}
-            queueDepth={queueDepth}
-            batchTotal={batchTotal}
-            batchConnections={batchConnections}
-            queuePaused={queuePaused}
-            onGlobalToggle={handleGlobalToggle}
-            connections={connections}
-            onNavigate={navigateView}
-            onActivityNavigate={handleActivityNavigate}
-          />
           <TabBar
             openTabs={openTabs}
             activeTabId={activeTabId}
@@ -626,6 +693,7 @@ export default function App() {
                 favorites={favorites[tab.connId] ?? []}
                 onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
                 onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
+                onNavigateFavorite={navigateFavorite}
               />
             ))}
 
@@ -674,18 +742,24 @@ export default function App() {
               )
             })}
           </main>
-          <StatusBar
-            watcherStatus={watcherStatus}
-            activeTransfers={activeTransfers}
-            queueDepth={queueDepth}
-            batchTotal={batchTotal}
-            batchConnections={batchConnections}
-            currentFileProgress={currentFileProgress}
-            connections={connections}
-            onNavigate={navigateView}
-          />
         </div>
       </div>
+      <StatusBar
+        watcherStatus={watcherStatus}
+        activeTransfers={activeTransfers}
+        queueDepth={queueDepth}
+        batchTotal={batchTotal}
+        batchConnections={batchConnections}
+        connections={connections}
+        onNavigate={navigate}
+      />
+      {playTarget && (
+        <PlayOverlay
+          connectionId={playTarget.connectionId}
+          path={playTarget.path}
+          onClose={() => setPlayTarget(null)}
+        />
+      )}
       <ToastHost />
     </div>
   )

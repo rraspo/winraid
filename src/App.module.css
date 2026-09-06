@@ -15,13 +15,17 @@
   min-height: 0;
 }
 
-/* Right side: header + content + statusbar stacked vertically */
+/* Right side: tab strip + content, styled as the prototype's card panel */
 .main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--strokeSoft);
+  border-bottom: none;
+  border-radius: 8px 0 0 0;
 }
 
 /* Scrollable view area — flex column so children can use flex:1 instead of height:100% */

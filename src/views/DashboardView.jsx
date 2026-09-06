@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import ConnectionIcon from '../components/ConnectionIcon'
 import Tooltip from '../components/ui/Tooltip'
+import ActivityEntry from '../components/ActivityEntry'
 import { formatSize } from '../utils/format'
 import styles from './DashboardView.module.css'
 
@@ -25,7 +26,10 @@ function getFileIcon(filename) {
 // ---------------------------------------------------------------------------
 // View
 // ---------------------------------------------------------------------------
-export default function DashboardView({ watcherStatus, onNavigate, connections, onOpenTab, onEditConnection }) {
+export default function DashboardView({
+  watcherStatus, onNavigate, connections, onOpenTab, onEditConnection,
+  queuePaused, onGlobalToggle, activityEntries = [], onActivityNavigate,
+}) {
   const [jobs, setJobs] = useState([])
   const [completedTotal, setCompletedTotal] = useState(0)
 
@@ -126,6 +130,15 @@ export default function DashboardView({ watcherStatus, onNavigate, connections, 
                     ? `${doneJobs.length} transfer${doneJobs.length !== 1 ? 's' : ''} completed`
                     : 'No transfers in queue'}
             </p>
+            {onGlobalToggle && (
+              <button
+                type="button"
+                className={[styles.pauseButton, queuePaused ? styles.pauseButtonResume : ''].filter(Boolean).join(' ')}
+                onClick={onGlobalToggle}
+              >
+                {queuePaused ? 'Resume all' : 'Pause all'}
+              </button>
+            )}
           </div>
 
           <div className={styles.heroStats}>
@@ -293,6 +306,31 @@ export default function DashboardView({ watcherStatus, onNavigate, connections, 
                       </div>
                     )
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* Recent activity — moved from the removed header */}
+            <div className={styles.contentBlock}>
+              <div className={styles.blockHeader}>
+                <h3 className={styles.blockTitle}>Recent activity</h3>
+              </div>
+
+              {activityEntries.length === 0 ? (
+                <div className={styles.emptyRow}>
+                  <CheckCircle size={16} className={styles.emptyRowIcon} />
+                  <span>No activity yet</span>
+                </div>
+              ) : (
+                <div className={styles.activityList}>
+                  {activityEntries.map((entry) => (
+                    <ActivityEntry
+                      key={entry.id}
+                      entry={entry}
+                      connections={displayConns}
+                      onNavigate={onActivityNavigate}
+                    />
+                  ))}
                 </div>
               )}
             </div>

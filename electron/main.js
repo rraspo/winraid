@@ -361,6 +361,9 @@ function createWindow() {
     // show: true so the window appears immediately — no dependency on
     // ready-to-show which can deadlock if the renderer errors before paint.
     show: true,
+    // The renderer draws its own title bar (src/components/shell/TitleBar);
+    // this hides the OS one while keeping native snap/resize behavior.
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: true,
@@ -382,6 +385,10 @@ function createWindow() {
     e.preventDefault()
     mainWindow.hide()
   })
+
+  // The custom title bar tracks maximize/restore state to swap its button.
+  mainWindow.on('maximize',   () => sendToRenderer('window:maximized-changed', true))
+  mainWindow.on('unmaximize', () => sendToRenderer('window:maximized-changed', false))
 
   // Log renderer load failures so they surface in the terminal
   mainWindow.webContents.on('did-fail-load', (_e, code, desc, url) => {
@@ -678,6 +685,24 @@ async function backupDownloadFile(sftp, remotePath, localPath) {
 // ---------------------------------------------------------------------------
 function registerIPC() {
   ipcMain.handle('app:version', () => app.getVersion())
+
+  // -- Window controls (custom frameless title bar) --------------------------
+  ipcMain.handle('window:minimize', () => {
+    mainWindow.minimize()
+  })
+
+  ipcMain.handle('window:toggle-maximize', () => {
+    if (mainWindow.isMaximized()) mainWindow.unmaximize()
+    else mainWindow.maximize()
+  })
+
+  ipcMain.handle('window:close', () => {
+    // Goes through the same 'close' handler as the OS close button, which
+    // hides to tray instead of quitting.
+    mainWindow.close()
+  })
+
+  ipcMain.handle('window:is-maximized', () => mainWindow.isMaximized())
 
   ipcMain.handle('dialog:selectFolder', async () => {
     const result = await dialog.showOpenDialog(mainWindow, {

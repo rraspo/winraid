@@ -31,6 +31,21 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.system,
     },
 
+    window: {
+      minimize: vi.fn().mockResolvedValue(undefined),
+      toggleMaximize: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      isMaximized: vi.fn().mockResolvedValue(false),
+      onMaximizedChanged: vi.fn().mockReturnValue(() => {}),
+      ...overrides.window,
+    },
+
+    whatsNew: {
+      open: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      ...overrides.whatsNew,
+    },
+
     cache: {
       thumbSize: vi.fn().mockResolvedValue({ bytes: 0 }),
       clearThumbs: vi.fn().mockResolvedValue(undefined),
