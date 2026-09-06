@@ -1,90 +1,36 @@
 .activityEntry {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--strokeSoft);
+  font-size: 12.5px;
 }
 
 .activityEntry:last-child { border-bottom: none; }
 
-.activityEntryIcon {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--bg-surface);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.activityEntryTime {
   flex-shrink: 0;
-  margin-top: 1px;
-  color: var(--text-muted);
-}
-
-.level_error .activityEntryIcon { background: var(--error-subtle);   color: var(--error);   }
-.level_warn  .activityEntryIcon { background: var(--warning-subtle); color: var(--warning); }
-.level_info  .activityEntryIcon { background: var(--accent-subtle);  color: var(--accent);  }
-
-.activityEntryContent {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  width: 52px;
+  font-size: 11.5px;
+  color: var(--text3);
+  white-space: nowrap;
 }
 
 .activityEntryMsg {
-  font-size: var(--font-size-sm);
-  color: var(--text);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text2);
 }
 
-.activityEntryTitle { font-weight: var(--font-weight-medium); }
-.level_error .activityEntryTitle { color: var(--error);   }
-.level_warn  .activityEntryTitle { color: var(--warning); }
+.activityEntryTitle { color: inherit; }
 
-.activityEntryDetail {
-  margin-left: var(--space-2);
-  color: var(--text-muted);
-}
+.level_error .activityEntryTitle { color: var(--err); }
+.level_warn  .activityEntryTitle { color: var(--warn); }
 
-.activityEntryMeta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.activityPill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-width: 0;
-  max-width: 140px;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-}
-
-.activityPillName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--font-size-xs);
-}
-
-.activityEntryTs {
-  flex-shrink: 0;
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: var(--font-weight-bold);
-}
+.activityEntryDetail { color: var(--text3); }
 
 /* Clickable entries render as a <button>; reset and add hover affordance. */
 .activityEntryClickable {
@@ -94,4 +40,8 @@
   cursor: pointer;
   transition: background-color var(--transition);
 }
-.activityEntryClickable:hover { background: var(--bg-hover); }
+.activityEntryClickable:hover { background: var(--hover); }
+
+@media (prefers-reduced-motion: reduce) {
+  .activityEntryClickable { transition: none; }
+}

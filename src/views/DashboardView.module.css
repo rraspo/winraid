@@ -11,493 +11,345 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-6) var(--space-8);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
+  padding: 26px 32px 32px;
 }
 
-/* ---- Hero ---- */
-.hero {
-  position: relative;
-  background: var(--bg-panel);
-  border-radius: var(--radius-xl);
-  padding: var(--space-8) var(--space-8);
+/* ---- Page header ---- */
+.pageHeader {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.pageHeaderText { flex: 1; min-width: 0; }
+
+.title {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.subtitle {
+  font-size: 12.5px;
+  color: var(--text3);
+  margin-top: 3px;
+}
+
+.pauseButton {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-6);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.heroLeft { position: relative; z-index: 1; }
-
-.heroEyebrow {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-  margin-bottom: var(--space-2);
-}
-
-.heroTitle {
-  font-size: var(--font-size-2xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text);
-  letter-spacing: -0.025em;
-  line-height: var(--line-height-tight);
-  margin-bottom: var(--space-2);
-}
-
-.heroTitleOk    { color: var(--text); }
-.heroTitleError { color: var(--error); }
-
-.heroSub {
-  font-size: var(--font-size-base);
-  color: var(--text-muted);
-}
-
-.heroStats {
-  display: flex;
-  gap: var(--space-4);
-  position: relative;
-  z-index: 1;
-  flex-shrink: 0;
-}
-
-.heroStat {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4) var(--space-6);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  min-width: 96px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.heroStatValue {
-  font-size: var(--font-size-xl);
-  font-weight: var(--font-weight-bold);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.heroStatErr { color: var(--error); }
-
-.heroStatLabel {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: var(--font-weight-medium);
-}
-
-/* Highlighted Verify & clean action on the Completed stat */
-.verifyLink {
-  margin-top: var(--space-2);
-  padding: 3px var(--space-2);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background-color var(--transition), color var(--transition);
-}
-
-.verifyLink:hover {
-  background: var(--accent);
-  color: var(--text-on-accent, #fff);
-}
-
-/* Decorative rings */
-.heroDeco {
-  position: absolute;
-  right: -20px;
-  top: -20px;
-  width: 180px;
-  height: 180px;
-  opacity: 0.07;
-  pointer-events: none;
-  color: var(--accent);
-}
-
-/* ---- Bento grid ---- */
-.grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--space-8);
-  align-items: start;
-  min-height: 0;
-}
-
-.colMain {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  min-height: 0;
-}
-
-/* ---- Content block: flat heading + cards below ---- */
-.contentBlock {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.blockHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.blockTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
-  letter-spacing: -0.01em;
-}
-
-.viewAllBtn {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--accent);
-  transition: opacity var(--transition);
-}
-
-.viewAllBtn:hover { opacity: 0.7; }
-
-/* ---- 2-column card grid ---- */
-.cardGrid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-4);
-}
-
-/* ---- Empty row ---- */
-.emptyRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  padding: var(--space-2) 0;
-}
-
-.emptyRowIcon     { color: var(--success); opacity: 0.65; flex-shrink: 0; }
-.emptyRowIconWarn { color: var(--warning); opacity: 0.8;  flex-shrink: 0; }
-
-/* ---- Transfer card — standalone card per job ---- */
-.transferCard {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text2);
   transition: background-color var(--transition);
 }
 
-.transferCard:hover { background: var(--bg-hover); }
+.pauseButton:hover { background: var(--hover); }
 
-.transferCardActive {
-  background: var(--bg-card);
+/* ---- Stat strip ---- */
+.statStrip {
+  display: flex;
+  background: var(--bg);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 8px;
+  margin-bottom: 16px;
 }
 
-.transferCardTop {
+.statTile {
+  flex: 1;
+  min-width: 0;
+  padding: 18px 22px;
+  border-left: 1px solid var(--strokeSoft);
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  flex-direction: column;
 }
 
-.transferIconWrap {
-  width: 40px;
-  height: 40px;
-  border-radius: var(--radius-lg);
-  background: var(--bg-surface);
+.statTile:first-child { border-left: none; }
+
+.statLabel {
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.statValue {
+  font-size: 27px;
+  font-weight: 600;
+  margin-top: 2px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.statValueErr { color: var(--err); }
+
+.statFootnote {
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+.statLinkFootnote {
+  align-self: flex-start;
+  font-size: 11.5px;
+  margin-top: 2px;
+  color: var(--accentHi);
+  transition: opacity var(--transition);
+}
+
+.statLinkFootnote:hover {
+  text-decoration: underline;
+}
+
+/* ---- Main row: active transfers + recent activity ---- */
+.mainRow {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 16px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+.transfersCard,
+.activityCard {
+  background: var(--bg);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 8px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
+  flex-direction: column;
+  min-height: 0;
+}
+
+.transfersCard { padding: 18px 22px; }
+.activityCard  { padding: 14px 8px 8px 22px; }
+
+.cardHeading {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 10px;
   flex-shrink: 0;
 }
 
-.transferCardActive .transferIconWrap {
-  background: var(--accent-subtle);
-  color: var(--accent);
+.activityCard .cardHeading { margin-bottom: 6px; }
+
+/* ---- Active transfers list ---- */
+.transferList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow-y: auto;
+}
+
+.transferRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .transferInfo {
-  flex: 1;
-  min-width: 0;
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .transferName {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text);
+  font-size: 12.5px;
+  color: var(--text2);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .transferSub {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text3);
 }
 
-.transferCardBottom {
+/* ---- Recent activity list ---- */
+.activityList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 14px;
+}
+
+/* ---- Shared empty state ---- */
+.emptyRow {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text3);
+  padding: 8px 0;
 }
 
-.transferMeta {
-  display: flex;
-  justify-content: space-between;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  color: var(--text-muted);
-}
+.emptyRowIcon { color: var(--ok); opacity: 0.7; flex-shrink: 0; }
 
+/* ---- Shared progress track/fill ---- */
 .progressTrack {
   height: 4px;
   border-radius: 2px;
-  background: var(--bg-surface);
+  background: var(--surface2);
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
-  width: 100%;
+  border-radius: 2px;
   background: var(--accent);
-  transform-origin: left center;
-  transition: transform 300ms ease;
+  transition: width 300ms ease;
 }
 
 .progressFillIdle {
-  background: var(--text-faint);
+  background: var(--text3);
   opacity: 0.4;
 }
 
-/* ---- Connection card — standalone card per connection ---- */
+/* ---- Connection grid ---- */
+.connGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
 .connCard {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-xl);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  background: var(--bg);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 8px;
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  text-align: left;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-  transition: background-color var(--transition);
-  cursor: pointer;
+  transition: border-color var(--transition);
 }
 
-.connCard:hover { background: var(--bg-hover); }
+.connCard:hover { border-color: var(--stroke); }
 
-.connCardActive {
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg-card));
-}
-
-.connCardActive:hover {
-  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
-}
-
-.connCardTop {
+.connTop {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 9px;
 }
 
-.connIconWrap {
-  width: 36px;
-  height: 36px;
-  border-radius: var(--radius-md);
-  background: var(--accent-subtle);
-  color: var(--accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.connDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text3);
   flex-shrink: 0;
 }
 
-.connCardMeta {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
+.connDotOk { background: var(--ok); }
 
-.connCardName {
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-semibold);
+.connName {
+  font-weight: 600;
+  font-size: 13.5px;
   color: var(--text);
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  flex: 1;
 }
 
-.connBadgeActive {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--success);
-}
-
-.connBadgeIdle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-faint);
-}
-
-.connTypeBadge {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-bold);
-  letter-spacing: 0.05em;
-  color: var(--text-faint);
+.connProto {
   flex-shrink: 0;
-  align-self: flex-start;
-}
-
-.connCardBottom {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding-left: calc(36px + var(--space-3));
-}
-
-.connHost {
-  font-size: var(--font-size-md);
-  font-family: 'Cascadia Code', 'Consolas', monospace;
-  color: var(--text-muted);
-  font-style: normal;
+  font-size: 11px;
+  color: var(--text3);
+  background: var(--surface2);
+  border-radius: 4px;
+  padding: 1px 6px;
 }
 
 .connPath {
-  font-size: var(--font-size-xs);
-  font-family: 'Cascadia Code', 'Consolas', monospace;
-  color: var(--text-faint);
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 10px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-style: normal;
 }
 
-/* ---- Responsive ---- */
-@media (max-width: 800px) {
-  .grid     { grid-template-columns: 1fr; }
-  .cardGrid { grid-template-columns: 1fr; }
-  .scroll   { padding: var(--space-4); }
-}
+.connPath + .connPath { margin-top: 3px; }
 
-/* ---- Storage block ---- */
-.storageList {
+.connToday {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 12px;
 }
 
-.storageRow {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.storageRowTop {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-}
-
-.storageConnInfo {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.storageConnName {
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
+.connTodayCount {
+  font-size: 20px;
+  font-weight: 600;
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
-.storageStats {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-  flex-shrink: 0;
+.connTodayLabel {
+  font-size: 11.5px;
+  color: var(--text3);
 }
 
-.storageUnavailable {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-  flex-shrink: 0;
-}
+.connDisk { margin-top: 12px; }
 
-.progressFillDanger {
-  background: var(--error);
-}
-
-/* ---- Pause-all control (moved from the removed header) ---- */
-.pauseButton {
-  align-self: flex-start;
-  margin-top: var(--space-3);
-  padding: 6px var(--space-4);
-  border-radius: var(--radius-md);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  background: var(--error-subtle);
-  color: var(--error);
-  border: 1px solid color-mix(in srgb, var(--error) 25%, transparent);
-  transition: opacity var(--transition), background-color var(--transition);
-}
-
-.pauseButton:hover {
-  background: var(--error);
-  color: #fff;
-}
-
-.pauseButtonResume {
-  background: var(--accent);
-  color: var(--text-on-accent);
-  border: none;
-}
-
-.pauseButtonResume:hover {
-  opacity: 0.88;
-  background: var(--accent);
-  color: var(--text-on-accent);
-}
-
-/* ---- Recent activity list (moved from the removed header) ---- */
-.activityList {
+.connDiskHead {
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text3);
+}
+
+.connDisk .progressTrack { margin-top: 5px; }
+
+.connActions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--strokeSoft);
+}
+
+.connActionButton {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--stroke);
+  font-size: 11px;
+  color: var(--text2);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.connActionButton:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 900px) {
+  .mainRow  { grid-template-columns: 1fr; }
+  .connGrid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .connGrid { grid-template-columns: 1fr; }
+  .scroll   { padding: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pauseButton,
+  .statLinkFootnote,
+  .progressFill,
+  .connCard,
+  .connActionButton {
+    transition: none;
+  }
 }
