@@ -12,7 +12,7 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-6);
 }
 
 .wallGrid {
@@ -31,16 +31,16 @@
   height: 100%;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  background: var(--bg-card);
+  background: var(--card);
   cursor: pointer;
   transition: transform var(--transition), box-shadow var(--transition);
 }
 
 .tile:hover {
   transform: scale(1.015);
-  box-shadow: 0 0 0 1px var(--border-strong);
+  box-shadow: 0 0 0 1px var(--stroke);
 }
 
 .tile:focus-visible {
@@ -65,9 +65,9 @@
   height: 24px;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.55);
-  color: rgba(255, 255, 255, 0.85);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--bg) 55%, transparent);
+  color: var(--text2);
   opacity: 0;
   transition: opacity var(--transition), background var(--transition), color var(--transition);
 }
@@ -79,7 +79,7 @@
 
 .selectBtn[aria-pressed="true"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
 }
 
 .selectBtn:focus-visible {
@@ -124,35 +124,83 @@
   height: 1px;
 }
 
-.wallCounter {
-  font-size: var(--font-size-xs);
-  color: rgba(255, 255, 255, 0.4);
-  padding: 0 var(--space-2);
-  white-space: nowrap;
+/* ── Tile badges — video duration, gif marker ── */
+.badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklab, var(--bg) 55%, transparent);
+  color: var(--text);
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
-/* ── Selection bulk bar ── */
+.badgeGif {
+  font-weight: var(--font-weight-bold);
+  letter-spacing: 0.05em;
+  font-size: 10px;
+}
+
+/* ── Playing indicator — a small equalizer over a tile whose player runs ── */
+.playingBadge {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  gap: 2.5px;
+  height: 12px;
+}
+
+.playingBar {
+  width: 3px;
+  background: var(--text);
+}
+
+.playingBar:nth-child(1) { height: 12px; }
+.playingBar:nth-child(2) { height: 7px; }
+.playingBar:nth-child(3) { height: 10px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .playingBar:nth-child(1) { animation: eqPulse 1s ease-in-out infinite; }
+  .playingBar:nth-child(2) { animation: eqPulse 1s ease-in-out infinite .2s; }
+  .playingBar:nth-child(3) { animation: eqPulse 1s ease-in-out infinite .4s; }
+}
+
+@keyframes eqPulse {
+  0%, 100% { opacity: 1; transform: scaleY(1); }
+  50%      { opacity: .45; transform: scaleY(.55); }
+}
+
+/* ── Selection bulk bar — a floating pill, matching the header controls ── */
 .bulkBar {
   position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 20;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  padding: 10px var(--space-4);
-  background: rgba(20, 20, 24, 0.92);
-  backdrop-filter: blur(6px);
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.35);
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface2);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
 }
 
 .bulkCount {
   font-size: var(--font-size-xs);
-  font-weight: 500;
-  color: rgba(255, 255, 255, 0.85);
+  font-weight: var(--font-weight-medium);
+  color: var(--text2);
+  white-space: nowrap;
 }
 
 .bulkActions {
@@ -167,18 +215,18 @@
   width: 30px;
   height: 28px;
   border-radius: var(--radius-sm);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text2);
   transition: background-color var(--transition), color var(--transition);
 }
 
 .bulkBtn:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.95);
+  background: var(--hover);
+  color: var(--text);
 }
 
 .bulkBtn:disabled { opacity: 0.4; cursor: default; }
 
 .bulkBtnDanger:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 0.18);
-  color: #f87171;
+  background: color-mix(in oklab, var(--err) 18%, transparent);
+  color: var(--err);
 }

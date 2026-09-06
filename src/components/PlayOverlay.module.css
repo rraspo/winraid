@@ -2,7 +2,7 @@
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.92);
+  background: var(--bg);
   display: flex;
   flex-direction: column;
   outline: none;
@@ -15,18 +15,18 @@
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.92);
+  background: var(--bg);
 }
 
-/* ── Top bar ── */
+/* ── Header row ── */
 .topBar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--space-4);
-  height: 48px;
+  padding: 0 var(--space-6);
+  height: var(--header-height);
   flex-shrink: 0;
-  background: rgba(0, 0, 0, 0.4);
+  border-bottom: 1px solid var(--strokeSoft);
   gap: var(--space-3);
 }
 
@@ -39,23 +39,38 @@
   flex: 1;
 }
 
-.fileNameRow {
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text);
+}
+
+.subtitleRow {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
   min-width: 0;
+  font-size: 12px;
+  color: var(--text3);
+}
+
+.subtitleCount {
+  white-space: nowrap;
+}
+
+.subtitleDot {
+  padding: 0 var(--space-1);
+  flex-shrink: 0;
 }
 
 .topBarRight {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .filePath {
-  font-size: var(--font-size-xs);
-  color: rgba(255, 255, 255, 0.45);
   display: flex;
   align-items: center;
   min-width: 0;
@@ -70,7 +85,7 @@
 }
 
 .pathSegment {
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--text2);
   padding: 0 2px;
   text-decoration: none;
   text-underline-offset: 2px;
@@ -80,62 +95,51 @@
 }
 
 .pathSegmentActive {
+  color: var(--text);
   text-decoration: underline;
-  text-decoration-color: rgba(255, 255, 255, 0.4);
+  text-decoration-color: var(--text3);
 }
 
 .pathSegment:hover {
-  color: var(--accent-dark);
+  color: var(--accent);
   text-decoration: underline;
-  text-decoration-color: var(--accent-dark);
+  text-decoration-color: var(--accent);
 }
 
 .pathSep {
-  color: rgba(255, 255, 255, 0.25);
+  color: var(--text3);
   padding: 0 1px;
   flex-shrink: 0;
 }
 
 .scanningSpinner {
-  color: rgba(255, 255, 255, 0.5);
+  color: var(--text3);
   animation: spin 1s linear infinite;
   flex-shrink: 0;
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Toggle buttons ── */
-.toggleBtn {
-  display: flex;
+/* ── Header controls — surface2 pills, pressed state carries the accent ── */
+.controlBtn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-sm);
-  color: rgba(255, 255, 255, 0.5);
-  transition: color var(--transition), background var(--transition);
+  gap: 6px;
+  padding: 5px 13px;
+  border-radius: var(--radius-md);
+  background: var(--surface2);
+  color: var(--text2);
+  font-size: 12.5px;
+  white-space: nowrap;
+  transition: background var(--transition), color var(--transition);
 }
 
-.toggleBtn:hover { color: rgba(255, 255, 255, 0.9); }
+.controlBtn:hover { background: var(--hover); }
 
-.toggleBtnOn {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.12);
+.controlBtnOn {
+  background: var(--active);
+  color: var(--accent);
 }
-
-.closeBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-sm);
-  color: rgba(255, 255, 255, 0.6);
-  transition: color var(--transition);
-  margin-left: var(--space-1);
-}
-
-.closeBtn:hover { color: rgba(255, 255, 255, 0.95); }
 
 /* ── States ── */
 .emptyState,
@@ -144,17 +148,17 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-4);
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--text3);
   font-size: var(--font-size-md);
 }
 
 .retryBtn {
   padding: var(--space-2) var(--space-5);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  border: 1px solid var(--stroke);
   border-radius: var(--radius-sm);
-  color: rgba(255, 255, 255, 0.7);
+  color: var(--text2);
   font-size: var(--font-size-sm);
   transition: border-color var(--transition), color var(--transition);
 }
 
-.retryBtn:hover { border-color: rgba(255, 255, 255, 0.5); color: rgba(255, 255, 255, 0.9); }
+.retryBtn:hover { border-color: var(--text3); color: var(--text); }
