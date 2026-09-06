@@ -49,8 +49,9 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
   }, [])
 
   // Measure chartArea and keep sunburst sized to fill it.
-  // Must re-run when phase changes to RESULTS because chartArea only
-  // mounts in that phase — on initial render it doesn't exist yet.
+  // Must re-run once the chart card mounts (results phase with a tree) —
+  // on initial render, and while the tree is still empty, it doesn't exist yet.
+  const hasTree = Boolean(tree)
   useEffect(() => {
     const el = chartAreaRef.current
     if (!el) return
@@ -60,7 +61,7 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [phase])
+  }, [phase, hasTree])
 
   // Subscribe to IPC push events
   useEffect(() => {
@@ -169,183 +170,169 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
     setFocused(parent === rootPath ? null : parent)
   }
 
-  const breadcrumb = buildBreadcrumb(tree?.path, focused)
+  const rootPath = tree?.path
+    ?? connection?.sftp?.remotePath
+    ?? connection?.smb?.remotePath
+    ?? '/'
 
   const lastScanLabel = scanMeta
     ? `Last scan: ${formatElapsed(Date.now() - scanMeta.scannedAt)} ago (${scanMeta.totalFolders} folders)`
     : 'Last scan: never'
 
-  // ── Idle ──────────────────────────────────────────────────────────────────
-  if (phase === PHASE.IDLE) {
-    return (
-      <div className={styles.root}>
-        <div className={styles.idleCard}>
-          <div className={styles.idleIcon}>
-            <HardDrive size={28} strokeWidth={1.5} />
-          </div>
-          <div className={styles.idleHeading}>Scan storage usage</div>
-          <p className={styles.idleHint}>
-            Recursively measures every folder on this connection.
-            May take several minutes on large drives.
-          </p>
-          {scanError && (
-            <p className={styles.errorBanner}>{scanError}</p>
-          )}
-          <button className={styles.scanBtn} onClick={startScan}>
-            Scan Now
-          </button>
-          <span className={styles.lastScan}>{lastScanLabel}</span>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Scanning ──────────────────────────────────────────────────────────────
-  if (phase === PHASE.SCANNING) {
-    return (
-      <div className={styles.root}>
-        <div className={styles.scanningCard}>
-          <div className={styles.spinnerRings}>
-            <div className={`${styles.ring} ${styles.ring1}`} />
-            <div className={`${styles.ring} ${styles.ring2}`} />
-            <div className={`${styles.ring} ${styles.ring3}`} />
-          </div>
-          <div className={styles.scanningLabel}>Scanning…</div>
-          {progress && (
-            <div className={styles.scanningPath}>{progress.path}</div>
-          )}
-          <div className={styles.scanningStats}>
-            {(progress?.count ?? 0).toLocaleString()} folders counted · {formatElapsed(elapsed * 1000)}
-          </div>
-          <button className={styles.cancelBtn} onClick={cancelScan}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    )
-  }
-
-  // ── Results ───────────────────────────────────────────────────────────────
-  const rootPath = tree?.path ?? connection?.sftp?.remotePath ?? '/'
   const legendNode = focused ? (findNodeByPath(tree, focused) ?? tree) : tree
+
   return (
     <div className={styles.root}>
-      <div className={styles.toolbar}>
-        <div className={styles.breadcrumb}>
-          <button className={styles.crumb} onClick={() => setFocused(null)}>
-            {rootPath}
-          </button>
-          {breadcrumb.map((crumb) => (
-            <span key={crumb.path}>
-              <span className={styles.crumbSep}>/</span>
-              <button
-                className={[styles.crumb, crumb.path === focused ? styles.crumbActive : ''].filter(Boolean).join(' ')}
-                onClick={() => setFocused(crumb.path)}
-              >
-                {crumb.name}
-              </button>
-            </span>
-          ))}
+      <div className={styles.header}>
+        <div className={styles.headerText}>
+          <h1 className={styles.title}>Size map</h1>
+          <p className={styles.subtitle}>
+            Where the space on {rootPath} goes — click a slice to inspect it · {lastScanLabel}
+          </p>
         </div>
-        {scanMeta && (() => {
-          const ageMs = Date.now() - scanMeta.scannedAt
-          const stale = ageMs > 60 * 60 * 1000        // > 1 hour
-          const old   = ageMs > 24 * 60 * 60 * 1000  // > 24 hours
-          if (!stale) return null
-          return (
-            <span className={old ? styles.staleBadgeOld : styles.staleBadge}>
-              {old ? 'Outdated' : 'Stale'} · {formatElapsed(ageMs)} ago
-            </span>
-          )
-        })()}
-        <button className={styles.rescanBtn} onClick={startScan}>Re-scan</button>
+        {phase === PHASE.SCANNING ? (
+          <button className={[styles.headerButton, styles.headerButtonDanger].join(' ')} onClick={cancelScan}>
+            Cancel
+          </button>
+        ) : (
+          <button className={styles.headerButton} onClick={startScan}>
+            {phase === PHASE.RESULTS ? 'Re-scan' : 'Scan Now'}
+          </button>
+        )}
       </div>
 
-      <div className={styles.chartArea} ref={chartAreaRef}>
-        {tree && (
-          <div className={styles.sunburstWrap}>
-            <SizeSunburst
-              data={tree}
-              width={chartSize}
-              height={chartSize}
-              focusedPath={focused}
-              onArcClick={handleArcClick}
-              onCenterClick={handleCenterClick}
-            />
+      {/* ── Idle ────────────────────────────────────────────────────────── */}
+      {phase === PHASE.IDLE && (
+        <div className={styles.centeredBody}>
+          <div className={styles.idleCard}>
+            <div className={styles.idleIcon}>
+              <HardDrive size={28} strokeWidth={1.5} />
+            </div>
+            <div className={styles.idleHeading}>Scan storage usage</div>
+            <p className={styles.idleHint}>
+              Recursively measures every folder on this connection.
+              May take several minutes on large drives.
+            </p>
+            {scanError && (
+              <p className={styles.errorBanner}>{scanError}</p>
+            )}
           </div>
-        )}
-        {tree && (
-          <div className={styles.legend}>
-            {focused && (() => {
-              const parentPath = focused.split('/').slice(0, -1).join('/') || tree.path
-              const parentName = parentPath.split('/').pop() || parentPath
-              return (
-                <div className={styles.legendParentRow} onClick={handleCenterClick}>
-                  <span className={styles.legendParentLabel}>../</span>
-                  <span className={styles.legendParentName}>{parentName}</span>
-                  {onBrowsePath && (
-                    <Tooltip tip="Browse folder" side="top">
+        </div>
+      )}
+
+      {/* ── Scanning ────────────────────────────────────────────────────── */}
+      {phase === PHASE.SCANNING && (
+        <div className={styles.centeredBody}>
+          <div className={styles.scanningCard}>
+            <div className={styles.spinnerRings}>
+              <div className={`${styles.ring} ${styles.ring1}`} />
+              <div className={`${styles.ring} ${styles.ring2}`} />
+              <div className={`${styles.ring} ${styles.ring3}`} />
+            </div>
+            <div className={styles.scanningLabel}>Scanning…</div>
+            {progress && (
+              <div className={styles.scanningPath}>{progress.path}</div>
+            )}
+            <div className={styles.scanningStats}>
+              {(progress?.count ?? 0).toLocaleString()} folders counted · {formatElapsed(elapsed * 1000)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Results ─────────────────────────────────────────────────────── */}
+      {phase === PHASE.RESULTS && tree && (
+        <div className={styles.resultsBody}>
+          <section aria-label="Size chart" className={styles.chartCard}>
+            <div className={styles.chartArea} ref={chartAreaRef}>
+              <SizeSunburst
+                data={tree}
+                width={chartSize}
+                height={chartSize}
+                focusedPath={focused}
+                onArcClick={handleArcClick}
+                onCenterClick={handleCenterClick}
+              />
+            </div>
+          </section>
+
+          <section aria-label="Folders" className={styles.foldersCard}>
+            <div className={styles.rows}>
+              {focused && (() => {
+                const parentPath = focused.split('/').slice(0, -1).join('/') || tree.path
+                const parentName = parentPath.split('/').pop() || parentPath
+                return (
+                  <div className={styles.parentRow} onClick={handleCenterClick}>
+                    <span className={styles.parentLabel}>../</span>
+                    <span className={styles.parentName}>{parentName}</span>
+                    {onBrowsePath && (
+                      <Tooltip tip="Open in browser" side="top">
+                        <button
+                          className={styles.browseBtn}
+                          aria-label="Open in browser"
+                          onClick={(e) => { e.stopPropagation(); onBrowsePath(parentPath) }}
+                        >
+                          <FolderOpen size={13} />
+                        </button>
+                      </Tooltip>
+                    )}
+                  </div>
+                )
+              })()}
+              {(() => {
+                // Sort the rows by size descending so the biggest items are
+                // shown first — matches the sunburst's own sort order
+                // (SizeSunburst calls .sort((a,b) => b.value - a.value)).
+                const all = (legendNode?.children ?? []).slice().sort((a, b) => b.sizeKb - a.sizeKb)
+                const parentTotal = legendNode?.sizeKb ?? 0
+                const TRUNCATE = 8
+                const visible = legendExpanded ? all : all.slice(0, TRUNCATE)
+                const remaining = all.length - TRUNCATE
+                return (
+                  <>
+                    {visible.map((child, i) => {
+                      const pct = parentTotal > 0 ? Math.round((child.sizeKb / parentTotal) * 100) : 0
+                      const color = PALETTE[i % PALETTE.length]
+                      return (
+                        <div key={child.path} className={styles.row} onClick={() => handleArcClick(child)}>
+                          <span className={styles.swatch} style={{ background: color }} />
+                          <span className={styles.name}>{child.name}</span>
+                          <span className={styles.barTrack}>
+                            <span className={styles.barFill} style={{ width: `${pct}%`, background: color }} />
+                          </span>
+                          <span className={styles.size}>{formatSize(child.sizeKb * 1024)}</span>
+                          <span className={styles.pct}>{pct}%</span>
+                          {onBrowsePath && (
+                            <Tooltip tip="Open in browser" side="top">
+                              <button
+                                className={styles.browseBtn}
+                                aria-label="Open in browser"
+                                onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
+                              >
+                                <FolderOpen size={13} />
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {remaining > 0 && (
                       <button
-                        className={styles.browseBtn}
-                        onClick={(e) => { e.stopPropagation(); onBrowsePath(parentPath) }}
+                        type="button"
+                        className={styles.more}
+                        onClick={() => setLegendExpanded((v) => !v)}
                       >
-                        <FolderOpen size={11} />
+                        {legendExpanded ? 'Show less' : `+${remaining} more`}
                       </button>
-                    </Tooltip>
-                  )}
-                </div>
-              )
-            })()}
-            {(() => {
-              // Sort the legend by size descending so the biggest items
-              // are shown first — matches the sunburst's own sort order
-              // (SizeSunburst calls .sort((a,b) => b.value - a.value)).
-              const all = (legendNode?.children ?? []).slice().sort((a, b) => b.sizeKb - a.sizeKb)
-              const TRUNCATE = 8
-              const visible = legendExpanded ? all : all.slice(0, TRUNCATE)
-              const remaining = all.length - TRUNCATE
-              return (
-                <>
-                  {visible.map((child, i) => (
-                    <div
-                      key={child.path}
-                      className={[styles.legendRow, styles.legendRowDrillable].join(' ')}
-                      onClick={() => handleArcClick(child)}
-                    >
-                      <span className={styles.legendSwatch} style={{ background: PALETTE[i % PALETTE.length] }} />
-                      <span className={styles.legendName}>{child.name}</span>
-                      {onBrowsePath && (
-                        <Tooltip tip="Browse folder" side="top">
-                          <button
-                            className={styles.browseBtn}
-                            onClick={(e) => { e.stopPropagation(); onBrowsePath(child.path) }}
-                          >
-                            <FolderOpen size={11} />
-                          </button>
-                        </Tooltip>
-                      )}
-                      <span className={styles.legendSize}>{formatSize(child.sizeKb * 1024)}</span>
-                    </div>
-                  ))}
-                  {remaining > 0 && (
-                    <button
-                      type="button"
-                      className={styles.legendMore}
-                      onClick={() => setLegendExpanded((v) => !v)}
-                    >
-                      {legendExpanded ? 'Show less' : `+${remaining} more`}
-                    </button>
-                  )}
-                </>
-              )
-            })()}
-          </div>
-        )}
-      </div>
-
-      {scanMeta && (
-        <div className={styles.footer}>
-          scanned {scanMeta.totalFolders} folders · {formatElapsed(Date.now() - scanMeta.scannedAt)} ago
+                    )}
+                  </>
+                )
+              })()}
+            </div>
+            <p className={styles.hint}>
+              Click a slice or row to jump to that folder in the browser and deal with it.
+            </p>
+          </section>
         </div>
       )}
     </div>
@@ -355,21 +342,6 @@ export default function SizeView({ connectionId, connection, onBrowsePath }) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function buildBreadcrumb(rootPath, focusedPath) {
-  if (!focusedPath || !rootPath || focusedPath === rootPath) return []
-  const rel = focusedPath.startsWith(rootPath + '/')
-    ? focusedPath.slice(rootPath.length + 1)
-    : focusedPath
-  const parts = rel.split('/').filter(Boolean)
-  const crumbs = []
-  let current = rootPath
-  for (const part of parts) {
-    current = `${current}/${part}`
-    crumbs.push({ name: part, path: current })
-  }
-  return crumbs
-}
 
 function formatElapsed(ms) {
   const s = Math.floor(ms / 1000)
