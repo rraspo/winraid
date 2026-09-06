@@ -17,16 +17,11 @@ beforeEach(() => {
 
 afterEach(() => { delete window.winraid; vi.restoreAllMocks() })
 
-describe('DashboardView Storage block', () => {
-  it('renders the Storage section heading', async () => {
+describe('DashboardView disk usage', () => {
+  it('shows used of total disk size inside the connection card', async () => {
     render(<DashboardView connections={CONNECTIONS} watcherStatus={{}} />)
-    await waitFor(() => expect(screen.getByText('Storage')).toBeInTheDocument())
-  })
-
-  it('shows used and total disk size for a connection', async () => {
-    render(<DashboardView connections={CONNECTIONS} watcherStatus={{}} />)
-    await waitFor(() => expect(screen.getByText(/4\.00 GB used/)).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByText(/10\.00 GB total/)).toBeInTheDocument())
+    const card = screen.getByRole('article', { name: 'Atlas' })
+    await waitFor(() => expect(card.textContent).toContain('4.00 GB of 10.00 GB'))
   })
 
   it('shows unavailable message when diskUsage returns ok: false', async () => {
@@ -40,7 +35,7 @@ describe('DashboardView Completed stat + Verify & clean', () => {
   it('shows the lifetime completed count from queue.stats before the In queue stat', async () => {
     window.winraid.queue.stats = vi.fn().mockResolvedValue({ lifetimeCompleted: 128 })
     render(<DashboardView connections={CONNECTIONS} watcherStatus={{}} />)
-    await waitFor(() => expect(screen.getByText('Completed')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('article', { name: 'Files synced' })).toBeInTheDocument())
     expect(screen.getByText('128')).toBeInTheDocument()
   })
 
@@ -61,7 +56,7 @@ describe('DashboardView Completed stat + Verify & clean', () => {
 
   it('does not render Verify & clean when there are no connections', async () => {
     render(<DashboardView connections={[]} watcherStatus={{}} />)
-    await waitFor(() => expect(screen.getByText('Completed')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole('article', { name: 'Files synced' })).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /verify & clean/i })).toBeNull()
   })
 })
