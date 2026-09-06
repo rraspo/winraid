@@ -17,6 +17,20 @@ export default [
     },
   },
 
+  // Renderer preview harness — Node build/shoot scripts plus a browser
+  // bridge script, so both global sets apply. Scoped to scripts/preview
+  // rather than all of scripts/ so pre-existing release/clean scripts (never
+  // linted before, not part of this harness) aren't newly swept in here.
+  {
+    files: ['scripts/preview/**/*.{js,mjs}'],
+    ...js.configs.recommended,
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+      ecmaVersion: 2022,
+      sourceType: 'module',
+    },
+  },
+
   // React renderer
   {
     files: ['src/**/*.{js,jsx}'],

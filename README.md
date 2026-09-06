@@ -161,6 +161,24 @@ npm run lint         # eslint
 npm run dist         # build installer → release/WinRaid-Setup.exe
 ```
 
+### Preview the renderer in a browser
+
+The renderer normally only runs inside Electron, since it expects the
+`window.winraid` preload bridge and the `nas-stream://` protocol. For visual
+review — screenshotting screens against a design prototype, or checking a UI
+change on a machine that can't run Electron — `scripts/preview/` stands up
+the same React app in a plain browser, backed by synthetic fixture data
+(fake connections, queue jobs, files, logs) instead of real IPC.
+
+```bash
+npm run preview          # serve it at http://127.0.0.1:5180 for manual browsing
+npm run preview:shoot    # headless-screenshot every named screen into screenshots/
+```
+
+`preview:shoot` requires Playwright's Chromium build once: `npx playwright install chromium`.
+All fixture data is synthetic — no real hostnames, credentials, or file
+contents.
+
 ## Tech stack
 
 | Layer | Tech |
