@@ -7,6 +7,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  background: var(--bg);
 }
 
 .viewHeader {
@@ -28,121 +29,290 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-6);
+  padding: 26px 32px 32px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 16px;
+}
+
+.loading {
+  padding: var(--space-6);
+  color: var(--text3);
+  font-size: var(--font-size-md);
 }
 
 /* ---------------------------------------------------------------------------
-   Section card
+   Header
 --------------------------------------------------------------------------- */
-.section {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+.header {
+  margin-bottom: 4px;
+}
+
+/* The title sits beside the connection picker, so the screen always names
+   the connection it is backing up. */
+.titleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--text);
+}
+
+.subtitle {
+  font-size: 12.5px;
+  color: var(--text3);
+  margin-top: 3px;
+}
+
+/* ---------------------------------------------------------------------------
+   Card
+--------------------------------------------------------------------------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardTitleRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Status pill
+--------------------------------------------------------------------------- */
+.statusPill {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
   flex-shrink: 0;
 }
 
-.sectionHeader {
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
+.pillIdle      { color: var(--text3); }
+.pillRunning   { color: var(--ok); }
+.pillDone      { color: var(--ok); }
+.pillCancelled { color: var(--text3); }
+.pillError     { color: var(--err); }
+
+/* ---------------------------------------------------------------------------
+   Source lines
+--------------------------------------------------------------------------- */
+.emptyHint {
+  font-size: var(--font-size-sm);
+  color: var(--text3);
 }
 
-.sectionBody {
-  padding: var(--space-4) var(--space-5);
+.sourceLines {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sourceLine {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Run progress
+--------------------------------------------------------------------------- */
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressText {
+  font-size: 12.5px;
+  color: var(--text2);
+}
+
+.progressTrack {
+  position: relative;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--surface2);
+  overflow: hidden;
+}
+
+.progressFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: backupProgressSlide 1.4s ease-in-out infinite;
+}
+
+@keyframes backupProgressSlide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(340%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progressFill {
+    animation: none;
+    width: 100%;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Last run body — stats, errors, timestamp (inside the backup card)
+--------------------------------------------------------------------------- */
+.lastRunBody {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-/* ---------------------------------------------------------------------------
-   Field row — two-column label / control grid
---------------------------------------------------------------------------- */
-.field {
-  display: grid;
-  grid-template-columns: 140px 1fr;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.label {
+.statsRow {
   display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--font-size-md);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-muted);
-  white-space: nowrap;
+  gap: var(--space-4);
 }
 
-.req { color: var(--accent); }
-
-.hintTrigger {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  font-size: 9px;
-  color: var(--text-muted);
-  cursor: help;
-  flex-shrink: 0;
-  opacity: 0.55;
-  transition: opacity var(--transition);
-}
-
-.hintTrigger:hover { opacity: 1; }
-
-/* ---------------------------------------------------------------------------
-   Inputs
---------------------------------------------------------------------------- */
-.inputRow {
+.statBox {
   display: flex;
-  gap: var(--space-2);
-}
-
-.input {
-  width: 100%;
-  padding: 7px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-input);
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  padding: var(--space-3);
+  background: var(--surface2);
+  border: 1px solid var(--strokeSoft);
   border-radius: var(--radius-md);
+}
+
+.statValue {
+  font-size: 22px;
+  font-weight: var(--font-weight-bold);
   color: var(--text);
-  font-size: var(--font-size-md);
-  transition: border-color var(--transition);
-  user-select: text;
-  -webkit-user-select: text;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
-.input:focus {
-  border-color: var(--accent);
-  outline: none;
+.statLabel {
+  font-size: var(--font-size-xs);
+  color: var(--text3);
 }
 
-.input.short { width: 80px; }
+.statWarn { color: var(--err); }
+
+.errorList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.errorListTitle {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text2);
+  margin-bottom: var(--space-1);
+}
+
+.errorItem {
+  display: flex;
+  gap: var(--space-3);
+  font-size: var(--font-size-sm);
+  overflow: hidden;
+}
+
+.errorItem code {
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  color: var(--warn);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 40%;
+}
+
+.errorMsg {
+  color: var(--err);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.errorMore {
+  font-size: var(--font-size-xs);
+  color: var(--text3);
+  padding-top: var(--space-1);
+}
+
+.lastRunTs {
+  font-size: var(--font-size-xs);
+  color: var(--text3);
+}
 
 /* ---------------------------------------------------------------------------
-   Shared connection notice
+   Actions row
 --------------------------------------------------------------------------- */
+.actionsRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saveMsg {
+  font-size: var(--font-size-sm);
+  padding: 5px 12px;
+  border-radius: var(--radius-md);
+}
+
+.saveMsg.ok    { color: var(--ok);  background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.saveMsg.error { color: var(--err); background: color-mix(in srgb, var(--err) 14%, transparent); }
+
+/* ---------------------------------------------------------------------------
+   Sources and destination card — editing form
+--------------------------------------------------------------------------- */
+.formBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 .connNotice {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
-  background: color-mix(in srgb, var(--accent) 6%, var(--bg-card));
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  background: color-mix(in srgb, var(--accent) 6%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--strokeSoft));
   border-radius: var(--radius-md);
   font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  color: var(--text2);
 }
 
 .connNoticeIcon {
@@ -156,13 +326,19 @@
   color: var(--text);
 }
 
-/* ---------------------------------------------------------------------------
-   Sources list
---------------------------------------------------------------------------- */
-.emptyHint {
-  font-size: var(--font-size-sm);
-  color: var(--text-faint);
-  padding: var(--space-1) 0;
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.fieldGroupLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text2);
 }
 
 .sourceRow {
@@ -178,167 +354,90 @@
   width: 28px;
   height: 28px;
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text2);
   flex-shrink: 0;
   transition: background-color var(--transition), color var(--transition);
 }
 
 .removeBtn:hover {
-  background: var(--error-subtle);
-  color: var(--error);
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+  color: var(--err);
+}
+
+.field {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-medium);
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.req { color: var(--accent); }
+
+.hintTrigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--stroke);
+  font-size: 9px;
+  color: var(--text3);
+  cursor: help;
+  flex-shrink: 0;
+  opacity: 0.55;
+  transition: opacity var(--transition);
+}
+
+.hintTrigger:hover { opacity: 1; }
+
+.inputRow {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.input {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: var(--font-size-md);
+  transition: border-color var(--transition);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.input:focus {
+  border-color: var(--accent);
+  outline: none;
 }
 
 /* ---------------------------------------------------------------------------
-   Footer
+   Footer note
 --------------------------------------------------------------------------- */
-.footer {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-6);
-  border-top: 1px solid var(--border);
-  background: var(--bg-panel);
+.footerNote {
+  font-size: 12px;
+  color: var(--text3);
+  max-width: 560px;
 }
 
-.saveMsg {
-  font-size: var(--font-size-sm);
-  padding: 5px 12px;
-  border-radius: var(--radius-md);
-}
-
-.saveMsg.ok    { color: var(--success); background: var(--success-subtle); }
-.saveMsg.error { color: var(--error);   background: var(--error-subtle);   }
-
-/* ---------------------------------------------------------------------------
-   Status section
---------------------------------------------------------------------------- */
-.statusBadge {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  padding: 3px 10px;
-  border-radius: var(--radius-sm);
-  letter-spacing: 0.04em;
-}
-
-.status_running   { background: color-mix(in srgb, var(--warning) 14%, transparent); color: var(--warning); }
-.status_done      { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
-.status_cancelled { background: var(--bg-panel); color: var(--text-muted); border: 1px solid var(--border); }
-.status_error     { background: color-mix(in srgb, var(--error) 14%, transparent);   color: var(--error);   }
-
-.statusBody {
-  padding: var(--space-4) var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-/* Current file line */
-.currentFile {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-3);
-}
-
-.currentFileLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.currentFilePath {
-  font-size: var(--font-size-sm);
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  color: var(--text);
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Stats row */
-.statsRow {
-  display: flex;
-  gap: var(--space-4);
-}
-
-.statBox {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  flex: 1;
-  padding: var(--space-3);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-}
-
-.statValue {
-  font-size: 22px;
-  font-weight: var(--font-weight-bold);
-  color: var(--text);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.statLabel {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-}
-
-.statWarn { color: var(--error); }
-
-/* Error list */
-.errorList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.errorListTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-bottom: var(--space-1);
-}
-
-.errorItem {
-  display: flex;
-  gap: var(--space-3);
-  font-size: var(--font-size-sm);
-  overflow: hidden;
-}
-
-.errorItem code {
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  color: var(--warning);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex-shrink: 0;
-  max-width: 40%;
-}
-
-.errorMsg {
-  color: var(--error);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.errorMore {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-  padding-top: var(--space-1);
-}
-
-.lastRunTs {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
+@media (prefers-reduced-motion: reduce) {
+  .removeBtn,
+  .hintTrigger,
+  .input {
+    transition: none;
+  }
 }

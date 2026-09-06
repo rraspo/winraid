@@ -127,29 +127,29 @@ const SizeSunburst = React.memo(function SizeSunburst({
         {/* Center hole — click navigates back up */}
         <circle
           r={holeR}
-          fill="var(--bg)"
+          fill="var(--card)"
           data-role="center"
           className={styles.centerHole}
           onClick={onCenterClick}
         />
         <text
           textAnchor="middle"
-          fill="var(--text)"
-          fontSize={Math.max(11, Math.round(holeR * 0.38))}
-          fontWeight={600}
-          dy={-3}
+          fill="var(--text3)"
+          fontSize={Math.max(9, Math.round(holeR * 0.28))}
+          dy={-Math.round(holeR * 0.38) - 2}
           style={{ pointerEvents: 'none' }}
         >
-          {formatSize(displayData.sizeKb * 1024)}
+          {displayData.name}
         </text>
         <text
           textAnchor="middle"
-          fill="var(--text-muted)"
-          fontSize={Math.max(9, Math.round(holeR * 0.28))}
-          dy={Math.round(holeR * 0.38) + 4}
+          fill="var(--text)"
+          fontSize={Math.max(11, Math.round(holeR * 0.38))}
+          fontWeight={600}
+          dy={4}
           style={{ pointerEvents: 'none' }}
         >
-          total
+          {formatSize(displayData.sizeKb * 1024)}
         </text>
       </g>
     </svg>
