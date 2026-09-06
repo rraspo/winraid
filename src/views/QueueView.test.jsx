@@ -46,7 +46,7 @@ describe('QueueView', () => {
     expect(await screen.findByText('No transfers yet')).toBeInTheDocument()
   })
 
-  it('renders all column headers when jobs exist', async () => {
+  it('places a pending job under the Waiting group with its connection and size', async () => {
     window.winraid.queue.list.mockResolvedValue([makeJob()])
 
     render(<QueueView connections={TEST_CONNECTIONS} />)
@@ -54,12 +54,10 @@ describe('QueueView', () => {
     // Wait for data to load
     expect(await screen.findByText('test.mp4')).toBeInTheDocument()
 
-    // All headers should be present
-    expect(screen.getByText('File / Path')).toBeInTheDocument()
-    expect(screen.getByText('Connection')).toBeInTheDocument()
-    expect(screen.getByText('Status')).toBeInTheDocument()
-    expect(screen.getByText('Size')).toBeInTheDocument()
-    expect(screen.getByText('Added')).toBeInTheDocument()
+    const waiting = screen.getByRole('region', { name: 'Waiting' })
+    expect(waiting.textContent).toContain('test.mp4')
+    expect(waiting.textContent).toContain('Atlas')
+    expect(waiting.textContent).toContain('1.0 MB')
   })
 
   it('renders correct status badge for each status', async () => {
@@ -177,31 +175,6 @@ describe('QueueView', () => {
     expect(await screen.findByText('Atlas')).toBeInTheDocument()
   })
 
-  it('file column uses flex:1 and minWidth:0 (no magic numbers)', async () => {
-    window.winraid.queue.list.mockResolvedValue([makeJob()])
-
-    const { container } = render(<QueueView connections={TEST_CONNECTIONS} />)
-    await screen.findByText('test.mp4')
-
-    // Find the header row
-    const colHeader = container.querySelector('.colHeader')
-    expect(colHeader).toBeInTheDocument()
-
-    // The file column header cell should have flex and a small minWidth
-    // React sets inline style as an attribute string
-    const headerCells = Array.from(colHeader.querySelectorAll('[class*="colHeaderCell"]'))
-    const fileHeaderCell = headerCells.find((cell) => {
-      const styleAttr = cell.getAttribute('style') ?? ''
-      return styleAttr.includes('flex') && styleAttr.includes('min-width')
-    })
-    expect(fileHeaderCell).toBeTruthy()
-
-    // Guard against magic numbers: minWidth must be 0, not a large value like 999
-    const styleAttr = fileHeaderCell.getAttribute('style')
-    const minWidthMatch = styleAttr.match(/min-width:\s*(\d+)/)
-    const minWidthValue = minWidthMatch ? parseInt(minWidthMatch[1], 10) : 0
-    expect(minWidthValue).toBe(0)
-  })
 })
 
 describe('QueueView converges on store state', () => {
