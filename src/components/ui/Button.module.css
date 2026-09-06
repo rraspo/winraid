@@ -27,6 +27,11 @@
   pointer-events: none;
 }
 
+.btn:focus-visible {
+  outline: 2px solid var(--accentHi);
+  outline-offset: 1px;
+}
+
 /* ── Sizes ─────────────────────────────────────────────────────────────────── */
 
 /* Standard — footer, dialogs */
@@ -42,36 +47,36 @@
 
 .primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
 }
 .primary:hover:not(:disabled) {
-  background: var(--accent-dark, color-mix(in srgb, var(--accent) 80%, #000));
+  background: var(--btnAccent);
 }
 
 .secondary {
-  background: var(--bg-card);
+  background: var(--surface2);
   color: var(--text);
-  border-color: var(--border-strong);
+  border-color: var(--stroke);
 }
-.secondary:hover:not(:disabled) { background: var(--bg-hover); }
+.secondary:hover:not(:disabled) { background: var(--hover); }
 
 .danger {
-  background: var(--error-subtle);
-  color: var(--error);
+  background: color-mix(in oklab, var(--err) 18%, transparent);
+  color: var(--err);
 }
 .danger:hover:not(:disabled) {
-  background: var(--error);
-  color: #fff;
+  background: var(--err);
+  color: var(--onAccent);
 }
 
 /* Ghost — transparent with a subtle border; turns solid on hover */
 .ghost {
   background: transparent;
-  color: var(--text-muted);
-  border-color: var(--border);
+  color: var(--text2);
+  border-color: var(--stroke);
 }
 .ghost:hover:not(:disabled) {
   color: var(--text);
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
+  background: var(--hover);
+  border-color: var(--stroke);
 }

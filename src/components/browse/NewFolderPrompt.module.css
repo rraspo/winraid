@@ -4,8 +4,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-4);
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-hover);
+  border-bottom: 1px solid var(--stroke);
+  background: var(--hover);
 }
 
 .newFolderInput {
@@ -13,8 +13,8 @@
   min-width: 0;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border-input);
-  background: var(--bg-input);
+  border: 1px solid var(--stroke);
+  background: var(--surface2);
   color: var(--text);
   font-size: var(--font-size-sm);
   outline: none;
@@ -26,7 +26,7 @@
   padding: 4px 10px;
   border-radius: var(--radius-sm);
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
   font-size: var(--font-size-xs);
   font-weight: 500;
   white-space: nowrap;
@@ -42,16 +42,16 @@
   width: 26px;
   height: 26px;
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  color: var(--text2);
 }
 
-.newFolderCancel:hover { background: var(--bg-hover); color: var(--text); }
+.newFolderCancel:hover { background: var(--hover); color: var(--text); }
 
 /* ── Grid variant ─────────────────────────────────────────────────────────── */
 .newFolderCard {
   border-radius: var(--radius-md);
   border: 1.5px dashed var(--accent);
-  background: rgba(91, 164, 245, 0.04);
+  background: color-mix(in oklab, var(--accent) 4%, transparent);
   display: flex;
   flex-direction: column;
   min-width: 0;

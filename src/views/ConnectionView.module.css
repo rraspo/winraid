@@ -10,36 +10,53 @@
 
 /* ---- Page header ---- */
 .pageHeader {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-8);
-  border-bottom: 1px solid var(--border);
+  padding: 22px 32px 0;
   flex-shrink: 0;
 }
 
-.backBtn {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-muted);
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-md);
-  transition: background-color var(--transition), color var(--transition);
-}
-
-.backBtn:hover {
-  background: var(--bg-hover);
-  color: var(--text);
-}
-
 .pageTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+  font-size: 22px;
+  font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
+}
+
+/* ---- Step tabs — pinned above the scrolling sections ---- */
+.tabBar {
+  flex-shrink: 0;
+  padding: 14px 32px 0;
+  border-bottom: 1px solid var(--strokeSoft);
+}
+
+.tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.tab {
+  position: relative;
+  font-size: 13px;
+  padding: 8px 14px;
+  color: var(--text2);
+  transition: color var(--transition);
+}
+
+.tab:hover { color: var(--text); }
+
+.tabActive {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tabActive::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
 }
 
 /* ---- Scroll body ---- */
@@ -47,86 +64,93 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-8);
+  padding: 24px 32px 32px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: 32px;
   max-width: 640px;
 }
 
-/* ---- Content block: flat title + fields below (no card) ---- */
-.block {
+/* ---- Section: one wizard step, always rendered ---- */
+.section {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: 18px;
+  outline: none;
 }
 
-.blockTitleRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.section + .section {
+  padding-top: 24px;
+  border-top: 1px solid var(--strokeSoft);
 }
 
-.blockTitle {
-  font-size: var(--font-size-lg);
-  font-weight: var(--font-weight-semibold);
+.sectionHeading {
+  font-size: 16px;
+  font-weight: 600;
   color: var(--text);
   letter-spacing: -0.01em;
 }
 
 .fields {
-  /* Shared width of the label column, reused by the folder-mode reveal so its
-     content lines up under the controls without a duplicated magic number. */
-  --col-label: 140px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: 16px;
 }
 
-/* ---- Field: label + control two-column grid ---- */
+/* ---- Field: label above its control ---- */
 .field {
-  display: grid;
-  grid-template-columns: var(--col-label) 1fr;
-  align-items: center;
-  gap: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .label {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-muted);
-  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text2);
 }
 
 .req { color: var(--accent); }
 
 .hintIcon {
-  color: var(--text-muted);
-  opacity: 0.45;
+  color: var(--text2);
+  opacity: 0.55;
   flex-shrink: 0;
   cursor: help;
   transition: opacity var(--transition);
 }
 
-.label:hover .hintIcon { opacity: 0.9; }
+.label:hover .hintIcon { opacity: 1; }
+
+.fieldNote {
+  font-size: 11.5px;
+  color: var(--text3);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+.fieldNoteInline {
+  font-size: 12px;
+  color: var(--text3);
+}
 
 /* ---- Inputs ---- */
 .inputRow {
   display: flex;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .input {
   width: 100%;
-  padding: 7px 10px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-md);
+  box-sizing: border-box;
+  padding: 8px 11px;
+  background: var(--surface2);
+  border: 1px solid var(--stroke);
+  border-radius: 5px;
   color: var(--text);
-  font-size: var(--font-size-md);
+  font-size: 13px;
   transition: border-color var(--transition);
   user-select: text;
   -webkit-user-select: text;
@@ -137,70 +161,145 @@
   outline: none;
 }
 
-.short { width: 80px; }
+.gridRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
 
-/* ---- Protocol tabs ---- */
-.tabs {
+/* ---- Protocol picker cards ---- */
+.protocolCards {
   display: flex;
-  gap: 2px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 3px;
-  width: fit-content;
+  gap: 10px;
 }
 
-.tab {
-  padding: 5px 16px;
-  border-radius: calc(var(--radius-md) - 2px);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-semibold);
-  color: var(--text-muted);
-  transition: background-color var(--transition), color var(--transition);
-  letter-spacing: 0.04em;
+.protocolCard {
+  position: relative;
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  transition: border-color var(--transition), background-color var(--transition);
 }
 
-.tab:hover { color: var(--text); }
+.protocolCard:hover { background: var(--hover); }
 
-.tab.active {
-  background: var(--bg-card);
+.protocolCardActive {
+  border: 2px solid var(--accent);
+  background: var(--active);
+  padding: 9px;
+}
+
+.protocolCardTitle {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
   color: var(--text);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
-/* ---- Test connection row ---- */
+.protocolCardDesc {
+  display: block;
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+
+/* ---- Authentication segmented control ---- */
+.authSegment {
+  display: flex;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.authOption {
+  position: relative;
+  flex: 1;
+  text-align: center;
+  font-size: 12.5px;
+  padding: 8px;
+  color: var(--text2);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.authOption:not(:first-child) { border-left: 1px solid var(--stroke); }
+
+.authOption:hover { color: var(--text); }
+
+.authOptionActive {
+  background: var(--active);
+  color: var(--text);
+  box-shadow: inset 0 -3px var(--accent);
+}
+
+/* ---- Action row (Auto-fill / Test connection) ---- */
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.spacer { flex: 1; }
+
 .testRow {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-left: calc(140px + var(--space-3));
+  gap: 12px;
 }
 
-.testOk    { font-size: var(--font-size-sm); color: var(--success); font-weight: var(--font-weight-medium); }
-.testError { font-size: var(--font-size-sm); color: var(--error); }
+.testOk    { font-size: 12.5px; color: var(--ok); font-weight: 500; }
+.testError { font-size: 12.5px; color: var(--err); }
+
+/* ---- Security note ---- */
+.securityNote {
+  display: flex;
+  gap: 9px;
+  padding: 11px 14px;
+  border-radius: 6px;
+  background: var(--surface2);
+  border: 1px solid var(--strokeSoft);
+  font-size: 12px;
+  color: var(--text3);
+  line-height: 1.5;
+}
+
+.securityNoteIcon {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--ok);
+}
+
+/* ---- Folders: arrow between watch folder and remote path ---- */
+.folderArrow {
+  display: grid;
+  place-items: center;
+  padding: 2px 0;
+  color: var(--text3);
+}
 
 /* ---- Footer ---- */
 .footer {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-8);
-  border-top: 1px solid var(--border);
+  gap: 8px;
+  padding: 16px 32px 20px;
+  border-top: 1px solid var(--strokeSoft);
 }
 
 .footerRight {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 8px;
 }
 
-/* ---- SSH Wizard modal ---- */
+/* ---- Modal dialogs (SSH wizard / Verify confirm / Verify results) ---- */
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, black 45%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -208,63 +307,63 @@
 }
 
 .dialog {
-  background: var(--bg-card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
   width: 480px;
   max-width: calc(100vw - 48px);
   max-height: 72vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow);
 }
 
 .dialogHeader {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
+  padding: 20px 26px 0;
   flex-shrink: 0;
 }
 
 .dialogTitle {
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-semibold);
+  font-size: 19px;
+  font-weight: 600;
+  color: var(--text);
 }
 
 .dialogCloseBtn {
-  color: var(--text-muted);
+  color: var(--text2);
   font-size: 14px;
   padding: 2px 7px;
-  border-radius: var(--radius-sm);
+  border-radius: 4px;
   transition: background-color var(--transition), color var(--transition);
 }
 
-.dialogCloseBtn:hover { background: var(--bg-hover); color: var(--text); }
+.dialogCloseBtn:hover { background: var(--hover); color: var(--text); }
 
 .dialogBody {
   flex: 1;
   min-height: 80px;
   overflow-y: auto;
-  padding: var(--space-3) var(--space-4);
+  padding: 14px 26px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
 .dialogMuted {
-  color: var(--text-muted);
-  font-size: var(--font-size-md);
-  padding: var(--space-3) var(--space-2);
+  color: var(--text2);
+  font-size: 13px;
+  padding: 12px 8px;
 }
 
 .dialogFooter {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-4) var(--space-5);
-  border-top: 1px solid var(--border);
+  gap: 8px;
+  padding: 14px 26px 20px;
+  border-top: 1px solid var(--strokeSoft);
   flex-shrink: 0;
 }
 
@@ -272,16 +371,16 @@
 .wizardEntry {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 5px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: background-color var(--transition), border-color var(--transition);
   user-select: none;
 }
 
-.wizardEntry:hover { background: var(--bg-hover); }
+.wizardEntry:hover { background: var(--hover); }
 
 .wizardEntrySelected {
   background: color-mix(in srgb, var(--accent) 8%, transparent);
@@ -292,7 +391,7 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  border: 1.5px solid var(--border-strong);
+  border: 1.5px solid var(--stroke);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -304,11 +403,11 @@
 .wizardEntrySelected .wizardRadio {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
 }
 
 .wizardEntryLabel {
-  font-size: var(--font-size-sm);
+  font-size: 12.5px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   color: var(--text);
   min-width: 0;
@@ -318,39 +417,39 @@
 }
 
 .wizardPreview {
-  margin-top: var(--space-3);
-  padding: var(--space-3) var(--space-4);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--surface2);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 6px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .wizardPreviewTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--text-muted);
+  color: var(--text2);
 }
 
 .wizardPreviewRow {
   display: flex;
   align-items: baseline;
-  gap: var(--space-3);
+  gap: 12px;
 }
 
 .wizardPreviewKey {
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+  font-size: 10px;
+  color: var(--text2);
   width: 34px;
   flex-shrink: 0;
 }
 
 .wizardPreviewVal {
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   color: var(--text);
   min-width: 0;
@@ -362,44 +461,39 @@
 /* ---- ToggleGroup ---- */
 .toggleGroup {
   display: inline-flex;
-  gap: 2px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 3px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .toggleOption {
-  padding: 5px 16px;
-  border-radius: calc(var(--radius-md) - 2px);
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
-  color: var(--text-muted);
+  padding: 8px 16px;
+  font-size: 12.5px;
+  color: var(--text2);
   transition: background-color var(--transition), color var(--transition);
   white-space: nowrap;
 }
 
-.toggleOption:hover { color: var(--text); background: var(--bg-hover); }
+.toggleOption:not(:first-child) { border-left: 1px solid var(--stroke); }
+
+.toggleOption:hover { color: var(--text); }
 
 .toggleActive {
-  background: var(--bg-card);
+  background: var(--active);
   color: var(--text);
-  font-weight: var(--font-weight-semibold);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  font-weight: 600;
+  box-shadow: inset 0 -3px var(--accent);
 }
 
 /* ---- Folder mode row ---- */
 .folderModeRow {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: 12px;
   justify-content: space-between;
+  flex-wrap: wrap;
 }
 
-/* Folder-mode group: the Field plus the collapsible keep-empty reveal, wrapped
-   so the reveal is not a direct flex child of .fields (which would leave a gap
-   when collapsed). The "Folder structure" Field never changes height, so its
-   label stays put. */
 .folderModeGroup {
   display: flex;
   flex-direction: column;
@@ -418,7 +512,6 @@
   opacity: 1;
 }
 
-/* Clips the inner content so it can slide down from behind the controls. */
 .keepEmptyClip {
   overflow: hidden;
   min-height: 0;
@@ -427,9 +520,8 @@
 .keepEmptyInner {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  padding-top: var(--space-3);
-  padding-left: calc(var(--col-label) + var(--space-3));
+  gap: 10px;
+  padding-top: 12px;
   transform: translateY(-100%);
   transition: transform var(--transition);
 }
@@ -437,7 +529,8 @@
 .revealRow {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .keepEmptyOpen .keepEmptyInner {
@@ -448,9 +541,9 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
   cursor: pointer;
 }
 
@@ -468,8 +561,8 @@
   width: 16px;
   height: 16px;
   flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  border: 1.5px solid var(--border-strong);
+  border-radius: 4px;
+  border: 1.5px solid var(--stroke);
   background: transparent;
   transition: background-color 150ms ease, border-color 150ms ease;
   display: flex;
@@ -482,7 +575,7 @@
   display: none;
   width: 4px;
   height: 8px;
-  border: solid #fff;
+  border: solid var(--onAccent);
   border-width: 0 2px 2px 0;
   transform: rotate(45deg) translate(-0.5px, -0.5px);
 }
@@ -511,12 +604,12 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   min-height: 36px;
-  padding: 4px 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-input);
-  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--stroke);
+  border-radius: 5px;
   cursor: text;
   transition: border-color var(--transition);
 }
@@ -524,31 +617,30 @@
 .extPicker:focus-within .extChipRow { border-color: var(--accent); }
 
 .extAllLabel {
-  font-size: var(--font-size-md);
-  color: var(--text-muted);
-  opacity: 0.45;
+  font-size: 13px;
+  color: var(--text2);
+  opacity: 0.7;
   pointer-events: none;
 }
 
 .extChip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  padding: 2px 7px;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  color: var(--accent);
+  gap: 4px;
+  padding: 3px 10px;
+  background: var(--active);
+  border: 1px solid var(--stroke);
+  border-radius: 20px;
+  font-size: 12px;
+  color: var(--text);
   white-space: nowrap;
 }
 
 .extChipX {
   font-size: 14px;
   line-height: 1;
-  color: var(--accent);
-  opacity: 0.55;
+  color: var(--text2);
+  opacity: 0.65;
   transition: opacity var(--transition);
   padding: 0 1px;
 }
@@ -557,54 +649,51 @@
 
 .extInput {
   flex: 1;
-  min-width: 64px;
+  min-width: 80px;
   background: transparent;
   border: none;
   outline: none;
   color: var(--text);
-  font-size: var(--font-size-md);
+  font-size: 12.5px;
   padding: 2px 0;
   user-select: text;
   -webkit-user-select: text;
 }
 
-.extInput:focus-visible { outline: none; }
-
 .extInput::placeholder {
-  color: var(--text-muted);
-  opacity: 0.4;
+  color: var(--text3);
 }
 
 .extDropdown {
   position: fixed;
-  background: var(--bg-card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
+  box-shadow: var(--shadow);
   z-index: 200;
   overflow-y: auto;
-  padding: var(--space-2);
+  padding: 8px;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .extGroup { display: flex; flex-direction: column; gap: 4px; }
 
 .extGroupLabel {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--text-muted);
-  padding: 2px var(--space-2);
+  color: var(--text2);
+  padding: 2px 8px;
 }
 
 .extGroupItems {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 0 var(--space-2);
+  padding: 0 8px;
 }
 
 .extOption {
@@ -612,19 +701,17 @@
   align-items: center;
   gap: 4px;
   padding: 3px 9px;
-  border-radius: var(--radius-sm);
-  font-size: var(--font-size-xs);
-  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  color: var(--text-muted);
+  border-radius: 4px;
+  font-size: 11.5px;
+  background: var(--bg);
+  border: 1px solid var(--stroke);
+  color: var(--text2);
   transition: background-color var(--transition), border-color var(--transition), color var(--transition);
 }
 
 .extOption:hover {
   color: var(--text);
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
+  background: var(--hover);
 }
 
 .extOptionOn {
@@ -634,49 +721,47 @@
 }
 
 .extCustomRow {
-  padding: 2px var(--space-2);
-  border-top: 1px solid var(--border);
-  margin-top: var(--space-1);
-  padding-top: var(--space-2);
+  padding: 6px 8px 2px;
+  border-top: 1px solid var(--strokeSoft);
 }
 
 .extAddBtn {
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   color: var(--accent);
-  padding: 4px var(--space-2);
-  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  border-radius: 4px;
   width: 100%;
   text-align: left;
   transition: background-color var(--transition);
 }
 
-.extAddBtn:hover { background: var(--bg-hover); }
+.extAddBtn:hover { background: var(--hover); }
 
 .extEmpty {
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  padding: var(--space-3) var(--space-2);
+  font-size: 12px;
+  color: var(--text2);
+  padding: 12px 8px;
   text-align: center;
 }
 
 /* ---- Verify & Clean dialogs ---- */
 .verifyConfirmText {
-  font-size: var(--font-size-md);
-  color: var(--text-muted);
+  font-size: 13px;
+  color: var(--text2);
   line-height: 1.6;
-  padding: var(--space-2) 0;
+  padding: 8px 0;
 }
 
 .verifyPathRow {
-  padding: var(--space-2) var(--space-3);
-  margin: var(--space-2) 0;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  padding: 8px 12px;
+  margin: 8px 0;
+  background: var(--surface2);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 6px;
 }
 
 .verifyPathValue {
-  font-size: var(--font-size-sm);
+  font-size: 12px;
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   color: var(--text);
   overflow: hidden;
@@ -684,71 +769,62 @@
   white-space: nowrap;
 }
 
+.verifyPathSubtitle {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 4px;
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
 .verifyStats {
   display: flex;
-  gap: var(--space-4);
-  padding: var(--space-5);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  gap: 12px;
+  padding-bottom: 12px;
 }
 
-.verifyStat {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
+.statTile {
   flex: 1;
+  border: 1px solid var(--strokeSoft);
+  border-radius: 8px;
+  padding: 13px 16px;
+  background: var(--bg);
 }
 
-.verifyStatNum {
-  font-size: 30px;
-  font-weight: var(--font-weight-bold);
-  color: var(--text);
+.statTileWarn {
+  border-color: var(--err);
+}
+
+.statNum {
+  font-size: 23px;
+  font-weight: 600;
+  color: var(--ok);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
-.verifyStatLabel {
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-}
+.statNumWarn { color: var(--err); }
 
-.verifyStatWarn { color: var(--warning); }
-.verifyStatErr  { color: var(--error); }
-
-.verifyList {
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-
-.verifyListTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin: 0 0 var(--space-2);
+.statLabel {
+  font-size: 12px;
+  color: var(--text3);
+  margin-top: 1px;
 }
 
 .verifyListItems {
   max-height: 130px;
   overflow-y: auto;
-  /* Inset panel so the rows sit on a surface distinct from the dialog and
-     read clearly in both themes (tokens adapt per [data-theme]). Kept as a
-     plain block container — a flex column collapses the ellipsis rows. */
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1);
+  background: var(--bg);
+  border: 1px solid var(--strokeSoft);
+  border-radius: 4px;
+  padding: 4px;
 }
 
 .verifyListItem {
   font-size: 12px;
   color: var(--text);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  padding: 3px var(--space-2);
-  border-radius: var(--radius-xs);
+  padding: 3px 8px;
+  border-radius: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -758,49 +834,34 @@
    comfortable contrast in light and dark, rather than hard orange-on-panel. */
 .verifyListItemWarn {
   color: var(--text);
-  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
 }
 
 .verifyListMore {
   font-size: 12px;
-  color: var(--text-faint);
-  padding-top: var(--space-1);
-}
-
-.verifySummary {
-  flex: 1;
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-}
-
-.verifySummaryRow {
-  font-size: var(--font-size-sm);
-  color: var(--text-muted);
-  padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border);
-  margin-bottom: var(--space-2);
+  color: var(--text3);
+  padding-top: 4px;
 }
 
 .verifySection {
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
+  padding: 12px 0;
+  border-top: 1px solid var(--strokeSoft);
 }
-.verifySection:last-child { border-bottom: none; }
 
 .verifySectionTitle {
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--text-muted);
-  margin-bottom: var(--space-2);
+  color: var(--text2);
+  margin-bottom: 8px;
 }
 
 .verifySectionActions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
+  gap: 8px;
+  margin-top: 12px;
 }
 
 /* Push the destructive action to the far-right edge so it reads as separate
@@ -810,23 +871,40 @@
 }
 
 .verifySectionDone {
-  font-size: var(--font-size-sm);
-  color: var(--text-faint);
-  padding: var(--space-3) 0;
-  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text3);
+  padding: 12px 0;
+  border-top: 1px solid var(--strokeSoft);
 }
-.verifySectionDone:last-child { border-bottom: none; }
 
 .verifyErrors {
-  margin-top: var(--space-2);
+  margin-top: 8px;
 }
 
 .verifyErrorItem {
   font-size: 11px;
-  color: var(--error);
+  color: var(--err);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   padding: 1px 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .protocolCard,
+  .authOption,
+  .toggleOption,
+  .keepEmptyReveal,
+  .keepEmptyInner,
+  .keepEmptyCheckmark,
+  .dialogCloseBtn,
+  .wizardEntry,
+  .wizardRadio,
+  .extAddBtn,
+  .extOption,
+  .input {
+    transition: none;
+  }
 }

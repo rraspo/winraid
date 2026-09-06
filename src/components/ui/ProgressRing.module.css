@@ -24,11 +24,11 @@
 }
 
 .progressRingTrack {
-  stroke: rgba(255, 255, 255, 0.15);
+  stroke: color-mix(in oklab, white 15%, transparent);
 }
 
 .progressRingArc {
-  stroke: rgba(255, 255, 255, 0.9);
+  stroke: color-mix(in oklab, white 90%, transparent);
   /* Rotate so arc starts at 12 o'clock instead of 3 o'clock */
   transform: rotate(-90deg);
   transform-origin: center;

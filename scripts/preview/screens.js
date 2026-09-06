@@ -4,6 +4,7 @@
 export const SCREEN_NAMES = [
   'dashboard',
   'connections',
+  'connection-wizard',
   'queue',
   'browse',
   'browse-list',
