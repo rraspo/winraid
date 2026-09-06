@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { TriangleAlert, AlertCircle } from 'lucide-react'
 import styles from './modals.module.css'
 
@@ -12,14 +12,15 @@ export default function ConfirmModal({ remotePath, cfgRemotePath, localFolder, o
   const [checkoutPath, setCheckoutPath] = useState(remotePath)
   const [watchFolder,  setWatchFolder]  = useState(localFolder)
   const newSyncRoot = remoteParent(checkoutPath.trim() || remotePath)
+  const titleId = useId()
 
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.modal}>
+      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className={styles.modalHeader}>
           <span className={styles.modalIconWrap}><TriangleAlert size={20} /></span>
           <div>
-            <h2 className={styles.modalTitle}>Outside sync root</h2>
+            <h2 id={titleId} className={styles.modalTitle}>Outside sync root</h2>
             <p className={styles.modalSubtitle}>
               This folder is outside your configured remote path. The watch folder will
               be cleared and the sync root will be updated to match.

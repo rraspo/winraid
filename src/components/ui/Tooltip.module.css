@@ -9,19 +9,19 @@
   z-index: 9999;
   max-width: 260px;
   padding: 7px 11px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border-strong);
+  background: var(--card);
+  border: 1px solid var(--stroke);
   border-radius: var(--radius-md);
   font-size: var(--font-size-xs);
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-muted);
+  color: var(--text2);
   pointer-events: none;
   white-space: normal;
   overflow-wrap: break-word;
   word-break: break-word;
   text-align: left;
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  box-shadow: var(--shadow);
 }
 
 /* Static mode: right/left of anchor, vertically centered */

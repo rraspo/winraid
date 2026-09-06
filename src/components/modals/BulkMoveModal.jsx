@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { FolderInput } from 'lucide-react'
 import RemotePathBrowser from '../RemotePathBrowser'
 import styles from './modals.module.css'
 
 export default function BulkMoveModal({ count, names, dest, onDestChange, onConfirm, onCancel, currentPath, sftpCfg }) {
   const [browsing, setBrowsing] = useState(false)
+  const titleId = useId()
 
   function handleSelect(pathOrPaths) {
     const picked = Array.isArray(pathOrPaths) ? pathOrPaths[0] : pathOrPaths
@@ -15,13 +16,13 @@ export default function BulkMoveModal({ count, names, dest, onDestChange, onConf
   return (
     <>
       <div className={styles.modalOverlay}>
-        <div className={styles.modal}>
+        <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId}>
           <div className={styles.modalHeader}>
             <span className={styles.modalIconWrap}>
               <FolderInput size={20} />
             </span>
             <div>
-              <h2 className={styles.modalTitle}>
+              <h2 id={titleId} className={styles.modalTitle}>
                 Move {count} item{count !== 1 ? 's' : ''}
               </h2>
               <p className={styles.modalSubtitle}>

@@ -11,15 +11,20 @@
   top: 0;
   left: 0;
   border-radius: var(--radius-md);
-  border: 1px solid var(--border);
-  background: var(--bg-card, var(--bg-panel));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--stroke);
+  background: var(--card);
+  box-shadow: var(--shadow);
   box-sizing: border-box;
 }
 
 /* Fan outward from cursor on mount */
-.stub1 { animation: fanOut1 160ms cubic-bezier(0.2, 0, 0.3, 1) forwards; }
-.stub2 { animation: fanOut2 200ms cubic-bezier(0.2, 0, 0.3, 1) forwards; }
+.stub1 { transform: translate(6px, 6px);   opacity: 0.65; }
+.stub2 { transform: translate(12px, 12px); opacity: 0.4; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .stub1 { animation: fanOut1 160ms cubic-bezier(0.2, 0, 0.3, 1) forwards; }
+  .stub2 { animation: fanOut2 200ms cubic-bezier(0.2, 0, 0.3, 1) forwards; }
+}
 
 @keyframes fanOut1 {
   from { transform: translate(0, 0);     opacity: 0; }
@@ -38,8 +43,8 @@
   box-sizing: border-box;
   border-radius: var(--radius-md);
   border: 1.5px solid var(--accent);
-  background: var(--bg-card, var(--bg-panel));
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.25);
+  background: var(--card);
+  box-shadow: var(--shadow);
   /* intentionally no overflow:hidden so the badge can poke outside */
 }
 
@@ -136,11 +141,11 @@
   top: -8px;
   right: -10px;
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
   border-radius: 10px;
   font-size: 10px;
   font-weight: 700;
   padding: 2px 7px;
-  border: 2px solid var(--bg-panel);
+  border: 2px solid var(--bg);
   white-space: nowrap;
 }

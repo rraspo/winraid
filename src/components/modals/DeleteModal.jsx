@@ -1,16 +1,18 @@
+import { useId } from 'react'
 import { AlertCircle } from 'lucide-react'
 import styles from './modals.module.css'
 
 export default function DeleteModal({ target, onConfirm, onCancel }) {
+  const titleId = useId()
   return (
     <div className={styles.modalOverlay}>
-      <div className={styles.modal}>
+      <div className={styles.modal} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className={styles.modalHeader}>
           <span className={[styles.modalIconWrap, styles.modalIconDanger].join(' ')}>
             <AlertCircle size={20} />
           </span>
           <div>
-            <h2 className={styles.modalTitle}>
+            <h2 id={titleId} className={styles.modalTitle}>
               Delete {target.isDir ? 'folder' : 'file'}?
             </h2>
             <p className={styles.modalSubtitle}>

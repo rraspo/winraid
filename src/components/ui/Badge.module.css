@@ -12,21 +12,21 @@
 }
 
 .PENDING {
-  color: var(--warning);
-  background-color: var(--warning-subtle);
+  color: var(--warn);
+  background-color: color-mix(in oklab, var(--warn) 12%, transparent);
 }
 
 .TRANSFERRING {
   color: var(--accent);
-  background-color: var(--accent-subtle);
+  background-color: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 
 .DONE {
-  color: var(--success);
-  background-color: var(--success-subtle);
+  color: var(--ok);
+  background-color: color-mix(in oklab, var(--ok) 12%, transparent);
 }
 
 .ERROR {
-  color: var(--error);
-  background-color: var(--error-subtle);
+  color: var(--err);
+  background-color: color-mix(in oklab, var(--err) 12%, transparent);
 }
