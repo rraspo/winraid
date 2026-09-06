@@ -154,11 +154,12 @@ describe('SettingsView — Browse section', () => {
     })
   }
 
+  // The browser settings sit in their own card on the redesign; there is
+  // no Advanced disclosure to open first.
   async function mountAndOpenAdvanced(opts) {
     mountWith(opts)
     render(<SettingsView />)
     await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: /Advanced settings/i }))
   }
 
   it('renders the Directory cache segmented control with three options', async () => {
@@ -218,19 +219,12 @@ describe('SettingsView — structure', () => {
     expect(screen.queryByText('Scanner')).toBeNull()
   })
 
-  it('renders sections in order: top, then Advanced (when expanded), then About', async () => {
+  it('renders the cards in prototype order with no Advanced disclosure', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    // Open Advanced so its inner subsections are present in the DOM.
-    fireEvent.click(screen.getByRole('button', { name: /Advanced settings/i }))
-    const headings = Array.from(document.querySelectorAll('[class*="sectionHeader"], [class*="subGroupHeader"]')).map((el) => el.textContent)
-    const known = ['Interface', 'Appearance', 'Play', 'Snapshot', 'Browse', 'Storage', 'About']
-    const ordered = headings.filter((h) => known.includes(h))
-    expect(ordered[1]).toBe('Play')
-    expect(ordered[2]).toBe('Snapshot')
-    expect(ordered[3]).toBe('Browse')
-    expect(ordered[4]).toBe('Storage')
-    expect(ordered[5]).toBe('About')
+    const headings = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent)
+    expect(headings).toEqual(['Startup & background', 'Appearance', 'Play', 'Snapshot', 'Thumbnails', 'Remote browser', 'Updates', 'Security'])
+    expect(screen.queryByRole('button', { name: /Advanced settings/i })).toBeNull()
   })
 })
 
