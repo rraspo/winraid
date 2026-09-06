@@ -315,6 +315,14 @@ function clickSelector(selector, description) {
   }
 }
 
+function clickButton(name) {
+  return {
+    description: `click button "${name}"`,
+    find: () => findByRole('button', name),
+    act: (el) => el.click(),
+  }
+}
+
 // Every screen is reached through the nav rail (Browse, Size map and
 // Backup open the active connection's tab); overlays and tabs are then
 // opened from inside the Browse screen.
@@ -326,6 +334,10 @@ const SCREEN_STEPS = {
   dashboard: [],
   connections: [
     clickNav('Connections'),
+  ],
+  'connection-wizard': [
+    clickNav('Connections'),
+    clickButton('New connection'),
   ],
   queue: [
     clickNav('Queue'),

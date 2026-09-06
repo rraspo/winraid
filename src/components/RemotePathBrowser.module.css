@@ -1,7 +1,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, black 55%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -17,7 +17,7 @@
   max-height: 72vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.55);
+  box-shadow: var(--shadow);
 }
 
 .dialogHeader {
@@ -174,7 +174,7 @@
   display: none;
   width: 4px;
   height: 7px;
-  border: 1.5px solid #fff;
+  border: 1.5px solid var(--onAccent);
   border-top: none;
   border-left: none;
   transform: rotate(45deg) translate(-0.5px, -0.5px);
@@ -238,7 +238,7 @@
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-medium);
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
   border-radius: var(--radius-sm);
   transition: opacity var(--transition);
   flex-shrink: 0;
