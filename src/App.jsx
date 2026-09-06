@@ -14,6 +14,7 @@ import LogView from './views/LogView'
 import EditorView from './components/EditorView'
 import ToastHost from './components/ui/ToastHost'
 import { useNavHistory } from './hooks/useNavHistory'
+import { normalizeAppearance, resolveTheme, resolveAccentHex, onAccentTextColor } from './utils/accent'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
@@ -61,22 +62,86 @@ export default function App() {
     lastRun:     null,
   })
 
-  // --- Theme management -------------------------------------------------------
-  const [theme, setTheme] = useState(() => {
-    const saved = localStorage.getItem('winraid-theme')
-    if (saved === 'dark' || saved === 'light') return saved
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-  })
+  // --- Appearance (theme + accent) --------------------------------------------
+  const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
+  const [systemPrefersDark, setSystemPrefersDark] = useState(
+    () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
+  )
+  const [systemAccentHex, setSystemAccentHex] = useState(null)
+  const resolvedTheme = resolveTheme(appearance.theme, systemPrefersDark)
+
+  // Load the persisted appearance. Installs that predate the appearance
+  // setting hold the theme in localStorage under 'winraid-theme'; it wins
+  // over the default exactly once and is then removed, so an explicit
+  // choice in Settings can never be overridden by the stale key.
+  useEffect(() => {
+    let cancelled = false
+    window.winraid?.config.get('appearance').then((raw) => {
+      if (cancelled) return
+      const legacyTheme = localStorage.getItem('winraid-theme')
+      if ((legacyTheme === 'dark' || legacyTheme === 'light') && raw?.theme == null) {
+        const migrated = { ...normalizeAppearance(raw), theme: legacyTheme }
+        setAppearance(migrated)
+        window.winraid?.config.set('appearance', migrated)
+        localStorage.removeItem('winraid-theme')
+      } else {
+        setAppearance(normalizeAppearance(raw))
+      }
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Re-resolve a 'system' theme choice when the OS preference changes live.
+  useEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!media) return
+    const handleChange = (e) => setSystemPrefersDark(e.matches)
+    media.addEventListener?.('change', handleChange)
+    return () => media.removeEventListener?.('change', handleChange)
+  }, [])
+
+  // Pick up appearance changes written by SettingsView without a reload.
+  useEffect(() => {
+    function handleAppearanceChanged(e) {
+      if (e.detail) setAppearance(normalizeAppearance(e.detail))
+    }
+    window.addEventListener('winraid:appearance-changed', handleAppearanceChanged)
+    return () => window.removeEventListener('winraid:appearance-changed', handleAppearanceChanged)
+  }, [])
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme)
-  }, [theme])
+    document.documentElement.setAttribute('data-theme', resolvedTheme)
+  }, [resolvedTheme])
+
+  // Track the live Windows system accent so a 'system' accent choice follows
+  // it without requiring a restart.
+  useEffect(() => {
+    if (!window.winraid?.system) return
+    let cancelled = false
+    window.winraid.system.accentColor().then((hex) => {
+      if (!cancelled) setSystemAccentHex(hex ?? null)
+    }).catch(() => {})
+    const unsubscribe = window.winraid.system.onAccentColorChanged((hex) => {
+      setSystemAccentHex(hex ?? null)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [])
+
+  useEffect(() => {
+    const accentHex = resolveAccentHex(appearance.accent, systemAccentHex)
+    document.documentElement.style.setProperty('--accent', accentHex)
+    document.documentElement.style.setProperty('--onAccent', onAccentTextColor(accentHex))
+  }, [appearance.accent, systemAccentHex])
 
   function toggleTheme() {
-    setTheme((t) => {
-      const next = t === 'dark' ? 'light' : 'dark'
-      localStorage.setItem('winraid-theme', next)
-      return next
+    const next = resolvedTheme === 'dark' ? 'light' : 'dark'
+    setAppearance((prev) => {
+      const updated = { ...prev, theme: next }
+      window.winraid?.config.set('appearance', updated)
+      return updated
     })
   }
 
@@ -501,7 +566,7 @@ export default function App() {
         <Sidebar
           activeView={connEdit !== null ? null : activeView}
           onNavigate={navigateView}
-          theme={theme}
+          theme={resolvedTheme}
           onThemeToggle={toggleTheme}
           onEditConnection={openConnEdit}
           connections={connections}

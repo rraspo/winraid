@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { RefreshCw, Download, ChevronRight } from 'lucide-react'
+import { RefreshCw, Download, ChevronRight, Check } from 'lucide-react'
 
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
@@ -7,6 +7,7 @@ import SegmentedControl from '../components/ui/SegmentedControl'
 import { formatSize } from '../utils/format'
 import { SNAPSHOT_FORMATS } from '../utils/snapshotFormats'
 import { readAccordionMode, setAccordionMode } from '../utils/accordionMode'
+import { ACCENT_PALETTE, normalizeAppearance, resolveAccentHex } from '../utils/accent'
 import styles from './SettingsView.module.css'
 
 const HINTS = {
@@ -30,6 +31,8 @@ export default function SettingsView() {
   const [thumbSeekValue, setThumbSeekValue] = useState(2)
   const [dirsFirst,       setDirsFirst]       = useState(true)
   const [sortPersistence, setSortPersistence] = useState('default')
+  const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
+  const [systemAccentHex, setSystemAccentHex] = useState(null)
   const [advancedOpen, setAdvancedOpen] = useState(
     () => localStorage.getItem('settings-advanced-open') === 'true'
   )
@@ -83,6 +86,23 @@ export default function SettingsView() {
     // s is Record<connectionId, { watching, folder, state, file }>
     const unsub = window.winraid?.watcher.onStatus((s) => {
       setWatching(Object.values(s).some((v) => v.watching))
+    })
+    return () => unsub?.()
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('appearance').then((raw) => {
+      setAppearance(normalizeAppearance(raw))
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!window.winraid?.system) return
+    window.winraid.system.accentColor().then((hex) => {
+      setSystemAccentHex(hex ?? null)
+    }).catch(() => {})
+    const unsub = window.winraid.system.onAccentColorChanged((hex) => {
+      setSystemAccentHex(hex ?? null)
     })
     return () => unsub?.()
   }, [])
@@ -160,6 +180,13 @@ export default function SettingsView() {
   async function handleSortPersistenceChange(value) {
     setSortPersistence(value)
     await window.winraid?.config.set('browse.sortPersistence', value)
+  }
+
+  async function handleAppearanceChange(partial) {
+    const next = { ...appearance, ...partial }
+    setAppearance(next)
+    await window.winraid?.config.set('appearance', next)
+    window.dispatchEvent(new CustomEvent('winraid:appearance-changed', { detail: next }))
   }
 
   async function handleThumbSeekChange(mode, value) {
@@ -382,6 +409,57 @@ export default function SettingsView() {
               </div>
             </div>
             {renderUpdateInfo()}
+          </div>
+        </section>
+
+        <section className={styles.section}>
+          <div className={styles.sectionHeader}>Appearance</div>
+          <div className={styles.sectionBody}>
+            <SegmentedControl
+              label="Theme"
+              value={appearance.theme}
+              onChange={(value) => handleAppearanceChange({ theme: value })}
+              options={[
+                { value: 'system', label: 'System' },
+                { value: 'dark',   label: 'Dark' },
+                { value: 'light',  label: 'Light' },
+              ]}
+            />
+            <div className={styles.accentField}>
+              <span className={styles.stackedLabel}>Accent</span>
+              <div className={styles.accentSwatches}>
+                <button
+                  type="button"
+                  className={styles.swatch}
+                  aria-label="System accent"
+                  aria-pressed={appearance.accent === 'system'}
+                  data-accent={resolveAccentHex('system', systemAccentHex)}
+                  disabled={systemAccentHex == null}
+                  title={systemAccentHex == null ? 'System accent is not available on this platform' : undefined}
+                  onClick={() => handleAppearanceChange({ accent: 'system' })}
+                >
+                  <span
+                    className={styles.swatchColor}
+                    style={{ background: resolveAccentHex('system', systemAccentHex) }}
+                  />
+                  {appearance.accent === 'system' && <Check size={14} className={styles.swatchCheck} />}
+                </button>
+                {ACCENT_PALETTE.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className={styles.swatch}
+                    aria-label={`${entry.label} accent`}
+                    aria-pressed={appearance.accent === entry.id}
+                    data-accent={entry.hex}
+                    onClick={() => handleAppearanceChange({ accent: entry.id })}
+                  >
+                    <span className={styles.swatchColor} style={{ background: entry.hex }} />
+                    {appearance.accent === entry.id && <Check size={14} className={styles.swatchCheck} />}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </section>
 

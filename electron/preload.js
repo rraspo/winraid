@@ -42,6 +42,15 @@ contextBridge.exposeInMainWorld('winraid', {
     set: (key, value) => ipcRenderer.invoke('config:set', key, value),
   },
 
+  // -- System (OS-level appearance) -----------------------------------------
+  system: {
+    /** Current Windows system accent color as #RRGGBB, or null off-Windows / on failure. */
+    accentColor: () => ipcRenderer.invoke('system:accent-color'),
+    /** Subscribe to live system accent color changes. Payload: #RRGGBB or null.
+     *  @returns {() => void} unsubscribe */
+    onAccentColorChanged: (cb) => on('system:accent-color-changed', cb),
+  },
+
   // -- Native dialogs ------------------------------------------------------
   /** Opens an OS folder-picker. Resolves to the chosen path or null. */
   selectFolder: () => ipcRenderer.invoke('dialog:selectFolder'),
