@@ -3,7 +3,7 @@
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: color-mix(in srgb, black 50%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -19,7 +19,7 @@
   max-width: 480px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow);
   max-height: calc(100vh - 64px);
   overflow: hidden;
 }
@@ -146,7 +146,7 @@
 .tabActive {
   background: var(--bg-card);
   color: var(--accent);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 1px 4px color-mix(in srgb, black 12%, transparent);
 }
 
 /* ---- Test row ---- */

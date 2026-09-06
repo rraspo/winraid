@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ArrowLeft, Info, ShieldCheck, Check } from 'lucide-react'
+import { Info, ShieldCheck, Check, ArrowDown } from 'lucide-react'
 import { createPortal } from 'react-dom'
 import Tooltip from '../components/ui/Tooltip'
 import Button from '../components/ui/Button'
@@ -66,8 +66,16 @@ const HINTS = {
   verifyClean:   'Walk the local watch folder and check each file against the NAS over SFTP. Results are shown in a dialog where you can enqueue missing files, delete confirmed local copies, or ignore either group.',
 }
 
+const STEPS = [
+  { id: 'server',  label: '1 · Server'  },
+  { id: 'folders', label: '2 · Folders' },
+  { id: 'rules',   label: '3 · Rules'   },
+]
+
 export default function ConnectionView({ existing, onSave, onClose }) {
   const [conn,               setConn]               = useState(() => makeDefault(existing))
+  const [activeStep,         setActiveStep]         = useState('server')
+  const [authMode,           setAuthMode]           = useState(() => (conn.sftp.keyPath ? 'key' : 'password'))
   const [testStatus,         setTestStatus]         = useState(null)
   const [saving,             setSaving]             = useState(false)
   const [deleting,           setDeleting]           = useState(false)
@@ -79,9 +87,23 @@ export default function ConnectionView({ existing, onSave, onClose }) {
   const [showVerifyConfirm,  setShowVerifyConfirm]  = useState(false)
   const [folderOverlapError, setFolderOverlapError] = useState(null)
 
+  const serverRef  = useRef(null)
+  const foldersRef = useRef(null)
+  const rulesRef   = useRef(null)
+  const sectionRefs = { server: serverRef, folders: foldersRef, rules: rulesRef }
+
   // Move and Mirror + clean delete the local file after upload — the flows
   // where the duplicate-name options apply.
   const deletesLocal = conn.folderMode === 'mirror_clean' || conn.operation === 'move'
+
+  function goToStep(id) {
+    setActiveStep(id)
+    const node = sectionRefs[id]?.current
+    if (!node) return
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    node.scrollIntoView?.({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
+    node.focus?.({ preventScroll: true })
+  }
 
   function setTop(key, value) {
     setConn((c) => ({ ...c, [key]: value }))
@@ -108,6 +130,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
         keyPath:  entry.keyPath  || c.sftp.keyPath,
       },
     }))
+    if (entry.keyPath) setAuthMode('key')
     setTestStatus(null)
   }
 
@@ -129,10 +152,23 @@ export default function ConnectionView({ existing, onSave, onClose }) {
         password: conn.sftp.password || undefined,
         keyPath:  conn.sftp.keyPath  || undefined,
       })
-      setTestStatus(result?.ok ? 'ok' : { error: result?.error ?? 'Connection failed' })
+      setTestStatus(result?.ok ? 'ok' : { error: result?.error ?? 'Connection failed', code: result?.code })
     } catch (err) {
       setTestStatus({ error: err.message })
     }
+  }
+
+  // A pinned host key that no longer matches is either the NAS being rebuilt or
+  // someone answering in its place, so dropping the pin stays an explicit act:
+  // one button, followed by a fresh test that pins whatever is really there now.
+  async function handleForgetHostKey() {
+    setTestStatus('testing')
+    const result = await window.winraid?.ssh.forgetHostKey(conn.sftp.host, Number(conn.sftp.port) || 22)
+    if (!result?.ok) {
+      setTestStatus({ error: result?.error ?? 'Could not forget the saved key' })
+      return
+    }
+    await handleTest()
   }
 
   async function handleSave() {
@@ -217,31 +253,56 @@ export default function ConnectionView({ existing, onSave, onClose }) {
     keyPath:  conn.sftp.keyPath  || undefined,
   }
 
+  const activeRemotePath = conn.type === 'smb' ? conn.smb.remotePath : conn.sftp.remotePath
+
   return (
     <div className={styles.container}>
 
       {/* Page header */}
       <div className={styles.pageHeader}>
-        <button className={styles.backBtn} onClick={onClose}>
-          <ArrowLeft size={16} strokeWidth={1.75} />
-          <span>Back</span>
-        </button>
-        <h2 className={styles.pageTitle}>
-          {existing ? conn.name || 'Edit Connection' : 'New Connection'}
-        </h2>
+        <h1 className={styles.pageTitle}>{existing ? 'Edit connection' : 'New connection'}</h1>
+      </div>
+
+      {/* Step tabs — pinned above the scrolling sections; clicking one scrolls
+          to and focuses that section rather than hiding the others. */}
+      <div className={styles.tabBar}>
+        <div role="tablist" aria-label="Steps" className={styles.tabs}>
+          {STEPS.map((step) => (
+            <button
+              key={step.id}
+              type="button"
+              role="tab"
+              id={`conn-tab-${step.id}`}
+              aria-selected={activeStep === step.id}
+              aria-controls={`conn-section-${step.id}`}
+              className={[styles.tab, activeStep === step.id ? styles.tabActive : ''].join(' ')}
+              onClick={() => goToStep(step.id)}
+            >
+              {step.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={styles.scrollBody}>
 
-        {/* Identity */}
-        <div className={styles.block}>
-          <h3 className={styles.blockTitle}>Identity</h3>
+        {/* ---- Server ---- */}
+        <section
+          id="conn-section-server"
+          aria-labelledby="conn-heading-server"
+          ref={serverRef}
+          tabIndex={-1}
+          className={styles.section}
+        >
+          <h2 id="conn-heading-server" className={styles.sectionHeading}>Server</h2>
+
           <div className={styles.fields}>
             <Field label="Name" required hint={HINTS.name}>
               <div className={styles.inputRow}>
                 <IconPicker value={conn.icon ?? null} onChange={(icon) => setTop('icon', icon)} />
                 <input
                   className={styles.input}
+                  aria-label="Name"
                   value={conn.name}
                   onChange={(e) => setTop('name', e.target.value)}
                   placeholder="Home NAS"
@@ -249,78 +310,85 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                 />
               </div>
             </Field>
-          </div>
-        </div>
-
-        {/* Protocol + credentials */}
-        <div className={styles.block}>
-          <div className={styles.blockTitleRow}>
-            <h3 className={styles.blockTitle}>Connection</h3>
-            {conn.type === 'sftp' && (
-              <Tooltip tip={HINTS.wizardBtn} side="left">
-                <Button variant="ghost" size="sm" onClick={() => setShowWizard(true)}>
-                  Import from SSH config…
-                </Button>
-              </Tooltip>
-            )}
-          </div>
-          <div className={styles.fields}>
 
             <Field label="Protocol">
-              <div className={styles.tabs}>
-                {[['sftp', 'SSH / SFTP'], ['smb', 'SMB']].map(([v, l]) => (
+              <div className={styles.protocolCards}>
+                {[
+                  { value: 'sftp', title: 'SFTP', desc: 'any Linux box or NAS over SSH' },
+                  { value: 'smb',  title: 'Windows share', desc: 'SMB — \\\\nas\\share' },
+                ].map((opt) => (
                   <button
-                    key={v}
-                    className={[styles.tab, conn.type === v ? styles.active : ''].join(' ')}
-                    onClick={() => setTop('type', v)}
+                    key={opt.value}
+                    type="button"
+                    className={[styles.protocolCard, conn.type === opt.value ? styles.protocolCardActive : '']
+                      .filter(Boolean).join(' ')}
+                    onClick={() => setTop('type', opt.value)}
                   >
-                    {l}
+                    <span className={styles.protocolCardTitle}>{opt.title}</span>
+                    <span className={styles.protocolCardDesc}>{opt.desc}</span>
                   </button>
                 ))}
               </div>
             </Field>
 
             {conn.type === 'sftp' && <>
-              <Field label="Host" required hint={HINTS.sftpHost}>
-                <input className={styles.input} value={conn.sftp.host}
-                  onChange={(e) => setSftp('host', e.target.value)} />
-              </Field>
-              <Field label="Port" hint={HINTS.sftpPort}>
-                <input className={`${styles.input} ${styles.short}`} type="number"
-                  value={conn.sftp.port}
-                  onChange={(e) => setSftp('port', e.target.value)} />
-              </Field>
-              <Field label="Username" required hint={HINTS.sftpUsername}>
-                <input className={styles.input} value={conn.sftp.username}
-                  onChange={(e) => setSftp('username', e.target.value)}
-                  autoComplete="off" />
-              </Field>
-              <Field label="Password" hint={HINTS.sftpPassword}>
-                <input className={styles.input} type="password" value={conn.sftp.password}
-                  onChange={(e) => setSftp('password', e.target.value)}
-                  autoComplete="new-password" />
-              </Field>
-              <Field label="Key path" hint={HINTS.sftpKeyPath}>
-                <input className={styles.input} value={conn.sftp.keyPath}
-                  onChange={(e) => setSftp('keyPath', e.target.value)}
-                  placeholder="C:\Users\you\.ssh\id_rsa" spellCheck={false} />
-              </Field>
-              <Field label="Remote path" hint={HINTS.sftpRemote}>
-                <div className={styles.inputRow}>
-                  <input className={styles.input} value={conn.sftp.remotePath}
-                    onChange={(e) => setSftp('remotePath', e.target.value)}
-                    placeholder="/mnt/user/share" spellCheck={false} />
-                  <Tooltip tip={HINTS.browseRemote} side="left">
-                    <Button variant="ghost" size="compact"
-                      onClick={() => setShowBrowser(true)}
-                      disabled={!conn.sftp.host || !conn.sftp.username}
-                    >
-                      Browse
-                    </Button>
-                  </Tooltip>
-                </div>
-              </Field>
-              <div className={styles.testRow}>
+              <div className={styles.gridRow}>
+                <Field label="Host" required hint={HINTS.sftpHost}>
+                  <input className={styles.input} aria-label="Host" value={conn.sftp.host}
+                    onChange={(e) => setSftp('host', e.target.value)} />
+                </Field>
+                <Field label="Port" hint={HINTS.sftpPort}>
+                  <input className={styles.input} aria-label="Port" type="number"
+                    value={conn.sftp.port}
+                    onChange={(e) => setSftp('port', e.target.value)} />
+                </Field>
+              </div>
+
+              <div className={styles.gridRow}>
+                <Field label="Username" required hint={HINTS.sftpUsername}>
+                  <input className={styles.input} aria-label="Username" value={conn.sftp.username}
+                    onChange={(e) => setSftp('username', e.target.value)}
+                    autoComplete="off" />
+                </Field>
+                <Field label="Authentication">
+                  <div className={styles.authSegment}>
+                    {[['password', 'Password'], ['key', 'Private key']].map(([v, l]) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={[styles.authOption, authMode === v ? styles.authOptionActive : '']
+                          .filter(Boolean).join(' ')}
+                        onClick={() => setAuthMode(v)}
+                      >
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              </div>
+
+              {authMode === 'password' ? (
+                <Field label="Password" hint={HINTS.sftpPassword}>
+                  <input className={styles.input} aria-label="Password" type="password" value={conn.sftp.password}
+                    onChange={(e) => setSftp('password', e.target.value)}
+                    autoComplete="new-password" />
+                </Field>
+              ) : (
+                <Field label="Key file" hint={HINTS.sftpKeyPath}>
+                  <input className={styles.input} aria-label="Key file" value={conn.sftp.keyPath}
+                    onChange={(e) => setSftp('keyPath', e.target.value)}
+                    placeholder="C:\Users\you\.ssh\id_rsa" spellCheck={false} />
+                  <p className={styles.fieldNote}>Passphrase-protected keys are supported — you&rsquo;ll be asked once per session.</p>
+                </Field>
+              )}
+
+              <div className={styles.actionRow}>
+                <Tooltip tip={HINTS.wizardBtn} side="left">
+                  <Button variant="secondary" size="sm" onClick={() => setShowWizard(true)}>
+                    Auto-fill from ~/.ssh/config
+                  </Button>
+                </Tooltip>
+                <span className={styles.spacer} />
                 <Tooltip tip={HINTS.testConn} side="left">
                   <Button
                     variant="secondary" size="sm"
@@ -330,47 +398,64 @@ export default function ConnectionView({ existing, onSave, onClose }) {
                     {testStatus === 'testing' ? 'Testing…' : 'Test connection'}
                   </Button>
                 </Tooltip>
-                {testStatus === 'ok'  && <span className={styles.testOk}>Connected</span>}
-                {testStatus?.error    && <span className={styles.testError}>{testStatus.error}</span>}
+              </div>
+              {testStatus === 'ok'  && <span className={styles.testOk}>Connected</span>}
+              {testStatus?.error    && (
+                <div className={styles.testRow}>
+                  <span className={styles.testError}>{testStatus.error}</span>
+                  {testStatus.code === 'HOST_KEY_CHANGED' && (
+                    <Button variant="secondary" size="sm" onClick={handleForgetHostKey}>Forget saved key</Button>
+                  )}
+                </div>
+              )}
+
+              <div className={styles.securityNote}>
+                <ShieldCheck size={15} strokeWidth={1.7} className={styles.securityNoteIcon} />
+                <span>The password is encrypted with Windows credential protection and never stored in plain text. The server&rsquo;s SSH host key is pinned on first connect — a swapped server gets caught.</span>
               </div>
             </>}
 
             {conn.type === 'smb' && <>
-              <Field label="Host" required hint={HINTS.smbHost}>
-                <input className={styles.input} value={conn.smb.host}
-                  onChange={(e) => setSmb('host', e.target.value)} placeholder="nas.local" />
-              </Field>
-              <Field label="Share" required hint={HINTS.smbShare}>
-                <input className={styles.input} value={conn.smb.share}
-                  onChange={(e) => setSmb('share', e.target.value)} placeholder="media" />
-              </Field>
-              <Field label="Username" hint={HINTS.smbUsername}>
-                <input className={styles.input} value={conn.smb.username}
-                  onChange={(e) => setSmb('username', e.target.value)} />
-              </Field>
-              <Field label="Password" hint={HINTS.smbPassword}>
-                <input className={styles.input} type="password" value={conn.smb.password}
-                  onChange={(e) => setSmb('password', e.target.value)} />
-              </Field>
-              <Field label="Remote path" hint={HINTS.smbRemote}>
-                <input className={styles.input} value={conn.smb.remotePath}
-                  onChange={(e) => setSmb('remotePath', e.target.value)}
-                  placeholder="\videos" spellCheck={false} />
-              </Field>
+              <div className={styles.gridRow}>
+                <Field label="Host" required hint={HINTS.smbHost}>
+                  <input className={styles.input} aria-label="Host" value={conn.smb.host}
+                    onChange={(e) => setSmb('host', e.target.value)} placeholder="nas.local" />
+                </Field>
+                <Field label="Share" required hint={HINTS.smbShare}>
+                  <input className={styles.input} aria-label="Share" value={conn.smb.share}
+                    onChange={(e) => setSmb('share', e.target.value)} placeholder="media" />
+                </Field>
+              </div>
+              <div className={styles.gridRow}>
+                <Field label="Username" hint={HINTS.smbUsername}>
+                  <input className={styles.input} aria-label="Username" value={conn.smb.username}
+                    onChange={(e) => setSmb('username', e.target.value)} />
+                </Field>
+                <Field label="Password" hint={HINTS.smbPassword}>
+                  <input className={styles.input} aria-label="Password" type="password" value={conn.smb.password}
+                    onChange={(e) => setSmb('password', e.target.value)} />
+                </Field>
+              </div>
             </>}
-
           </div>
-        </div>
+        </section>
 
-        {/* Source */}
-        <div className={styles.block}>
-          <h3 className={styles.blockTitle}>Source</h3>
+        {/* ---- Folders ---- */}
+        <section
+          id="conn-section-folders"
+          aria-labelledby="conn-heading-folders"
+          ref={foldersRef}
+          tabIndex={-1}
+          className={styles.section}
+        >
+          <h2 id="conn-heading-folders" className={styles.sectionHeading}>Folders</h2>
+
           <div className={styles.fields}>
-
             <Field label="Watch folder" hint={HINTS.localFolder}>
               <div className={styles.inputRow}>
                 <input
                   className={styles.input}
+                  aria-label="Watch folder"
                   value={conn.localFolder}
                   onChange={(e) => { setTop('localFolder', e.target.value); setFolderOverlapError(null) }}
                   placeholder="Optional — leave blank to browse only"
@@ -382,122 +467,168 @@ export default function ConnectionView({ existing, onSave, onClose }) {
               </div>
             </Field>
 
-            {conn.localFolder && (
-              <>
-                <Field label="Operation">
-                  <ToggleGroup
-                    value={conn.operation}
-                    onChange={(v) => setTop('operation', v)}
-                    options={[
-                      { value: 'copy', label: 'Copy', tip: HINTS.opCopy },
-                      { value: 'move', label: 'Move', tip: HINTS.opMove },
-                    ]}
-                  />
+            <div className={styles.folderArrow}>
+              <ArrowDown size={16} strokeWidth={1.8} />
+            </div>
+
+            {conn.type === 'sftp' ? (
+              <Field label="Remote path" hint={HINTS.sftpRemote}>
+                <div className={styles.inputRow}>
+                  <input className={styles.input} aria-label="Remote path" value={conn.sftp.remotePath}
+                    onChange={(e) => setSftp('remotePath', e.target.value)}
+                    placeholder="/mnt/user/share" spellCheck={false} />
+                  <Tooltip tip={HINTS.browseRemote} side="left">
+                    <Button variant="ghost" size="compact"
+                      onClick={() => setShowBrowser(true)}
+                      disabled={!conn.sftp.host || !conn.sftp.username}
+                    >
+                      Browse NAS
+                    </Button>
+                  </Tooltip>
+                </div>
+              </Field>
+            ) : (
+              <Field label="Remote path" hint={HINTS.smbRemote}>
+                <input className={styles.input} aria-label="Remote path" value={conn.smb.remotePath}
+                  onChange={(e) => setSmb('remotePath', e.target.value)}
+                  placeholder="\videos" spellCheck={false} />
+              </Field>
+            )}
+
+            <p className={styles.fieldNote}>WinRaid waits for files to finish writing before touching them, so half-copied downloads never get sent.</p>
+          </div>
+        </section>
+
+        {/* ---- Rules ---- */}
+        <section
+          id="conn-section-rules"
+          aria-labelledby="conn-heading-rules"
+          ref={rulesRef}
+          tabIndex={-1}
+          className={styles.section}
+        >
+          <h2 id="conn-heading-rules" className={styles.sectionHeading}>Rules</h2>
+
+          {conn.localFolder ? (
+            <div className={styles.fields}>
+              <Field label="Operation">
+                <ToggleGroup
+                  value={conn.operation}
+                  onChange={(v) => setTop('operation', v)}
+                  options={[
+                    { value: 'copy', label: 'Copy', tip: HINTS.opCopy },
+                    { value: 'move', label: 'Move', tip: HINTS.opMove },
+                  ]}
+                />
+              </Field>
+
+              <div className={styles.folderModeGroup}>
+                <Field label="Folder structure">
+                  <div className={styles.folderModeRow}>
+                    <ToggleGroup
+                      value={conn.folderMode}
+                      onChange={(v) => setTop('folderMode', v)}
+                      options={[
+                        { value: 'flat',         label: 'Flat',           tip: HINTS.modeFlat },
+                        { value: 'mirror',       label: 'Mirror',         tip: HINTS.modeMirror },
+                        { value: 'mirror_clean', label: 'Mirror + clean', tip: HINTS.modeMirrorClean },
+                      ]}
+                    />
+                    {conn.type === 'sftp' && (
+                      <Tooltip tip={HINTS.verifyClean} side="left">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setShowVerifyConfirm(true)}
+                          disabled={verifying || !conn.localFolder || !conn.sftp.host}
+                        >
+                          <ShieldCheck size={13} />
+                          {verifying ? 'Verifying…' : 'Verify & Clean'}
+                        </Button>
+                      </Tooltip>
+                    )}
+                  </div>
                 </Field>
 
-                <div className={styles.folderModeGroup}>
-                  <Field label="Folder structure">
-                    <div className={styles.folderModeRow}>
-                      <ToggleGroup
-                        value={conn.folderMode}
-                        onChange={(v) => setTop('folderMode', v)}
-                        options={[
-                          { value: 'flat',         label: 'Flat',           tip: HINTS.modeFlat },
-                          { value: 'mirror',       label: 'Mirror',         tip: HINTS.modeMirror },
-                          { value: 'mirror_clean', label: 'Mirror + clean', tip: HINTS.modeMirrorClean },
-                        ]}
-                      />
-                      {conn.type === 'sftp' && (
-                        <Tooltip tip={HINTS.verifyClean} side="left">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setShowVerifyConfirm(true)}
-                            disabled={verifying || !conn.localFolder || !conn.sftp.host}
-                          >
-                            <ShieldCheck size={13} />
-                            {verifying ? 'Verifying…' : 'Verify & Clean'}
-                          </Button>
+                {/* Slides down from behind the folder-structure controls when
+                    the connection deletes local files after upload (move or
+                    Mirror + clean); collapses and disables otherwise.
+                    Kept mounted so both directions animate. */}
+                <div
+                  className={[styles.keepEmptyReveal, deletesLocal ? styles.keepEmptyOpen : '']
+                    .filter(Boolean).join(' ')}
+                  aria-hidden={!deletesLocal}
+                >
+                  <div className={styles.keepEmptyClip}>
+                    <div className={styles.keepEmptyInner}>
+                      <div className={styles.revealRow}>
+                        <label className={styles.keepEmptyLabel}>
+                          <input
+                            type="checkbox"
+                            checked={!!conn.keepEmptyDirs}
+                            disabled={conn.folderMode !== 'mirror_clean'}
+                            onChange={(e) => setTop('keepEmptyDirs', e.target.checked)}
+                          />
+                          <span className={styles.keepEmptyCheckmark} />
+                          Keep empty folders
+                        </label>
+                        <Tooltip tip={HINTS.keepEmptyDirs}>
+                          <Info size={12} className={styles.hintIcon} />
                         </Tooltip>
-                      )}
-                    </div>
-                  </Field>
-
-                  {/* Slides down from behind the folder-structure controls when
-                      the connection deletes local files after upload (move or
-                      Mirror + clean); collapses and disables otherwise.
-                      Kept mounted so both directions animate. */}
-                  <div
-                    className={[styles.keepEmptyReveal, deletesLocal ? styles.keepEmptyOpen : '']
-                      .filter(Boolean).join(' ')}
-                    aria-hidden={!deletesLocal}
-                  >
-                    <div className={styles.keepEmptyClip}>
-                      <div className={styles.keepEmptyInner}>
-                        <div className={styles.revealRow}>
-                          <label className={styles.keepEmptyLabel}>
-                            <input
-                              type="checkbox"
-                              checked={!!conn.keepEmptyDirs}
-                              disabled={conn.folderMode !== 'mirror_clean'}
-                              onChange={(e) => setTop('keepEmptyDirs', e.target.checked)}
-                            />
-                            <span className={styles.keepEmptyCheckmark} />
-                            Keep empty folders
-                          </label>
-                          <Tooltip tip={HINTS.keepEmptyDirs}>
-                            <Info size={12} className={styles.hintIcon} />
-                          </Tooltip>
-                        </div>
-                        <div className={styles.revealRow}>
-                          <label className={styles.keepEmptyLabel}>
-                            <input
-                              type="checkbox"
-                              checked={!!conn.renameDuplicates}
-                              disabled={!deletesLocal}
-                              onChange={(e) => setTop('renameDuplicates', e.target.checked)}
-                            />
-                            <span className={styles.keepEmptyCheckmark} />
-                            Rename duplicates
-                          </label>
-                          <Tooltip tip={HINTS.renameDuplicates}>
-                            <Info size={12} className={styles.hintIcon} />
-                          </Tooltip>
-                        </div>
+                      </div>
+                      <div className={styles.revealRow}>
+                        <label className={styles.keepEmptyLabel}>
+                          <input
+                            type="checkbox"
+                            checked={!!conn.renameDuplicates}
+                            disabled={!deletesLocal}
+                            onChange={(e) => setTop('renameDuplicates', e.target.checked)}
+                          />
+                          <span className={styles.keepEmptyCheckmark} />
+                          Rename duplicates
+                        </label>
+                        <span className={styles.fieldNoteInline}>
+                          name collisions upload as name (1).ext; when off they stay local with a clear error. Nothing is ever silently overwritten.
+                        </span>
                       </div>
                     </div>
                   </div>
                 </div>
-
-                <Field label="Extensions" hint={HINTS.extensions}>
-                  <ExtensionPicker
-                    value={conn.extensions}
-                    onChange={(v) => setTop('extensions', v)}
-                  />
-                </Field>
-                <Field label="Ignored extensions" hint={HINTS.ignoredExtensions}>
-                  <ExtensionPicker
-                    value={conn.ignoredExtensions ?? []}
-                    onChange={(v) => setTop('ignoredExtensions', v)}
-                  />
-                </Field>
-              </>
-            )}
-
-            {verifyError && (
-              <div className={styles.testRow}>
-                <span className={styles.testError}>{verifyError}</span>
               </div>
-            )}
 
-            {folderOverlapError && (
-              <div className={styles.testRow}>
-                <span className={styles.testError}>{folderOverlapError}</span>
-              </div>
-            )}
+              <Field label="Extensions" hint={HINTS.extensions}>
+                <ExtensionPicker
+                  ariaLabel="Extensions"
+                  value={conn.extensions}
+                  onChange={(v) => setTop('extensions', v)}
+                />
+                <p className={styles.fieldNote}>Everything else in the folder is left alone — a downloads folder can send videos and skip installers.</p>
+              </Field>
+              <Field label="Ignored types" hint={HINTS.ignoredExtensions}>
+                <ExtensionPicker
+                  ariaLabel="Ignored types"
+                  value={conn.ignoredExtensions ?? []}
+                  onChange={(v) => setTop('ignoredExtensions', v)}
+                />
+                <p className={styles.fieldNote}>Blocked even when they match the allow list — half-downloaded files never leave the PC.</p>
+              </Field>
+            </div>
+          ) : (
+            <p className={styles.fieldNote}>Set a watch folder in Folders to configure transfer rules.</p>
+          )}
 
-          </div>
-        </div>
+          {verifyError && (
+            <div className={styles.testRow}>
+              <span className={styles.testError}>{verifyError}</span>
+            </div>
+          )}
+
+          {folderOverlapError && (
+            <div className={styles.testRow}>
+              <span className={styles.testError}>{folderOverlapError}</span>
+            </div>
+          )}
+        </section>
 
       </div>
 
@@ -537,6 +668,8 @@ export default function ConnectionView({ existing, onSave, onClose }) {
       {verifyCheckResult && (
         <VerifyResultDialog
           result={verifyCheckResult}
+          localFolder={conn.localFolder}
+          remotePath={activeRemotePath}
           onEnqueue={(paths) => window.winraid?.queue.enqueueBatch(conn.id, conn.localFolder, paths)}
           onDelete={(paths) => window.winraid?.remote.verifyDelete(conn.localFolder, paths)}
           onClose={() => setVerifyCheckResult(null)}
@@ -595,7 +728,7 @@ function ToggleGroup({ options, value, onChange }) {
 // ---------------------------------------------------------------------------
 // ExtensionPicker
 // ---------------------------------------------------------------------------
-function ExtensionPicker({ value, onChange }) {
+function ExtensionPicker({ value, onChange, ariaLabel }) {
   const [open,     setOpen]    = useState(false)
   const [query,    setQuery]   = useState('')
   const containerRef = useRef(null)
@@ -687,7 +820,7 @@ function ExtensionPicker({ value, onChange }) {
   const isCustom = qNorm && qNorm !== '.' && !ALL_PRESET_EXTS.includes(qNorm)
 
   return (
-    <div ref={containerRef} className={styles.extPicker}>
+    <div ref={containerRef} className={styles.extPicker} aria-label={ariaLabel}>
       <div ref={chipRowRef} className={styles.extChipRow} onClick={openDrop}>
         {value.length === 0 && !open && (
           <span className={styles.extAllLabel}>All files</span>
@@ -705,7 +838,7 @@ function ExtensionPicker({ value, onChange }) {
           onChange={(e) => { setQuery(e.target.value); openDrop() }}
           onFocus={openDrop}
           onKeyDown={handleKey}
-          placeholder={value.length === 0 && !open ? '' : '+add'}
+          placeholder={value.length === 0 && !open ? '' : 'add type…'}
         />
       </div>
 
@@ -873,7 +1006,7 @@ function VerifyConfirmDialog({ localFolder, onConfirm, onClose }) {
 // ---------------------------------------------------------------------------
 // VerifyResultDialog — shows check results with per-group action buttons
 // ---------------------------------------------------------------------------
-export function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
+export function VerifyResultDialog({ result, localFolder, remotePath, onEnqueue, onDelete, onClose }) {
   const [enqueueing,   setEnqueueing]   = useState(false)
   const [enqueued,     setEnqueued]     = useState(false)
   const [notFoundDone, setNotFoundDone] = useState(false)
@@ -915,21 +1048,32 @@ export function VerifyResultDialog({ result, onEnqueue, onDelete, onClose }) {
 
   return createPortal(
     <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={styles.dialog}>
+      <div
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="verify-results-title"
+      >
         <div className={styles.dialogHeader}>
-          <span className={styles.dialogTitle}>Verify &amp; Clean — Results</span>
+          <div>
+            <span id="verify-results-title" className={styles.dialogTitle}>Verification results</span>
+            {localFolder && remotePath && (
+              <div className={styles.verifyPathSubtitle}>{localFolder} ⇄ {remotePath}</div>
+            )}
+          </div>
           <button className={styles.dialogCloseBtn} onClick={onClose}>✕</button>
         </div>
 
         <div className={styles.dialogBody}>
-          <div className={styles.verifySummaryRow}>
-            {result.total} file{result.total !== 1 ? 's' : ''} checked
-            {' · '}
-            <span className={result.notFound.length ? styles.verifyStatWarn : ''}>
-              {result.notFound.length} not on NAS
-            </span>
-            {' · '}
-            {result.confirmed.length} confirmed
+          <div className={styles.verifyStats}>
+            <article aria-label="Confirmed on NAS" className={styles.statTile}>
+              <div className={styles.statNum}>{result.confirmed.length}</div>
+              <div className={styles.statLabel}>confirmed on NAS</div>
+            </article>
+            <article aria-label="Missing on NAS" className={`${styles.statTile} ${styles.statTileWarn}`}>
+              <div className={`${styles.statNum} ${styles.statNumWarn}`}>{result.notFound.length}</div>
+              <div className={styles.statLabel}>missing on NAS</div>
+            </article>
           </div>
 
           {showNotFound && (

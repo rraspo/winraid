@@ -58,7 +58,7 @@ describe('ConnectionsView', () => {
 
   it('opens the browser for a connection', () => {
     const { onOpenTab } = mount()
-    fireEvent.click(within(card('Vault')).getByRole('button', { name: 'Browse' }))
+    fireEvent.click(within(card('Vault')).getByRole('button', { name: 'Browse files' }))
     expect(onOpenTab).toHaveBeenCalledWith('c2', 'browse')
   })
 
@@ -66,7 +66,7 @@ describe('ConnectionsView', () => {
     const { onEditConnection } = mount()
     fireEvent.click(within(card('Atlas')).getByRole('button', { name: 'Edit' }))
     expect(onEditConnection).toHaveBeenCalledWith(CONNECTIONS[0])
-    fireEvent.click(screen.getByRole('button', { name: 'Add connection' }))
+    fireEvent.click(screen.getByRole('button', { name: 'New connection' }))
     expect(onEditConnection).toHaveBeenLastCalledWith(null)
   })
 
