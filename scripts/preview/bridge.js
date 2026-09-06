@@ -315,6 +315,17 @@ function clickSelector(selector, description) {
   }
 }
 
+// A screen that fills itself asynchronously after navigation (a media scan,
+// an overlay mount) is not ready the moment its nav item was clicked; this
+// step holds the drive until the first piece of that content exists.
+function waitForSelector(selector, description) {
+  return {
+    description: description ?? `wait for ${selector}`,
+    find: () => findFirst(selector),
+    act: () => {},
+  }
+}
+
 // Every screen is reached through the nav rail (Browse, Size map and
 // Backup open the active connection's tab); overlays and tabs are then
 // opened from inside the Browse screen.
@@ -340,6 +351,7 @@ const SCREEN_STEPS = {
   'quick-look': [
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),
+    waitForSelector('[role="dialog"][aria-label^="Quick Look"]', 'wait for the Quick Look dialog'),
   ],
   editor: [
     clickNav('Browse'),
@@ -347,6 +359,7 @@ const SCREEN_STEPS = {
   ],
   play: [
     clickNav('Play wall'),
+    waitForSelector('[aria-label^="Open "]', 'wait for the first wall tile'),
   ],
   size: [
     clickNav('Size map'),
