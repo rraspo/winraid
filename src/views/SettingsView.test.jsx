@@ -228,7 +228,9 @@ describe('SettingsView — structure', () => {
   })
 })
 
-describe('SettingsView — Advanced accordion', () => {
+// The redesign lays every setting out in cards; nothing hides behind a
+// disclosure any more, and the old open/closed persistence key is gone.
+describe('SettingsView — browser and cache settings are always visible', () => {
   beforeEach(() => {
     localStorage.clear()
     window.winraid = createWinraidMock({
@@ -244,67 +246,25 @@ describe('SettingsView — Advanced accordion', () => {
     })
   })
 
-  it('renders the Advanced settings header', async () => {
+  it('shows the browser cache controls without any disclosure', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    expect(screen.getByRole('button', { name: /Advanced settings/i })).toBeTruthy()
-  })
-
-  it('defaults to closed: Browse controls are not visible', async () => {
-    render(<SettingsView />)
-    await act(async () => {})
-    const header = screen.getByRole('button', { name: /Advanced settings/i })
-    expect(header.getAttribute('aria-expanded')).toBe('false')
-    expect(screen.queryByRole('radio', { name: 'Stale while revalidate' })).toBeNull()
-  })
-
-  it('snapshot section remains outside the accordion and is always visible', async () => {
-    render(<SettingsView />)
-    await act(async () => {})
-    // Advanced is closed; Snapshot must still render.
+    expect(screen.queryByRole('button', { name: /Advanced settings/i })).toBeNull()
+    expect(screen.getByRole('radio', { name: 'Stale while revalidate' })).toBeTruthy()
     expect(screen.getByRole('radio', { name: 'JPEG' })).toBeTruthy()
   })
 
-  it('clicking the header opens the accordion: Browse controls become visible', async () => {
+  it('shows the thumbnail cache control in its card', async () => {
     render(<SettingsView />)
     await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: /Advanced settings/i }))
-    expect(screen.getByRole('button', { name: /Advanced settings/i }).getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'Stale while revalidate' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Clear' })).toBeTruthy()
   })
 
-  it('opening the accordion persists "true" to localStorage', async () => {
-    render(<SettingsView />)
-    await act(async () => {})
-    fireEvent.click(screen.getByRole('button', { name: /Advanced settings/i }))
-    expect(localStorage.getItem('settings-advanced-open')).toBe('true')
-  })
-
-  it('clicking again closes and persists "false"', async () => {
-    render(<SettingsView />)
-    await act(async () => {})
-    const header = screen.getByRole('button', { name: /Advanced settings/i })
-    fireEvent.click(header)
-    fireEvent.click(header)
-    expect(header.getAttribute('aria-expanded')).toBe('false')
-    expect(localStorage.getItem('settings-advanced-open')).toBe('false')
-    expect(screen.queryByRole('radio', { name: 'Stale while revalidate' })).toBeNull()
-  })
-
-  it('reads localStorage on mount and opens if previously open', async () => {
+  it('never touches the retired disclosure key', async () => {
     localStorage.setItem('settings-advanced-open', 'true')
     render(<SettingsView />)
     await act(async () => {})
-    expect(screen.getByRole('button', { name: /Advanced settings/i }).getAttribute('aria-expanded')).toBe('true')
-    expect(screen.getByRole('radio', { name: 'Stale while revalidate' })).toBeTruthy()
-  })
-
-  it('Thumbnail cache controls also live inside the accordion', async () => {
-    render(<SettingsView />)
-    await act(async () => {})
-    // Closed by default — Clear cache button is hidden.
-    expect(screen.queryByRole('button', { name: /Clear cache/i })).toBeNull()
-    fireEvent.click(screen.getByRole('button', { name: /Advanced settings/i }))
-    expect(screen.getByRole('button', { name: /Clear cache/i })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: /Advanced settings/i })).toBeNull()
+    expect(localStorage.getItem('settings-advanced-open')).toBe('true')
   })
 })
