@@ -215,6 +215,20 @@ contextBridge.exposeInMainWorld('winraid', {
     close: () => ipcRenderer.invoke('whatsnew:close'),
   },
 
+  // -- Tray flyout ------------------------------------------------------------
+  tray: {
+    /** Opens (or reuses) the tray flyout window, positioned near the tray icon. */
+    openFlyout: () => ipcRenderer.invoke('tray:open-flyout'),
+    /** Shows and focuses the main window, hiding the flyout. */
+    showMain:   () => ipcRenderer.invoke('tray:show-main'),
+    /** Quits the app (bypasses the close-to-tray hide). */
+    quit:       () => ipcRenderer.invoke('tray:quit'),
+    /** Subscribe to the flyout being (re)shown — it stays mounted while
+     *  hidden, so this is the cue to refresh state that may be stale.
+     *  @returns {() => void} unsubscribe */
+    onOpened: (cb) => on('tray:opened', cb),
+  },
+
   // -- Local filesystem ----------------------------------------------------
   local: {
     /** Wipes all contents of a folder then recreates it empty. */

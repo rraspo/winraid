@@ -168,6 +168,13 @@ window.winraid = {
     close: () => Promise.resolve({ ok: true }),
   },
 
+  tray: {
+    openFlyout: () => Promise.resolve({ ok: true }),
+    showMain: () => Promise.resolve({ ok: true }),
+    quit: () => Promise.resolve({ ok: true }),
+    onOpened: () => () => {},
+  },
+
   local: {
     clearFolder: () => Promise.resolve({ ok: true }),
     exists: () => Promise.resolve(true),
@@ -372,6 +379,10 @@ const SCREEN_STEPS = {
   settings: [
     clickNav('Settings'),
   ],
+  // The tray flyout is not a nav destination inside App — it is a separate
+  // #tray hash route (see src/main.jsx), switched to below before main.jsx
+  // mounts. No further driving is needed once that route is loaded.
+  tray: [],
 }
 
 // A screen whose steps could not all run never becomes "ready": the shoot
@@ -398,6 +409,14 @@ async function driveToScreen(screenName) {
 }
 
 const requestedScreen = new URLSearchParams(location.search).get('screen')
+
+// The tray flyout renders from a #tray hash route rather than a nav
+// destination inside App (see src/main.jsx) — set it now, synchronously,
+// so it is already in place when main.jsx's mount-time check runs.
+if (requestedScreen === 'tray') {
+  window.location.hash = '#tray'
+}
+
 if (requestedScreen) {
   // Wait for the app to mount before driving it — main.jsx renders
   // synchronously, but the initial config.get() round-trip is async.

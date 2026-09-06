@@ -1,0 +1,158 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--stroke);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  font-size: var(--font-size-md);
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  flex-shrink: 0;
+}
+
+.icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.appName {
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.version {
+  font-size: var(--font-size-sm);
+  color: var(--text3);
+}
+
+/* ── Pause / resume toggle ────────────────────────────────────────────────── */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: none;
+  border-top: 1px solid var(--strokeSoft);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition);
+}
+
+.toggleRow:hover { background: var(--hover); }
+
+.switchTrack {
+  position: relative;
+  flex-shrink: 0;
+  width: 40px;
+  height: 20px;
+  border-radius: var(--radius-xl);
+  background: var(--surface2);
+  transition: background-color var(--transition);
+}
+
+.switchOn { background: var(--accentHi); }
+
+.switchKnob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--onAccent);
+  transition: left var(--transition);
+}
+
+.switchOn .switchKnob { left: 23px; }
+
+.toggleLabel {
+  font-size: var(--font-size-md);
+}
+
+/* ── Connection rows ──────────────────────────────────────────────────────── */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--strokeSoft);
+  font-size: var(--font-size-md);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--stroke);
+  flex-shrink: 0;
+}
+
+.dotOn { background: var(--ok); }
+
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.today {
+  font-size: var(--font-size-sm);
+  color: var(--text3);
+  flex-shrink: 0;
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────── */
+.footer {
+  display: flex;
+  border-top: 1px solid var(--strokeSoft);
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.footerBtn {
+  flex: 1;
+  padding: var(--space-3) 0;
+  border: none;
+  border-left: 1px solid var(--strokeSoft);
+  background: transparent;
+  color: var(--text2);
+  font: inherit;
+  font-size: var(--font-size-md);
+  cursor: pointer;
+  transition: background-color var(--transition);
+}
+
+.footerBtn:first-child { border-left: none; }
+
+.footerBtn:hover { background: var(--hover); }
+
+.footerBtnAccent {
+  color: var(--accentHi);
+  font-weight: var(--font-weight-semibold);
+}
