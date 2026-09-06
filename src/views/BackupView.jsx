@@ -11,6 +11,14 @@ import styles from './BackupView.module.css'
 
 const RUN_STATUS = { IDLE: 'idle', RUNNING: 'running', DONE: 'done', CANCELLED: 'cancelled', ERROR: 'error' }
 
+const STATUS_PILL = {
+  [RUN_STATUS.IDLE]:      { text: 'Idle',      className: 'pillIdle' },
+  [RUN_STATUS.RUNNING]:   { text: 'Running',   className: 'pillRunning' },
+  [RUN_STATUS.DONE]:      { text: 'Done',      className: 'pillDone' },
+  [RUN_STATUS.CANCELLED]: { text: 'Cancelled', className: 'pillCancelled' },
+  [RUN_STATUS.ERROR]:     { text: 'Error',     className: 'pillError' },
+}
+
 const DEFAULT_FORM = {
   sources:   [],
   localDest: '',
@@ -30,6 +38,7 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
   const [loaded, setLoaded]       = useState(false)
   const [saving, setSaving]       = useState(false)
   const [saveMsg, setSaveMsg]     = useState(null)
+  const [connectionName, setConnectionName] = useState('Backup')
   const [sftpHost, setSftpHost]   = useState(null)
   const [sftpCfg, setSftpCfg]     = useState(null)
   const [browsingIndex, setBrowsingIndex] = useState(null)
@@ -52,6 +61,7 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
       })
       const conn   = (cfg.connections ?? []).find((c) => c.id === connectionId) ?? null
       const isSftp = conn?.type === 'sftp'
+      setConnectionName(conn?.name ?? 'Backup')
       setSftpHost(isSftp ? conn?.sftp?.host ?? null : null)
       setSftpCfg(isSftp ? conn?.sftp ?? null : null)
       setLoaded(true)
@@ -141,121 +151,63 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
 
   if (!loaded) {
     return (
-      <div className={styles.container} style={{ color: 'var(--text-muted)', padding: 'var(--space-6)' }}>
-        Loading…
+      <div className={styles.container}>
+        <div className={styles.loading}>Loading…</div>
       </div>
     )
   }
 
-  const isRunning   = runStatus === RUN_STATUS.RUNNING
-  const hasRun      = runStatus !== RUN_STATUS.IDLE
+  const isRunning    = runStatus === RUN_STATUS.RUNNING
+  const hasRun       = runStatus !== RUN_STATUS.IDLE
   const validSources = form.sources.filter(Boolean)
+  const pill         = STATUS_PILL[runStatus]
 
   return (
     <div className={styles.container}>
       <div className={styles.scrollBody}>
 
-        {/* Shared connection notice */}
-        <div className={styles.connNotice}>
-          <Info size={13} className={styles.connNoticeIcon} />
-          <span>
-            Uses the active SFTP connection
-            {sftpHost ? <> — <code className={styles.connNoticeHost}>{sftpHost}</code></> : '. No active SFTP connection configured.'}
-          </span>
-        </div>
+        <header className={styles.header}>
+          <h1 className={styles.title}>Incremental backup</h1>
+          <p className={styles.subtitle}>Pull NAS folders back to this PC — only what changed gets copied</p>
+        </header>
 
-        {/* Sources */}
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>
-            Remote Sources
-            <Tooltip tip={HINTS.sources}>
-              <span className={styles.hintTrigger}>?</span>
-            </Tooltip>
+        {/* Backup card */}
+        <div className={styles.card}>
+          <div className={styles.cardTitleRow}>
+            <span className={styles.cardTitle}>{connectionName}</span>
+            <span className={`${styles.statusPill} ${styles[pill.className]}`}>{pill.text}</span>
           </div>
-          <div className={styles.sectionBody}>
 
-            {form.sources.length === 0 && (
-              <span className={styles.emptyHint}>No sources configured — add a remote path to back up.</span>
-            )}
-
-            {form.sources.map((src, i) => (
-              <div key={i} className={styles.sourceRow}>
-                <input
-                  className={styles.input}
-                  value={src}
-                  onChange={(e) => setSource(i, e.target.value)}
-                  placeholder="/mnt/user/appdata"
-                  spellCheck={false}
-                />
-                <Tooltip tip="Browse the NAS filesystem to pick this source path." side="left">
-                  <Button variant="ghost" size="compact" onClick={() => setBrowsingIndex(i)}>
-                    Browse
-                  </Button>
-                </Tooltip>
-                <Tooltip tip="Remove source" side="left">
-                  <button className={styles.removeBtn} onClick={() => removeSource(i)}>
-                    <X size={13} />
-                  </button>
-                </Tooltip>
-              </div>
-            ))}
-
-            <div>
-              <Button variant="ghost" size="sm" onClick={addSource}>
-                <Plus size={13} />
-                Add source
-              </Button>
-            </div>
-
-          </div>
-        </section>
-
-        {/* Destination */}
-        <section className={styles.section}>
-          <div className={styles.sectionHeader}>Local Destination</div>
-          <div className={styles.sectionBody}>
-
-            <Field label="Destination" required hint={HINTS.localDest}>
-              <div className={styles.inputRow}>
-                <input className={styles.input} value={form.localDest}
-                  onChange={(e) => setForm((f) => ({ ...f, localDest: e.target.value }))}
-                  placeholder="D:\Backup" spellCheck={false} />
-                <Tooltip tip="Open a folder picker dialog.">
-                  <Button variant="ghost" size="compact" onClick={handleBrowseLocal}>Browse</Button>
-                </Tooltip>
-              </div>
-            </Field>
-
-          </div>
-        </section>
-
-        {/* Status — visible after the first run */}
-        {hasRun && (
-          <section className={styles.section}>
-            <div className={styles.sectionHeader}>
-              Last Run
-              <span className={`${styles.statusBadge} ${styles[`status_${runStatus}`]}`}>
-                {runStatus === RUN_STATUS.RUNNING   ? 'Running…'  :
-                 runStatus === RUN_STATUS.DONE      ? 'Done'      :
-                 runStatus === RUN_STATUS.CANCELLED ? 'Cancelled' : 'Error'}
-              </span>
-            </div>
-            <div className={styles.statusBody}>
-
-              {isRunning && currentFile && (
-                <div className={styles.currentFile}>
-                  <span className={styles.currentFileLabel}>Downloading</span>
-                  <code className={styles.currentFilePath}>{currentFile}</code>
+          {validSources.length === 0 ? (
+            <span className={styles.emptyHint}>No sources configured — add a remote path to back up.</span>
+          ) : (
+            <div className={styles.sourceLines}>
+              {validSources.map((src, i) => (
+                <div key={i} className={styles.sourceLine}>
+                  {form.localDest ? `${src} \u2192 ${form.localDest}` : src}
                 </div>
-              )}
+              ))}
+            </div>
+          )}
 
+          {isRunning && (
+            <div className={styles.progress}>
+              <div className={styles.progressText}>{runProgressText(stats, currentFile)}</div>
+              <div className={styles.progressTrack}>
+                <div className={styles.progressFill} />
+              </div>
+            </div>
+          )}
+
+          {hasRun && !isRunning && (
+            <div className={styles.lastRunBody}>
               {stats && (
                 <div className={styles.statsRow}>
                   <StatBox label="Downloaded" value={stats.files} />
                   <StatBox label="Skipped"    value={stats.skipped} />
                   <StatBox label="Errors"     value={stats.errors.length} warn={stats.errors.length > 0} />
                   <StatBox label="Size"       value={fmtBytes(stats.bytes)} />
-                  <StatBox label="Total Backup Size"      value={fmtBytes(stats.totalBytes ?? 0)} />
+                  <StatBox label="Total Backup Size" value={fmtBytes(stats.totalBytes ?? 0)} />
                 </div>
               )}
 
@@ -274,40 +226,115 @@ export default function BackupView({ connectionId, backupRun, setBackupRun }) {
                 </div>
               )}
 
-              {lastRun && !isRunning && (
+              {lastRun && (
                 <div className={styles.lastRunTs}>
                   Completed at {new Date(lastRun).toLocaleTimeString()}
                 </div>
               )}
-
             </div>
-          </section>
-        )}
+          )}
+
+          <div className={styles.actionsRow}>
+            {isRunning ? (
+              <Button variant="danger" onClick={handleCancel}>Cancel</Button>
+            ) : (
+              <Tooltip side="left" tip={!form.localDest ? 'Set a destination folder first.' : validSources.length === 0 ? 'Add at least one remote source.' : 'Pull all configured sources from the NAS to your local destination.'}>
+                <Button variant="primary" onClick={handleRun}
+                  disabled={!form.localDest || validSources.length === 0}
+                >
+                  <Download size={13} />
+                  Run backup
+                </Button>
+              </Tooltip>
+            )}
+
+            <Button variant="secondary" onClick={handleSave} disabled={saving || isRunning}>
+              {saving ? 'Saving…' : 'Save'}
+            </Button>
+
+            {saveMsg && (
+              <span className={`${styles.saveMsg} ${styles[saveMsg.type]}`}>{saveMsg.text}</span>
+            )}
+          </div>
+        </div>
+
+        {/* Sources and destination card */}
+        <div className={styles.card}>
+          <div className={styles.cardTitleRow}>
+            <span className={styles.cardTitle}>Sources and destination</span>
+          </div>
+
+          <div className={styles.formBody}>
+
+            <div className={styles.connNotice}>
+              <Info size={13} className={styles.connNoticeIcon} />
+              <span>
+                Uses the active SFTP connection
+                {sftpHost ? <> — <code className={styles.connNoticeHost}>{sftpHost}</code></> : '. No active SFTP connection configured.'}
+              </span>
+            </div>
+
+            <div className={styles.fieldGroup}>
+              <div className={styles.fieldGroupLabel}>
+                Remote sources
+                <Tooltip tip={HINTS.sources}>
+                  <span className={styles.hintTrigger}>?</span>
+                </Tooltip>
+              </div>
+
+              {form.sources.length === 0 && (
+                <span className={styles.emptyHint}>No sources configured — add a remote path to back up.</span>
+              )}
+
+              {form.sources.map((src, i) => (
+                <div key={i} className={styles.sourceRow}>
+                  <input
+                    className={styles.input}
+                    value={src}
+                    onChange={(e) => setSource(i, e.target.value)}
+                    placeholder="/mnt/user/appdata"
+                    spellCheck={false}
+                  />
+                  <Tooltip tip="Browse the NAS filesystem to pick this source path." side="left">
+                    <Button variant="ghost" size="compact" onClick={() => setBrowsingIndex(i)}>
+                      Browse
+                    </Button>
+                  </Tooltip>
+                  <Tooltip tip="Remove source" side="left">
+                    <button className={styles.removeBtn} onClick={() => removeSource(i)}>
+                      <X size={13} />
+                    </button>
+                  </Tooltip>
+                </div>
+              ))}
+
+              <div>
+                <Button variant="ghost" size="sm" onClick={addSource}>
+                  <Plus size={13} />
+                  Add source
+                </Button>
+              </div>
+            </div>
+
+            <Field label="Local destination" required hint={HINTS.localDest}>
+              <div className={styles.inputRow}>
+                <input className={styles.input} value={form.localDest}
+                  onChange={(e) => setForm((f) => ({ ...f, localDest: e.target.value }))}
+                  placeholder="D:\Backup" spellCheck={false} />
+                <Tooltip tip="Open a folder picker dialog.">
+                  <Button variant="ghost" size="compact" onClick={handleBrowseLocal}>Browse</Button>
+                </Tooltip>
+              </div>
+            </Field>
+
+          </div>
+        </div>
+
+        <p className={styles.footerNote}>
+          Files are compared by modified time and size. Nothing on the NAS is ever touched — backup only reads from the server and writes locally.
+        </p>
 
       </div>{/* end scrollBody */}
-
-      <div className={styles.footer}>
-        <Button variant="secondary" onClick={handleSave} disabled={saving || isRunning}>
-          {saving ? 'Saving…' : 'Save settings'}
-        </Button>
-
-        {isRunning ? (
-          <Button variant="danger" onClick={handleCancel}>Cancel</Button>
-        ) : (
-          <Tooltip side="left" tip={!form.localDest ? 'Set a destination folder first.' : validSources.length === 0 ? 'Add at least one remote source.' : 'Pull all configured sources from the NAS to your local destination.'}>
-            <Button variant="primary" onClick={handleRun}
-              disabled={!form.localDest || validSources.length === 0}
-            >
-              <Download size={13} />
-              Run backup
-            </Button>
-          </Tooltip>
-        )}
-
-        {saveMsg && (
-          <span className={`${styles.saveMsg} ${styles[saveMsg.type]}`}>{saveMsg.text}</span>
-        )}
-      </div>
 
       {browsingIndex !== null && sftpCfg && (
         <RemotePathBrowser
@@ -370,6 +397,19 @@ function StatBox({ label, value, warn }) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// The transfer engine reports files downloaded/skipped and bytes moved so
+// far, but never a remote file count to compare against — so the running
+// line reads as a moving count rather than "X of Y". Before the first
+// progress event lands, currentFile is the only signal available.
+function runProgressText(stats, currentFile) {
+  if (stats) {
+    const processed = (stats.files ?? 0) + (stats.skipped ?? 0)
+    return `Copying ${processed} file${processed === 1 ? '' : 's'} \u00b7 ${fmtBytes(stats.bytes ?? 0)}`
+  }
+  if (currentFile) return currentFile
+  return 'Starting backup…'
+}
 
 function fmtBytes(bytes) {
   if (bytes === 0) return '0 B'
