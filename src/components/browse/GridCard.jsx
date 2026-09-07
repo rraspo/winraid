@@ -9,7 +9,7 @@ import styles from './GridCard.module.css'
 
 const GridCard = memo(function GridCard({
   entry, entryPath, connectionId, isDir, busy, index,
-  isSelected, selectionMode, isDragSource, isLastVisited, isHighlighted, isCursor,
+  isSelected, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
@@ -61,7 +61,6 @@ const GridCard = memo(function GridCard({
         styles.gridCard,
         isDir ? styles.gridCardDir : styles.gridCardFile,
         isSelected ? styles.gridCardSelected : '',
-        selectionMode ? styles.gridCardSelectionMode : '',
         isDragSource ? styles.dragging : '',
         isLastVisited ? styles.lastVisited : '',
         isCursor ? styles.cursor : '',

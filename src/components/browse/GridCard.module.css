@@ -87,8 +87,7 @@
 }
 
 .gridCard:hover .gridCheckbox,
-.gridCardSelected .gridCheckbox,
-.gridCardSelectionMode .gridCheckbox {
+.gridCardSelected .gridCheckbox {
   opacity: 1;
 }
 
