@@ -223,10 +223,16 @@ contextBridge.exposeInMainWorld('winraid', {
     showMain:   () => ipcRenderer.invoke('tray:show-main'),
     /** Quits the app (bypasses the close-to-tray hide). */
     quit:       () => ipcRenderer.invoke('tray:quit'),
+    /** Raises the main window on a connection's browse tab — the flyout's
+     *  per-row "Browse" shortcut. */
+    openConnection: (connectionId) => ipcRenderer.invoke('tray:open-connection', connectionId),
     /** Subscribe to the flyout being (re)shown — it stays mounted while
      *  hidden, so this is the cue to refresh state that may be stale.
      *  @returns {() => void} unsubscribe */
     onOpened: (cb) => on('tray:opened', cb),
+    /** Subscribe to a connection chosen from the flyout's "Browse" shortcut.
+     *  @returns {() => void} unsubscribe */
+    onOpenConnection: (cb) => on('tray:open-connection', cb),
   },
 
   // -- Local filesystem ----------------------------------------------------

@@ -127,6 +127,25 @@
   flex-shrink: 0;
 }
 
+.rowBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text3);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.rowBtn:hover {
+  background: var(--hover);
+  color: var(--text2);
+}
+
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 .footer {
   display: flex;

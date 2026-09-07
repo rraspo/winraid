@@ -48,6 +48,10 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   // single-file pendingDelete above: null | 'delete' | 'move'.
   const [bulkAction, setBulkAction] = useState(null)
   const [bulkMoveDest, setBulkMoveDest] = useState('')
+  // Whether the wall is expanded to cover the whole window, toggled by its
+  // own Fullscreen control rather than the browser fullscreen API — the
+  // wall is a screen in the content column by default.
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   const {
     playlist, index, scanning, hasMore, nextPredicted, poolSize,
@@ -172,11 +176,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   }, [])
 
   const toggleFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen?.().catch(() => {})
-    } else {
-      document.exitFullscreen?.().catch(() => {})
-    }
+    setIsFullscreen((previous) => !previous)
   }, [])
 
   // Keep the wall topped up to at least one page while the pool still has
@@ -205,7 +205,9 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
       }
       if (e.key === 'Escape') {
         e.preventDefault()
-        if (selectedPaths.size > 0) {
+        if (isFullscreen) {
+          setIsFullscreen(false)
+        } else if (selectedPaths.size > 0) {
           clearSelection()
         } else {
           onClose()
@@ -219,7 +221,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [isViewerOpen, onClose, selectedPaths, selectAll, clearSelection, mutations.inFlight])
+  }, [isViewerOpen, isFullscreen, onClose, selectedPaths, selectAll, clearSelection, mutations.inFlight])
 
   useEffect(() => { overlayRef.current?.focus() }, [])
 
@@ -253,7 +255,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   }, [playlist, goTo])
 
   return (
-    <div ref={overlayRef} className={styles.overlay} data-theme="dark" role="dialog" aria-modal="true" aria-label="Play" tabIndex={-1}>
+    <div ref={overlayRef} className={styles.overlay} data-fullscreen={isFullscreen ? 'true' : undefined} role="region" aria-label="Play" tabIndex={-1}>
       <PlayWall
         connectionId={connectionId}
         connections={connections}
