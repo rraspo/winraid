@@ -66,6 +66,22 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
+// Type-to-jump is bounded by two timers in the view: the typed buffer
+// empties 700ms after the last key, and the cursor it lands on clears after
+// 1.5s. Both are real durations a person would never notice, and both are
+// long enough for a busy CI runner to cross between two synchronous
+// statements in a test. Sending the keys on frozen time removes the race:
+// no scheduled timer can fire between the keystrokes or before the
+// assertion, so the test measures the matching rule and nothing else.
+function typeOnFrozenTime(keys) {
+  vi.useFakeTimers()
+  try {
+    for (const key of keys) fireEvent.keyDown(document, { key })
+  } finally {
+    vi.useRealTimers()
+  }
+}
+
 describe('BrowseView — type-to-jump respects the filtered/sorted view', () => {
   it('jumps to the matching visible row, never a filtered-out row, under an active filter + sort', async () => {
     const user = userEvent.setup()
@@ -104,12 +120,15 @@ describe('BrowseView — type-to-jump respects the filtered/sorted view', () => 
     // file_a.txt and file_b.txt (both visible). The correct target is
     // file_b.txt: the first visible row, per the active filter+sort, whose
     // name starts with "f".
-    fireEvent.keyDown(document, { key: 'f' })
+    // Typing runs on frozen time: the cursor clears itself 1.5s after a
+    // match, so on a loaded machine real time could expire the cursor
+    // before the assertion reads it.
+    typeOnFrozenTime(['f'])
 
     const fileBRow = screen.getByText('file_b.txt').closest('.row')
     const fileARow = screen.getByText('file_a.txt').closest('.row')
 
-    await waitFor(() => expect(fileBRow.className).toContain('cursor'))
+    expect(fileBRow.className).toContain('cursor')
     expect(fileARow.className).not.toContain('cursor')
   })
 
@@ -139,10 +158,13 @@ describe('BrowseView — type-to-jump respects the filtered/sorted view', () => 
 
     // The accent sits on the very first letter, so an unaccented prefix only
     // jumps here if the type-ahead buffer is folded before matching.
-    fireEvent.keyDown(document, { key: 'a' })
-    fireEvent.keyDown(document, { key: 'n' })
+    // Frozen time again, and here it is load-bearing: the type-ahead buffer
+    // empties itself 700ms after a keystroke, so on a loaded machine real
+    // time between the two keys would leave the buffer holding only "n",
+    // which matches nothing.
+    typeOnFrozenTime(['a', 'n'])
 
     const andaleRow = screen.getByText('Ándale.txt').closest('.row')
-    await waitFor(() => expect(andaleRow.className).toContain('cursor'))
+    expect(andaleRow.className).toContain('cursor')
   })
 })
