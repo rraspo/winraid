@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, within, act } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
 import * as remoteFS from '../services/remoteFS'
@@ -18,14 +19,16 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 // DOM contract:
 //   - <div role="toolbar" aria-label="Browser"> holding buttons named
 //     "Back", "Forward", the connection picker (named "Connection: <name>"),
-//     "Favorites", "Jump to sync root", "Sort order", "Select",
+//     "Favorites", "Jump to sync root", "Sort order",
 //     "New folder", "Activity", "Grid view", "List view"; the active view
 //     toggle has aria-pressed="true"
 //   - the filter input keeps the placeholder "Search this folder"
 //   - "Favorites" opens a menu (role="menu") listing the favorites by name
 //     plus "Add current folder" / "Remove current folder"
-//   - "Select" toggles selection mode: while on, every row and card shows
-//     its checkbox, the bulk bar exists, and the button has aria-pressed
+//   - there is no "Select" mode toggle: checking an entry is what starts a
+//     selection, and the bulk bar appears for as long as something is
+//     selected. The toggle only duplicated what the checkboxes already do
+//     and cost the breadcrumb trail the width it needs.
 //   - the footer <footer> shows "<n> folders · <m> files", the text "Drop
 //     files from Explorer or paste an image / URL to upload here", and a
 //     "Check out to local mirror" control
@@ -85,12 +88,13 @@ describe('BrowseView redesign', () => {
   it('renders the toolbar with every control in prototype order', async () => {
     await mount()
     const names = within(toolbar()).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent.trim())
-    for (const expected of ['Back', 'Forward', 'Connection: Atlas', 'Favorites', 'Jump to sync root', 'Sort order', 'Select', 'New folder', 'Activity', 'Grid view', 'List view']) {
+    for (const expected of ['Back', 'Forward', 'Connection: Atlas', 'Favorites', 'Jump to sync root', 'Sort order', 'New folder', 'Activity', 'Grid view', 'List view']) {
       expect(names).toContain(expected)
     }
+    expect(names).not.toContain('Select')
     expect(names.indexOf('Back')).toBeLessThan(names.indexOf('Favorites'))
     expect(names.indexOf('Favorites')).toBeLessThan(names.indexOf('Sort order'))
-    expect(names.indexOf('Select')).toBeLessThan(names.indexOf('Grid view'))
+    expect(names.indexOf('Sort order')).toBeLessThan(names.indexOf('Grid view'))
     expect(within(toolbar()).getByPlaceholderText('Search this folder')).toBeTruthy()
   })
 
@@ -113,13 +117,21 @@ describe('BrowseView redesign', () => {
     expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: /current folder/i })).toBeTruthy()
   })
 
-  it('toggles selection mode from the Select control', async () => {
+  it('offers no selection-mode toggle', async () => {
     await mount()
-    expect(tool('Select').getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(tool('Select'))
-    expect(tool('Select').getAttribute('aria-pressed')).toBe('true')
+    expect(within(toolbar()).queryByRole('button', { name: 'Select' })).toBeNull()
+  })
+
+  it('raises and drops the bulk bar as entries are checked and unchecked', async () => {
+    const user = userEvent.setup()
+    await mount()
+    expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
+
+    const row = screen.getByText('readme.txt').closest('.row')
+    await user.click(row.querySelector('.checkbox'))
     expect(screen.getByRole('toolbar', { name: 'Selection' })).toBeTruthy()
-    fireEvent.click(tool('Select'))
+
+    await user.click(row.querySelector('.checkbox'))
     expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
   })
 

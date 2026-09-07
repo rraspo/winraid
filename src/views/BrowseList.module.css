@@ -8,10 +8,6 @@
 /* Extra bottom padding when bulk bar is visible so last row isn't covered */
 .hasSelection { padding-bottom: 52px; }
 
-/* Selection mode (the toolbar's Select toggle): every row's checkbox
-   stays visible instead of only appearing on hover/selection. */
-.forceCheckboxes .checkbox { opacity: 1; }
-
 /* Rubber-band lasso rect — visual layer; pointer-events disabled so it
    doesn't eat clicks on rows underneath. */
 .lassoRect {

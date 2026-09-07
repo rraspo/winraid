@@ -19,14 +19,22 @@ function previewBridgePlugin() {
   return {
     name: 'winraid-preview-bridge',
     transformIndexHtml(html) {
+      // The entry tag is matched by pattern rather than by its literal text:
+      // once a file has been edited, the dev server appends a cache-busting
+      // "?t=<timestamp>" to the src, and an exact-string match stopped
+      // finding it. The bridge then silently went missing and every shot
+      // after the first edit captured an app with no window.winraid at all.
+      const entryTag = /<script type="module" src="\/src\/main\.jsx(\?[^"]*)?"><\/script>/
+      if (!entryTag.test(html)) {
+        throw new Error('[preview] entry script tag not found in index.html — the bridge would be missing')
+      }
       return html
         // The production CSP has no allowance for fixture image data: URLs
         // beyond what it already grants nas-stream: — drop it for preview.
         .replace(/<meta[\s\S]*?Content-Security-Policy[\s\S]*?\/>/, '')
         .replace(
-          '<script type="module" src="/src/main.jsx"></script>',
-          '<script type="module" src="/scripts/preview/bridge.js"></script>\n'
-          + '    <script type="module" src="/src/main.jsx"></script>',
+          entryTag,
+          (tag) => '<script type="module" src="/scripts/preview/bridge.js"></script>\n    ' + tag,
         )
     },
   }

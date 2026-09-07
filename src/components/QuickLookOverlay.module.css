@@ -15,22 +15,40 @@
 }
 
 /* ── Top bar ──────────────────────────────────────────────────────────────── */
+/* Two stacked rows: the name alone, then the counter/path beneath it. The
+   bar grows past its old fixed height to fit both without either being
+   incomplete — .content below still takes the rest of the overlay's height
+   (flex: 1; min-height: 0), so a taller bar just shrinks the media area. */
 .topBar {
   display: flex;
   align-items: center;
   gap: 14px;
-  height: 54px;
+  min-height: 54px;
   flex: none;
-  padding: 0 var(--space-5);
+  padding: var(--space-3) var(--space-5);
 }
 
 .topBarLeft {
   flex: 1;
   min-width: 0;
   display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.detailsRow {
+  display: flex;
   align-items: center;
   gap: var(--space-3);
-  overflow: hidden;
+  min-width: 0;
 }
 
 .topBarSpacer {
@@ -48,7 +66,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-  flex-shrink: 2;
   text-align: left;
   cursor: pointer;
   border-radius: var(--radius-sm);
@@ -77,22 +94,52 @@
   white-space: nowrap;
 }
 
-.path {
+/* The file's own folder, walkable one segment at a time via onOpenFolder —
+   the details-row replacement for the old dead path text. */
+.filePath {
   font-size: 11.5px;
   color: var(--text3);
+  display: flex;
+  align-items: center;
   min-width: 0;
-  flex-shrink: 1;
+  flex: 1 1 auto;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.filePathCrumb {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.filePathSegment {
+  color: var(--text3);
+  padding: 0 2px;
+  transition: color var(--transition);
+}
+
+.filePathSegment:hover { color: var(--accent); }
+
+.filePathSegmentText {
+  padding: 0 2px;
+}
+
+.filePathSep {
+  color: var(--text-faint);
+  padding: 0 1px;
+  flex-shrink: 0;
+}
+
+/* Opt-in rescoping trail (play wall) — unrelated to filePath above; a caller
+   passes folderNavigation to get the file's folder as a selectable scope. */
 .folderPath {
   font-size: var(--font-size-xs);
   color: var(--text-faint);
   display: flex;
   align-items: center;
   min-width: 0;
+  flex-shrink: 0;
   overflow: hidden;
   white-space: nowrap;
 }

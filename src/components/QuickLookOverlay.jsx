@@ -470,7 +470,7 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // ---------------------------------------------------------------------------
 export default function QuickLookOverlay({
   file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit,
-  hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation,
+  hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation, onOpenFolder,
 }) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
@@ -1360,6 +1360,12 @@ export default function QuickLookOverlay({
   const base    = remoteBasePath?.replace(/\/+$/, '') ?? ''
   const relPath = file.path.startsWith(base + '/') ? file.path.slice(base.length + 1) : file.path
 
+  // Segments of the folder the file itself sits in, root down to its parent
+  // — the same construction folderNavigation's rescoping trail uses, shared
+  // here to drive the details row's walkable path.
+  const fileFolderPath     = file.path.split('/').slice(0, -1).join('/') || '/'
+  const fileFolderSegments = buildPathSegments(fileFolderPath)
+
   function handleCopyPath() {
     navigator.clipboard.writeText(relPath)
     setCopied(true)
@@ -1528,36 +1534,57 @@ export default function QuickLookOverlay({
       {/* Top bar */}
       <div className={styles.topBar}>
         <div className={styles.topBarLeft}>
-          <button className={styles.fileName} onClick={handleCopyPath}>
-            {file.name}
-            {copied && <span className={styles.copiedBadge}>Copied</span>}
-          </button>
-          {(files.length > 1 || hasMoreBeyondList) && (
-            <span className={styles.counter}>
-              {currentIdx + 1} / {files.length}{hasMoreBeyondList ? '+' : ''}
-            </span>
-          )}
-          <span className={styles.path}>{relPath}</span>
-          {folderNavigation && (
-            <span className={styles.folderPath}>
-              {buildPathSegments(file.path.split('/').slice(0, -1).join('/') || '/').map((segment, segmentIndex) => (
-                <span key={segment.path} className={styles.folderCrumb}>
-                  {segmentIndex > 0 && <span className={styles.folderSep}>/</span>}
-                  <button
-                    type="button"
-                    className={[styles.folderSegment, segment.path === folderNavigation.activePath ? styles.folderSegmentActive : ''].filter(Boolean).join(' ')}
-                    aria-current={segment.path === folderNavigation.activePath ? 'true' : undefined}
-                    onClick={() => {
-                      if (segment.path === folderNavigation.activePath) return
-                      folderNavigation.onSelect(segment.path)
-                    }}
-                  >
-                    {segment.label}
-                  </button>
+          <div className={styles.nameRow} data-testid="quick-look-name-row">
+            <button className={styles.fileName} onClick={handleCopyPath}>
+              {file.name}
+              {copied && <span className={styles.copiedBadge}>Copied</span>}
+            </button>
+          </div>
+          <div className={styles.detailsRow} data-testid="quick-look-details-row">
+            {(files.length > 1 || hasMoreBeyondList) && (
+              <span className={styles.counter}>
+                {currentIdx + 1} / {files.length}{hasMoreBeyondList ? '+' : ''}
+              </span>
+            )}
+            <span className={styles.filePath}>
+              {fileFolderSegments.map((segment, segmentIndex) => (
+                <span key={segment.path} className={styles.filePathCrumb}>
+                  {segmentIndex > 0 && <span className={styles.filePathSep}>/</span>}
+                  {onOpenFolder ? (
+                    <button
+                      type="button"
+                      className={styles.filePathSegment}
+                      onClick={() => onOpenFolder(segment.path)}
+                    >
+                      {segment.label}
+                    </button>
+                  ) : (
+                    <span className={styles.filePathSegmentText}>{segment.label}</span>
+                  )}
                 </span>
               ))}
             </span>
-          )}
+            {folderNavigation && (
+              <span className={styles.folderPath}>
+                {fileFolderSegments.map((segment, segmentIndex) => (
+                  <span key={segment.path} className={styles.folderCrumb}>
+                    {segmentIndex > 0 && <span className={styles.folderSep}>/</span>}
+                    <button
+                      type="button"
+                      className={[styles.folderSegment, segment.path === folderNavigation.activePath ? styles.folderSegmentActive : ''].filter(Boolean).join(' ')}
+                      aria-current={segment.path === folderNavigation.activePath ? 'true' : undefined}
+                      onClick={() => {
+                        if (segment.path === folderNavigation.activePath) return
+                        folderNavigation.onSelect(segment.path)
+                      }}
+                    >
+                      {segment.label}
+                    </button>
+                  </span>
+                ))}
+              </span>
+            )}
+          </div>
         </div>
         <span className={styles.topBarSpacer} />
         {type === 'video' && canServerEdit && !trimming && !videoCropping && (
