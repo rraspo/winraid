@@ -12,7 +12,7 @@ const BrowseListRow = memo(function BrowseListRow({
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
-  localCandidate, checkLocalExists, onRevealLocal,
+  localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
 }) {
   const isDir = entry.type === 'dir'
   const menuRef = useRef(null)
@@ -46,6 +46,15 @@ const BrowseListRow = memo(function BrowseListRow({
     e.stopPropagation()
     e.preventDefault()
     onItemPointer(index, { ctrl: true })
+  }
+
+  // Middle click on a folder opens it in a background tab, the way a
+  // browser opens a link — files are untouched, and it never disturbs the
+  // tab in front.
+  function handleRowMouseDown(e) {
+    if (e.button !== 1 || !isDir) return
+    e.preventDefault()
+    onMiddleClickFolder?.(entryPath)
   }
 
   return (
@@ -82,6 +91,7 @@ const BrowseListRow = memo(function BrowseListRow({
         handleDrop(e, entryPath)
       } : undefined}
       onClick={handleRowClick}
+      onMouseDown={handleRowMouseDown}
       onContextMenu={(e) => {
         if (busy) return
         e.preventDefault()

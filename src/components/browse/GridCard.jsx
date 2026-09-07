@@ -12,7 +12,7 @@ const GridCard = memo(function GridCard({
   isSelected, selectionMode, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
-  localCandidate, checkLocalExists, onRevealLocal,
+  localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
 }) {
   const menuRef = useRef(null)
   const icon = isDir
@@ -44,6 +44,15 @@ const GridCard = memo(function GridCard({
     onItemPointer(index, { ctrl: true })
   }
 
+  // Middle click on a folder opens it in a background tab, the way a
+  // browser opens a link — files are untouched, and it never disturbs the
+  // tab in front.
+  function handleCardMouseDown(e) {
+    if (e.button !== 1 || !isDir) return
+    e.preventDefault()
+    onMiddleClickFolder?.(entryPath)
+  }
+
   return (
     <div
       ref={isHighlighted ? highlightRef : undefined}
@@ -73,6 +82,7 @@ const GridCard = memo(function GridCard({
         onDrop(e, entryPath)
       } : undefined}
       onClick={handleCardClick}
+      onMouseDown={handleCardMouseDown}
       onContextMenu={(e) => {
         if (busy) return
         e.preventDefault()
