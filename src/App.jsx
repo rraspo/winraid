@@ -637,6 +637,18 @@ export default function App() {
     setPlayTarget({ connectionId: conn.id, path: remoteRootOf(conn) })
   }
 
+  // "Open folder" from the play wall's viewer: a recursive wall walks files
+  // from all over the tree, so the folder a file lives in is often nowhere
+  // near what the browser last showed. Opens (or activates) a browse tab
+  // for the wall's connection pointed at that folder and leaves the wall —
+  // the same explicit choice of connection as the Connections screen or the
+  // tray flyout, so it becomes the switcher's remembered default too.
+  function handlePlayOpenFolder(folderPath) {
+    if (!playTarget) return
+    rememberActiveConnection(playTarget.connectionId)
+    openTab(playTarget.connectionId, 'browse', { path: folderPath })
+  }
+
   // Single router for every nav rail click: global views switch activeView,
   // the per-connection screens open (or activate) that tab for the active
   // connection, and Play opens as the current screen. `options.newTab` (a
@@ -769,6 +781,7 @@ export default function App() {
                   setPlayTarget({ connectionId: connId, path: remoteRootOf(conn) })
                 }}
                 onClose={() => setPlayTarget(null)}
+                onOpenFolder={handlePlayOpenFolder}
               />
             ) : activeTabId === null && activeView !== null && (
               <ActiveView {...activeViewProps} />
