@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, RotateCcw, Loader, Camera, Scissors, Play, Pause, AlertCircle } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, RotateCcw, Loader, Camera, Scissors, Play, Pause, AlertCircle, FolderOpen } from 'lucide-react'
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
@@ -388,7 +388,7 @@ function UnknownPreview({ file }) {
 // ---------------------------------------------------------------------------
 // FileMenu — three-dot dropdown for the top bar
 // ---------------------------------------------------------------------------
-function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeChange, invertPan, onInvertPanChange }) {
+function FileMenu({ file, onDelete, onOpenFolder, loop, onLoopChange, wheelMode, onWheelModeChange, invertPan, onInvertPanChange }) {
   const [open, setOpen] = useState(false)
   const ref = useRef(null)
 
@@ -453,6 +453,15 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
             Navigate files
           </button>
           <div className={styles.fileMenuDivider} />
+          {onOpenFolder && (
+            <button
+              className={styles.fileMenuItem}
+              onClick={() => { setOpen(false); onOpenFolder(file.path.slice(0, file.path.lastIndexOf('/')) || '/') }}
+            >
+              <FolderOpen size={14} />
+              Open folder
+            </button>
+          )}
           <button
             className={[styles.fileMenuItem, styles.fileMenuItemDanger].join(' ')}
             onClick={() => { setOpen(false); onDelete({ name: file.name, path: file.path, isDir: false }) }}
@@ -469,8 +478,8 @@ function FileMenu({ file, onDelete, loop, onLoopChange, wheelMode, onWheelModeCh
 // Main overlay
 // ---------------------------------------------------------------------------
 export default function QuickLookOverlay({
-  file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, canServerEdit,
-  hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation, onOpenFolder,
+  file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, onOpenFolder, canServerEdit,
+  hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation,
 }) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
@@ -1712,7 +1721,7 @@ export default function QuickLookOverlay({
             </button>
           </div>
         )}
-        <FileMenu file={file} onDelete={onDelete} loop={loop} onLoopChange={handleLoopChange} wheelMode={wheelMode} onWheelModeChange={handleWheelModeChange} invertPan={invertPan} onInvertPanChange={handleInvertPanChange} />
+        <FileMenu file={file} onDelete={onDelete} onOpenFolder={onOpenFolder} loop={loop} onLoopChange={handleLoopChange} wheelMode={wheelMode} onWheelModeChange={handleWheelModeChange} invertPan={invertPan} onInvertPanChange={handleInvertPanChange} />
         <Tooltip tip="Close (Esc)" side="bottom">
         <button
           className={styles.closeBtn}

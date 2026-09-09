@@ -103,6 +103,10 @@ let _watchingBeforePause = new Set()
 // The tray flyout window, created lazily on first open — see
 // createTrayFlyoutWindow() below.
 let trayFlyoutWindow = null
+// Whether the current trayFlyoutWindow has painted its first frame yet —
+// showTrayFlyout() waits for that on the window's first open so it never
+// reveals an unpainted frame; a later reopen shows it straight away.
+let trayFlyoutPainted = false
 
 // Forwards to the main window (via ipc-bridge) and, when it is open, the
 // tray flyout window too — the flyout subscribes to the same watcher/queue
@@ -579,8 +583,10 @@ function createTrayFlyoutWindow() {
       nodeIntegration: false,
     },
   })
+  trayFlyoutPainted = false
+  trayFlyoutWindow.once('ready-to-show', () => { trayFlyoutPainted = true })
   trayFlyoutWindow.setMenuBarVisibility(false)
-  trayFlyoutWindow.on('closed', () => { trayFlyoutWindow = null })
+  trayFlyoutWindow.on('closed', () => { trayFlyoutWindow = null; trayFlyoutPainted = false })
   // Acts like a menu: dismiss as soon as it loses focus.
   trayFlyoutWindow.on('blur', () => {
     if (trayFlyoutWindow && !trayFlyoutWindow.isDestroyed()) trayFlyoutWindow.hide()
@@ -620,10 +626,22 @@ function positionTrayFlyout(win) {
 function showTrayFlyout() {
   const isReopen = !!(trayFlyoutWindow && !trayFlyoutWindow.isDestroyed())
   const win = createTrayFlyoutWindow()
-  positionTrayFlyout(win)
-  win.show()
-  win.focus()
-  if (isReopen) win.webContents.send('tray:opened')
+
+  const reveal = () => {
+    positionTrayFlyout(win)
+    win.show()
+    win.focus()
+    if (isReopen) win.webContents.send('tray:opened')
+  }
+
+  // First open: the renderer hasn't painted yet, so wait for ready-to-show
+  // rather than revealing an empty frame. A reopen has already painted, so
+  // it can be positioned and shown right away.
+  if (trayFlyoutPainted) {
+    reveal()
+  } else {
+    win.once('ready-to-show', reveal)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -922,6 +940,17 @@ function registerIPC() {
     mainWindow.show()
     mainWindow.focus()
     if (trayFlyoutWindow && !trayFlyoutWindow.isDestroyed()) trayFlyoutWindow.hide()
+    return { ok: true }
+  })
+
+  // The flyout's per-connection "Browse" shortcut — raises the main window
+  // and tells its renderer which connection to open, rather than routing
+  // the browse tab through the flyout's own (much smaller) window.
+  ipcMain.handle('tray:open-connection', (_e, connectionId) => {
+    mainWindow.show()
+    mainWindow.focus()
+    if (trayFlyoutWindow && !trayFlyoutWindow.isDestroyed()) trayFlyoutWindow.hide()
+    sendToMainWindow('tray:open-connection', connectionId)
     return { ok: true }
   })
 

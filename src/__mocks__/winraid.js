@@ -50,6 +50,7 @@ export function createWinraidMock(overrides = {}) {
       showMain: vi.fn().mockResolvedValue(undefined),
       quit: vi.fn().mockResolvedValue(undefined),
       onOpened: vi.fn().mockReturnValue(() => {}),
+      openConnection: vi.fn().mockResolvedValue(undefined),
       ...overrides.tray,
     },
 

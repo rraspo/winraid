@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Folder, FolderOpen } from 'lucide-react'
 import iconSrc from '../../assets/winraid_icon_32x32.png'
 import styles from './TrayFlyout.module.css'
 
@@ -27,13 +28,26 @@ export default function TrayFlyout() {
   const [watcherStates, setWatcherStates] = useState({})
   const [jobs, setJobs] = useState([])
 
+  // Gathers all four reads together and commits them as one state update,
+  // so a reopen re-renders once instead of up to four times — and so the
+  // rows already on screen stay put while the new data is still in flight,
+  // rather than the list state being cleared out from under them. Each read
+  // fails independently: one connection erroring doesn't discard the
+  // others, it just leaves that piece of state as it was.
   const refresh = useCallback(() => {
-    window.winraid?.getVersion().then(setVersion).catch(() => {})
-    window.winraid?.config.get('connections')
-      .then((list) => setConnections(Array.isArray(list) ? list : []))
-      .catch(() => {})
-    window.winraid?.watcher.list().then(setWatcherStates).catch(() => {})
-    window.winraid?.queue.list().then(setJobs).catch(() => {})
+    const nextVersion     = window.winraid?.getVersion().catch(() => undefined) ?? Promise.resolve(undefined)
+    const nextConnections = window.winraid?.config.get('connections').catch(() => undefined) ?? Promise.resolve(undefined)
+    const nextWatcher     = window.winraid?.watcher.list().catch(() => undefined) ?? Promise.resolve(undefined)
+    const nextJobs        = window.winraid?.queue.list().catch(() => undefined) ?? Promise.resolve(undefined)
+
+    Promise.all([nextVersion, nextConnections, nextWatcher, nextJobs]).then(
+      ([version, connections, watcherStates, jobs]) => {
+        if (version !== undefined) setVersion(version)
+        if (Array.isArray(connections)) setConnections(connections)
+        if (watcherStates !== undefined) setWatcherStates(watcherStates)
+        if (jobs !== undefined) setJobs(jobs)
+      }
+    )
   }, [])
 
   useEffect(() => { refresh() }, [refresh])
@@ -86,6 +100,24 @@ export default function TrayFlyout() {
               <span className={styles.name}>{connection.name}</span>
               <span className={styles.spacer} />
               <span className={styles.today}>{todayCount(connection.id)} today</span>
+              <button
+                type="button"
+                className={styles.rowBtn}
+                aria-label={`Browse ${connection.name}`}
+                onClick={() => window.winraid?.tray?.openConnection?.(connection.id)}
+              >
+                <Folder size={14} />
+              </button>
+              {connection.localFolder && (
+                <button
+                  type="button"
+                  className={styles.rowBtn}
+                  aria-label={`Open ${connection.name} folder`}
+                  onClick={() => window.winraid?.local?.reveal?.(connection.localFolder)}
+                >
+                  <FolderOpen size={14} />
+                </button>
+              )}
             </li>
           )
         })}

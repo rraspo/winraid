@@ -579,8 +579,12 @@
   padding: var(--space-1) 0;
 }
 
+/* A row, so an item that carries a glyph keeps it on the text's baseline
+   centre; items without one are unaffected. */
 .fileMenuItem {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
   text-align: left;
   padding: var(--space-2) var(--space-3);

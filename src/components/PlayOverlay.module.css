@@ -1,11 +1,19 @@
 .overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1000;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
   background: var(--bg);
   display: flex;
   flex-direction: column;
   outline: none;
+}
+
+/* Expanded by the wall's own Fullscreen control — covers the app window
+   instead of the browser fullscreen API. */
+.overlay[data-fullscreen='true'] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
 }
 
 /* ── Viewer layer — sits over the wall, which stays mounted underneath ── */

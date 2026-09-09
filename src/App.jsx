@@ -364,10 +364,11 @@ export default function App() {
   useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
   const [queuePaused, setQueuePaused] = useState(false)
 
-  // The Play wall, opened as a full-screen overlay on top of whatever the
-  // nav rail was showing — that view is left untouched underneath, so
-  // closing Play returns to it without any extra bookkeeping. Null when
-  // Play is closed; { connectionId, path } once its target resolves.
+  // The Play wall, a screen in the content column like any other — opening
+  // it leaves whichever view or tab was showing untouched underneath, so
+  // closing Play (without switching to another screen first) returns to it
+  // without any extra bookkeeping. Null when Play is closed; { connectionId,
+  // path } once its target resolves.
   const [playTarget, setPlayTarget] = useState(null)
 
   useEffect(() => {
@@ -423,6 +424,7 @@ export default function App() {
 
   function navigateView(view) {
     setConnEdit(null)
+    setPlayTarget(null)
     setActiveView(view)
     setActiveTabId(null)
     if (view !== 'logs') setLogNav(null)
@@ -439,6 +441,7 @@ export default function App() {
   function applyBrowseHistoryEntry(entry, tabId) {
     if (!tabId) return
     setConnEdit(null)
+    setPlayTarget(null)
     setActiveView(null)
     setOpenTabs((prev) => {
       if (prev.find((t) => t.id === tabId)) return prev
@@ -531,6 +534,7 @@ export default function App() {
     )
     setActiveTabId(id)
     setActiveView(null)
+    setPlayTarget(null)
     // Intentionally not pushed to nav history — editor tabs aren't restored by back/forward.
   }
 
@@ -552,6 +556,7 @@ export default function App() {
     if (!background) {
       setActiveTabId(id)
       setActiveView(null)
+      setPlayTarget(null)
     }
     if (type === 'browse' && path) {
       setTabBrowseRestore(id, { path, quickLookFile: null, connectionId: connId, highlightFile: null, token: Date.now() })
@@ -578,6 +583,7 @@ export default function App() {
     if (!tab) return
     setActiveTabId(id)
     setActiveView(null)
+    setPlayTarget(null)
   }
 
   function closeTab(id) {
@@ -620,19 +626,35 @@ export default function App() {
     if (conn) openTab(conn.id, type, options)
   }
 
-  // Opens the Play wall as an overlay on top of whatever the nav rail was
-  // showing — that view/tab is left untouched, so onClose restores it.
+  // Opens the Play wall as the current screen for the active connection,
+  // becoming exclusive with whatever view or tab was showing the way any
+  // other screen switch is — so onClose restores it.
   async function openPlayWall() {
     const conn = await resolveActiveConnection()
     if (!conn) return
+    setConnEdit(null)
+    setActiveTabId(null)
     setPlayTarget({ connectionId: conn.id, path: remoteRootOf(conn) })
+  }
+
+  // "Open folder" from the play wall's viewer: a recursive wall walks files
+  // from all over the tree, so the folder a file lives in is often nowhere
+  // near what the browser last showed. Opens (or activates) a browse tab
+  // for the wall's connection pointed at that folder and leaves the wall —
+  // the same explicit choice of connection as the Connections screen or the
+  // tray flyout, so it becomes the switcher's remembered default too.
+  function handlePlayOpenFolder(folderPath) {
+    if (!playTarget) return
+    rememberActiveConnection(playTarget.connectionId)
+    openTab(playTarget.connectionId, 'browse', { path: folderPath })
   }
 
   // Single router for every nav rail click: global views switch activeView,
   // the per-connection screens open (or activate) that tab for the active
-  // connection, and Play opens as an overlay. `options.newTab` (a middle
-  // click) is passed through to the tab-backed views; a global view or Play
-  // has no notion of multiple tabs, so a middle click behaves like a click.
+  // connection, and Play opens as the current screen. `options.newTab` (a
+  // middle click) is passed through to the tab-backed views; a global view
+  // or Play has no notion of multiple tabs, so a middle click behaves like
+  // a click.
   function navigate(viewId, options) {
     if (GLOBAL_VIEWS.has(viewId)) {
       navigateView(viewId)
@@ -653,6 +675,16 @@ export default function App() {
     rememberActiveConnection(connId)
     return openTab(connId, type)
   }
+
+  // --- Tray flyout shortcuts --------------------------------------------------
+  // "Browse <name>" in the tray flyout raises the main window on that
+  // connection's browse tab — the same explicit choice as picking it from
+  // the Connections screen, so it becomes the switcher's remembered default.
+  useEffect(() => {
+    return window.winraid?.tray?.onOpenConnection?.((connectionId) => {
+      openConnectionTabExplicit(connectionId, 'browse')
+    })
+  }, [openTabs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Global watcher + queue toggle ----------------------------------------
   async function handleGlobalToggle() {
@@ -736,6 +768,20 @@ export default function App() {
                 existing={connEdit.conn}
                 onSave={handleConnSave}
                 onClose={() => setConnEdit(null)}
+              />
+            ) : playTarget ? (
+              <PlayOverlay
+                connectionId={playTarget.connectionId}
+                path={playTarget.path}
+                connections={connections}
+                onSelectConnection={(connId) => {
+                  const conn = connections.find((c) => c.id === connId)
+                  if (!conn) return
+                  rememberActiveConnection(connId)
+                  setPlayTarget({ connectionId: connId, path: remoteRootOf(conn) })
+                }}
+                onClose={() => setPlayTarget(null)}
+                onOpenFolder={handlePlayOpenFolder}
               />
             ) : activeTabId === null && activeView !== null && (
               <ActiveView {...activeViewProps} />
@@ -835,20 +881,6 @@ export default function App() {
         connections={connections}
         onNavigate={navigate}
       />
-      {playTarget && (
-        <PlayOverlay
-          connectionId={playTarget.connectionId}
-          path={playTarget.path}
-          connections={connections}
-          onSelectConnection={(connId) => {
-            const conn = connections.find((c) => c.id === connId)
-            if (!conn) return
-            rememberActiveConnection(connId)
-            setPlayTarget({ connectionId: connId, path: remoteRootOf(conn) })
-          }}
-          onClose={() => setPlayTarget(null)}
-        />
-      )}
       <ToastHost />
     </div>
   )
