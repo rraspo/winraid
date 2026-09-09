@@ -124,13 +124,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       setPath(browseRestore.path)
       setEntries([])
     }
-    if (browseRestore.quickLookFile) {
-      setSelectedFile(browseRestore.quickLookFile)
-      setShowQuickLook(true)
-    } else {
-      setShowQuickLook(false)
-      setSelectedFile(null)
-    }
+    // A restored position is a folder, never an open file: the viewer is
+    // not part of the trail, so arriving anywhere closes it.
+    setShowQuickLook(false)
+    setSelectedFile(null)
     if (browseRestore.highlightFile) {
       setHighlightFile(browseRestore.highlightFile)
     }
@@ -181,7 +178,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   useEffect(() => {
     if (initialPushed.current || !selectedId) return
     initialPushed.current = true
-    onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId })
+    onHistoryPush?.({ kind: 'browse', path, connectionId })
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Close QuickLook on Escape ─────────────────────────────────────────────
@@ -192,7 +189,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         e.preventDefault()
         setShowQuickLook(false)
         setSelectedFile(null)
-        onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: null, connectionId })
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
@@ -251,7 +247,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setEntries([])
     setShowQuickLook(false)
     setSelectedFile(null)
-    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null, connectionId })
+    onHistoryPush?.({ kind: 'browse', path: newPath, connectionId })
   }, [onHistoryPush])
 
   // Copy a remote path to the clipboard (used by the current-dir breadcrumb).
@@ -264,11 +260,13 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
   }, [])
 
+  // Opening a file is not a move, so it records nothing: back and forward
+  // walk folders, and the viewer opens and closes over whichever one you
+  // are standing in.
   const openQuickLook = useCallback((entry, entryPath) => {
     setSelectedFile({ ...entry, path: entryPath })
     setShowQuickLook(true)
-    onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: { ...entry, path: entryPath }, connectionId })
-  }, [onHistoryPush])
+  }, [])
 
   // ── Sub-hook composition ───────────────────────────────────────────────────
   const selection = useSelection({ entries: filteredEntries, path })
