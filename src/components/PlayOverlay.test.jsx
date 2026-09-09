@@ -12,7 +12,8 @@ import * as toast from '../services/toast'
 // to the wall exactly as it was left (same tiles, same scroll, no rescan).
 //
 // DOM contract the implementation must honor:
-//   - root: role="dialog" aria-label="Play"
+//   - root: a region named "Play" — the wall is a screen in the content
+//     column, not a modal over the app
 //   - props: { connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated }
 //     onMutated({ paths }) fires after every mutation Play performs itself,
 //     with the remote paths it touched, so the browse view can refresh
@@ -168,7 +169,7 @@ describe('PlayOverlay wall', () => {
   it('renders the overlay as a dialog with a wall and no viewer', async () => {
     setup()
     await mount()
-    expect(screen.getByRole('dialog', { name: 'Play' })).toBeTruthy()
+    expect(screen.getByRole('region', { name: 'Play' })).toBeTruthy()
     expect(wall()).toBeTruthy()
     expect(viewer()).toBeNull()
   })
@@ -671,7 +672,7 @@ describe('PlayOverlay viewer delete', () => {
     emit([image('/photos/a.jpg')])
     await open('a.jpg')
     requestDelete()
-    const playDialog = screen.getByRole('dialog', { name: 'Play' })
+    const playDialog = screen.getByRole('region', { name: 'Play' })
     expect(within(playDialog).getByText('Delete file?')).toBeTruthy()
     expect(within(playDialog).getByText('a.jpg', { selector: 'strong' })).toBeTruthy()
     expect(window.winraid.remote.delete).not.toHaveBeenCalled()
