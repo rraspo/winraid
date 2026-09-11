@@ -91,19 +91,55 @@ export default function ConnectionView({ existing, onSave, onClose }) {
   const foldersRef = useRef(null)
   const rulesRef   = useRef(null)
   const sectionRefs = { server: serverRef, folders: foldersRef, rules: rulesRef }
+  const scrollBodyRef = useRef(null)
 
   // Move and Mirror + clean delete the local file after upload — the flows
   // where the duplicate-name options apply.
   const deletesLocal = conn.folderMode === 'mirror_clean' || conn.operation === 'move'
+
+  // Set while a tab click is scrolling its section into view. A smooth scroll
+  // crosses the sections in between and each one reports itself on the way
+  // past, which would drag the selected tab along with it — so the strip
+  // holds the chosen step until the scroll has settled.
+  const scrollingToStep = useRef(null)
 
   function goToStep(id) {
     setActiveStep(id)
     const node = sectionRefs[id]?.current
     if (!node) return
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    scrollingToStep.current = id
     node.scrollIntoView?.({ behavior: reducedMotion ? 'auto' : 'smooth', block: 'start' })
     node.focus?.({ preventScroll: true })
   }
+
+  // The steps are sections you scroll through, not pages that replace one
+  // another, so the strip has to report where you are rather than what you
+  // last clicked. The section nearest the top of the scroll area wins.
+  useEffect(() => {
+    const nodes = Object.values(sectionRefs).map((r) => r.current).filter(Boolean)
+    if (nodes.length === 0 || typeof IntersectionObserver !== 'function') return
+
+    const observer = new IntersectionObserver((entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => (a.boundingClientRect?.top ?? 0) - (b.boundingClientRect?.top ?? 0))
+      const topmost = visible[0]
+      if (!topmost) return
+
+      const id = topmost.target.id.replace('conn-section-', '')
+      // A tab click is still scrolling: ignore the sections it passes, and
+      // let go once the one it was aiming for arrives.
+      if (scrollingToStep.current) {
+        if (scrollingToStep.current === id) scrollingToStep.current = null
+        return
+      }
+      setActiveStep(id)
+    }, { root: scrollBodyRef.current ?? null, rootMargin: '0px 0px -55% 0px', threshold: 0 })
+
+    for (const node of nodes) observer.observe(node)
+    return () => observer.disconnect()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps -- section refs are stable for the editor's lifetime
 
   function setTop(key, value) {
     setConn((c) => ({ ...c, [key]: value }))
@@ -284,7 +320,7 @@ export default function ConnectionView({ existing, onSave, onClose }) {
         </div>
       </div>
 
-      <div className={styles.scrollBody}>
+      <div className={styles.scrollBody} ref={scrollBodyRef}>
 
         {/* ---- Server ---- */}
         <section
