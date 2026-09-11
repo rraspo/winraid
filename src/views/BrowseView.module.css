@@ -78,15 +78,59 @@
 
 .crumbSep { color: var(--text3); flex-shrink: 0; }
 
-.crumbEllipsis {
+/* The marker sticks to the left edge and paints over whatever has scrolled
+   under it, so it is the only thing clickable there. That makes it the way
+   back up: choosing it lists the folders it is hiding. */
+.crumbEllipsisWrap {
   position: sticky;
   left: 0;
-  z-index: 1;
-  padding: 2px 4px 2px 0;
-  color: var(--text3);
+  z-index: 2;
+  display: flex;
+  align-items: center;
   flex-shrink: 0;
   background: var(--bg);
 }
+
+.crumbEllipsis {
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text3);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.crumbEllipsis:hover { color: var(--text); background: var(--hover); }
+
+.crumbMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 180px;
+  max-width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+}
+
+.crumbMenuItem {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--transition);
+}
+
+.crumbMenuItem:hover { background: var(--hover); }
 
 .crumb {
   display: flex;

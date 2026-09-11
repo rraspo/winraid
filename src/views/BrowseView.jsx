@@ -116,7 +116,9 @@ export default function BrowseView({
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
   const [favMenuOpen, setFavMenuOpen]         = useState(false)
+  const [crumbMenuOpen, setCrumbMenuOpen]     = useState(false)
   const breadcrumbRef = useRef(null)
+  const crumbMenuRef  = useRef(null)
   const sortDropRef   = useRef(null)
   const favDropRef    = useRef(null)
 
@@ -174,6 +176,27 @@ export default function BrowseView({
     document.addEventListener('mousedown', onDown)
     return () => document.removeEventListener('mousedown', onDown)
   }, [favMenuOpen])
+
+  useEffect(() => {
+    if (!crumbMenuOpen) return
+    function onDown(e) {
+      if (!crumbMenuRef.current?.contains(e.target)) setCrumbMenuOpen(false)
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setCrumbMenuOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [crumbMenuOpen])
+
+  // The trail scrolls and pins to the folder you are in, so everything above
+  // it slides out of sight behind the overflow marker. Those are exactly the
+  // folders the marker's menu offers.
+  const hiddenCrumbs = crumbs.slice(0, -1)
 
   const SORT_OPTIONS = [
     { value: 'nameAsc',  label: 'Name A-Z' },
@@ -453,7 +476,38 @@ export default function BrowseView({
         />
 
         <div className={styles.breadcrumb} ref={breadcrumbRef}>
-          {breadcrumbOverflow && <span className={styles.crumbEllipsis}>...</span>}
+          {breadcrumbOverflow && (
+            <span className={styles.crumbEllipsisWrap} ref={crumbMenuRef}>
+              <button
+                type="button"
+                className={styles.crumbEllipsis}
+                aria-label="Hidden folders"
+                aria-haspopup="menu"
+                aria-expanded={crumbMenuOpen}
+                onClick={() => setCrumbMenuOpen((v) => !v)}
+              >
+                ...
+              </button>
+              {crumbMenuOpen && (
+                <div className={styles.crumbMenu} role="menu" aria-label="Hidden folders">
+                  {hiddenCrumbs.map((c) => (
+                    <button
+                      key={c.path}
+                      type="button"
+                      role="menuitem"
+                      className={styles.crumbMenuItem}
+                      onClick={() => { setCrumbMenuOpen(false); navigate(c.path) }}
+                      onDragOver={(e) => handleDragOverFolder(e, c.path)}
+                      onDragLeave={handleDragLeaveFolder}
+                      onDrop={(e) => { setCrumbMenuOpen(false); handleDrop(e, c.path) }}
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </span>
+          )}
           {crumbs.map((c, i) => (
             <span key={c.path} className={styles.crumbGroup}>
               {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
