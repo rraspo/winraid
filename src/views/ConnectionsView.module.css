@@ -206,6 +206,14 @@
   background: var(--hover);
 }
 
+/* A connection with no watch folder has nothing to start, so it says that
+   rather than offering a control that could only fail. */
+.noWatchFolder {
+  font-size: 12.5px;
+  padding: 6px 0;
+  color: var(--text3);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .addButton,
   .actionButton {

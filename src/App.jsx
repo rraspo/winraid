@@ -16,6 +16,7 @@ import EditorView from './components/EditorView'
 import PlayOverlay from './components/PlayOverlay'
 import ToastHost from './components/ui/ToastHost'
 import { useNavHistory } from './hooks/useNavHistory'
+import * as toast from './services/toast'
 import { normalizeAppearance, resolveTheme, resolveAccentHex, onAccentTextColor } from './utils/accent'
 import styles from './App.module.css'
 
@@ -695,6 +696,21 @@ export default function App() {
   }, [openTabs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Global watcher + queue toggle ----------------------------------------
+  // Starting a watcher can fail for reasons the user can act on — the watch
+  // folder has been renamed or is on a drive that is not mounted — so a
+  // failure says so rather than leaving the card looking untouched.
+  async function handleStartWatching(connectionId) {
+    const result = await window.winraid?.watcher.start(connectionId)
+    if (result && result.ok === false) {
+      const name = connections.find((c) => c.id === connectionId)?.name ?? 'connection'
+      toast.show({ type: 'error', msg: `Could not start watching ${name}: ${result.error ?? 'the watch folder is unavailable'}` })
+    }
+  }
+
+  async function handleStopWatching(connectionId) {
+    await window.winraid?.watcher.stop(connectionId)
+  }
+
   async function handleGlobalToggle() {
     if (queuePaused) {
       await window.winraid?.watcher.resumeAll()
@@ -723,6 +739,7 @@ export default function App() {
     activeView === 'connections' ? {
       connections, watcherStatuses: watcherStatus,
       onEditConnection: openConnEdit, onOpenTab: openConnectionTabExplicit,
+      onStartWatching: handleStartWatching, onStopWatching: handleStopWatching,
     } :
     activeView === 'queue' ? {
       connections, onNavigate: navigate,

@@ -44,6 +44,7 @@ import * as watcher from './watcher.js'
 import * as queue from './queue.js'
 import { deletesLocalAfterUpload } from './folder-mode.js'
 import { wireTrayEvents } from './tray-events.js'
+import { watchableConnections } from './watchable.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -96,10 +97,6 @@ let tray        = null
 let isQuitting  = false  // set before app.quit() so the close handler lets the window close instead of hiding to tray
 let _backupCurrentToken = null  // per-run cancellation token for backup:run
 let _backupCurrentConn  = null  // active SSH Client during backup:run — used to interrupt fastGet
-
-// Set of connectionIds that were watching before a pause-all operation,
-// used by resume-all to restart only those connections.
-let _watchingBeforePause = new Set()
 
 // The tray flyout window, created lazily on first open — see
 // createTrayFlyoutWindow() below.
@@ -894,12 +891,6 @@ function registerIPC() {
 
   ipcMain.handle('watcher:pause-all', async () => {
     const w = watcher
-    // Capture which connections were watching so resume-all can restart them
-    _watchingBeforePause = new Set(
-      Object.entries(w.listWatcherStates())
-        .filter(([, s]) => s.watching)
-        .map(([id]) => id)
-    )
     w.stopAllWatchers()
     const { stopWorker } = await import('./worker.js')
     stopWorker()
@@ -907,28 +898,33 @@ function registerIPC() {
     return { ok: true }
   })
 
+  // Starts every connection that can be watched, rather than only the ones
+  // running when pause-all was last pressed — a connection stopped at that
+  // moment was never in that set, so nothing could bring it back. Connections
+  // that cannot be watched come back with a reason so the caller can say so.
   ipcMain.handle('watcher:resume-all', async () => {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
     const w = watcher
-    for (const connectionId of _watchingBeforePause) {
-      const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
-      if (!conn?.localFolder) continue
-      try {
-        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
-      } catch { continue }
+    const { startable, blocked } = watchableConnections(
+      cfg.connections,
+      (folder) => existsSync(folder) && statSync(folder).isDirectory(),
+    )
+    for (const conn of startable) {
       w.startWatcher(
-        connectionId,
+        conn.id,
         conn.localFolder,
-        makeFileDetectedCallback(connectionId),
+        makeFileDetectedCallback(conn.id),
         () => sendToRenderer('watcher:status', w.listWatcherStates()),
       )
     }
-    _watchingBeforePause.clear()
+    for (const entry of blocked) {
+      log('warn', `Watcher [${entry.id}] not started: ${entry.reason === 'no-folder' ? 'no watch folder configured' : 'watch folder is missing'}`)
+    }
     const { ensureWorkerRunning } = await import('./worker.js')
     ensureWorkerRunning()
     sendToRenderer('watcher:status', w.listWatcherStates())
-    return { ok: true }
+    return { ok: true, started: startable.map((c) => c.id), blocked }
   })
 
   // -- Tray flyout -----------------------------------------------------------

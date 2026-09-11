@@ -47,7 +47,7 @@ function ruleTags(connection) {
 // The Connections screen — every watched folder at a glance: its protocol,
 // host, watch/remote paths, rule summary and per-card actions. Verify opens
 // the same editor as Edit, where Verify & Clean lives (see ConnectionView).
-export default function ConnectionsView({ connections = [], watcherStatuses = {}, onEditConnection, onOpenTab }) {
+export default function ConnectionsView({ connections = [], watcherStatuses = {}, onEditConnection, onOpenTab, onStartWatching, onStopWatching }) {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -102,6 +102,27 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
                     <span key={tag} className={styles.tag}>{tag}</span>
                   ))}
                   <div className={styles.actions}>
+                    {!connection.localFolder ? (
+                      <span className={styles.noWatchFolder}>No watch folder</span>
+                    ) : word === 'Watching' ? (
+                      <button
+                        type="button"
+                        className={styles.actionButton}
+                        aria-label={`Stop watching ${connection.name}`}
+                        onClick={() => onStopWatching?.(connection.id)}
+                      >
+                        Stop watching
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.actionButton}
+                        aria-label={`Start watching ${connection.name}`}
+                        onClick={() => onStartWatching?.(connection.id)}
+                      >
+                        Start watching
+                      </button>
+                    )}
                     <button type="button" className={styles.actionButton} onClick={() => onOpenTab?.(connection.id, 'browse')}>
                       Browse files
                     </button>

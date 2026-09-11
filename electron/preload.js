@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld('winraid', {
     list:      ()             => ipcRenderer.invoke('watcher:list'),
     /** Stop all watchers and pause the worker (global kill switch). */
     pauseAll:  ()             => ipcRenderer.invoke('watcher:pause-all'),
-    /** Restart watchers that were running before pauseAll and resume the worker. */
+    /** Start every connection that can be watched and resume the worker. */
     resumeAll: ()             => ipcRenderer.invoke('watcher:resume-all'),
 
     /**
