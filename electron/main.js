@@ -43,6 +43,7 @@ import { init as initIpcBridge, sendToRenderer as sendToMainWindow, notify } fro
 import * as watcher from './watcher.js'
 import * as queue from './queue.js'
 import { deletesLocalAfterUpload } from './folder-mode.js'
+import { wireTrayEvents } from './tray-events.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -674,10 +675,10 @@ function createTray() {
 
   tray = new Tray(icon)
   tray.setToolTip('WinRaid')
-  // Left click opens the flyout (replaces the old right-click context menu);
-  // double-click still shows the main window.
-  tray.on('click', () => { showTrayFlyout() })
-  tray.on('double-click', () => { mainWindow.show(); mainWindow.focus() })
+  wireTrayEvents(tray, {
+    showFlyout: () => { showTrayFlyout() },
+    showMain:   () => { mainWindow.show(); mainWindow.focus() },
+  })
 }
 
 // ---------------------------------------------------------------------------
