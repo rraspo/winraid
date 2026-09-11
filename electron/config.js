@@ -63,6 +63,10 @@ const DEFAULTS = {
     format: 'jpeg',   // 'jpeg' | 'png' | 'webp'
   },
   activeConnectionId: null,
+  // Which connection the connection-driven screens (browse, backup, size,
+  // play) open on. A connection id pins them to it; null means "last used",
+  // which falls back to activeConnectionId and then to the first connection.
+  defaultConnection:  null,
 }
 
 // ---------------------------------------------------------------------------
