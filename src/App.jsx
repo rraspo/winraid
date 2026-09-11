@@ -606,10 +606,18 @@ export default function App() {
   // Reads config fresh rather than off React state — the nav rail can be
   // clicked before the initial connections load settles, and a config read
   // is cheap and always current.
+  //
+  // Three answers in order of how deliberate they are: the connection pinned
+  // in Settings, then the one last used, then whatever is first in the list.
+  // A pinned connection that has since been deleted falls through to the
+  // next answer rather than leaving these screens with nothing to open.
   async function resolveActiveConnection() {
     const cfg   = await window.winraid?.config.get()
     const conns = cfg?.connections ?? []
-    return conns.find((c) => c.id === cfg?.activeConnectionId) ?? conns[0] ?? null
+    return conns.find((c) => c.id === cfg?.defaultConnection)
+      ?? conns.find((c) => c.id === cfg?.activeConnectionId)
+      ?? conns[0]
+      ?? null
   }
 
   // Records `connectionId` as the switcher's default so the next per-
