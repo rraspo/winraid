@@ -3,7 +3,7 @@ import {
   ChevronRight, HardDrive, Download,
   AlertCircle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
-  ArrowLeft, ArrowRight, Home, Clock, CheckSquare, Plus, RefreshCw,
+  ArrowLeft, ArrowRight, Home, Clock, Plus, RefreshCw,
 } from 'lucide-react'
 import { isFavorite, favName } from '../utils/favorites'
 import { normalizeForSearch } from '../utils/normalizeForSearch'
@@ -116,7 +116,6 @@ export default function BrowseView({
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
   const [favMenuOpen, setFavMenuOpen]         = useState(false)
-  const [selectionMode, setSelectionMode]     = useState(false)
   const breadcrumbRef = useRef(null)
   const sortDropRef   = useRef(null)
   const favDropRef    = useRef(null)
@@ -146,12 +145,17 @@ export default function BrowseView({
     return () => { cancelled = true }
   }, [selectedId])
 
+  // Pin the trail to its trailing (current-folder) crumb. The ellipsis
+  // indicator only mounts once overflow is known, which changes scrollWidth
+  // on the very next render — re-running this after that happens (the
+  // breadcrumbOverflow dependency) keeps the pin accurate instead of
+  // leaving the last crumb clipped by the width the indicator just added.
   useEffect(() => {
     const el = breadcrumbRef.current
     if (!el) return
     el.scrollLeft = el.scrollWidth
     setBreadcrumbOverflow(el.scrollWidth > el.clientWidth)
-  }, [path])
+  }, [path, breadcrumbOverflow])
 
   useEffect(() => {
     if (!sortDropOpen) return
@@ -272,7 +276,7 @@ export default function BrowseView({
       .filter(([favConnId]) => favConnId !== selectedId)
       .flatMap(([favConnId, paths]) => (paths ?? []).map((favPath) => ({ connectionId: favConnId, path: favPath }))),
   ]
-  const showSelectionBar = selectionMode || selected.size > 0
+  const showSelectionBar = selected.size > 0
 
   return (
     <div
@@ -306,6 +310,12 @@ export default function BrowseView({
             setSelectedFile(null)
             onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
             setDeleteTarget(target)
+          }}
+          onOpenFolder={(folderPath) => {
+            setShowQuickLook(false)
+            setSelectedFile(null)
+            onHistoryPush?.({ kind: 'browse', path: folderPath, quickLookFile: null, connectionId: selectedId })
+            navigate(folderPath)
           }}
           canServerEdit={browse.selectedConn?.type === 'sftp'}
         />
@@ -557,19 +567,6 @@ export default function BrowseView({
           )}
         </div>
 
-        <Tooltip tip="Toggle selection mode" side="bottom">
-          <button
-            type="button"
-            className={[styles.selectBtn, selectionMode ? styles.selectBtnActive : ''].join(' ')}
-            aria-label="Select"
-            aria-pressed={selectionMode}
-            onClick={() => setSelectionMode((v) => !v)}
-          >
-            <CheckSquare size={13} />
-            <span>Select</span>
-          </button>
-        </Tooltip>
-
         <Tooltip tip="Play media slideshow" side="bottom">
           <button
             className={styles.iconBtn}
@@ -674,7 +671,6 @@ export default function BrowseView({
               selectedId={browse.selectedId}
               busy={browse.busy}
               selected={browse.selected}
-              selectionMode={selectionMode}
               dragSourcePaths={dragSourcePaths}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}
@@ -717,7 +713,6 @@ export default function BrowseView({
               selectedId={browse.selectedId}
               busy={browse.busy}
               selected={browse.selected}
-              selectionMode={selectionMode}
               dragSourcePaths={dragSourcePaths}
               lastVisitedDir={browse.lastVisitedDir}
               highlightFile={browse.highlightFile}

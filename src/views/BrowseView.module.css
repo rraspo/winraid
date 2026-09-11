@@ -41,16 +41,33 @@
 .favBtnActive:hover:not(:disabled) { color: var(--accent); }
 
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
+/* The trail is the toolbar's flexible element: it absorbs whatever width is
+   left over rather than being squeezed to a sliver while its buttons keep
+   their full size, which is what let clicks land on a neighboring control
+   instead of the crumb underneath them. When even its fair share isn't
+   enough it scrolls internally (scrollbar hidden, pinned to the trailing
+   crumb) instead of painting outside its own box.
+
+   It also keeps a floor. Sharing the shortfall by size alone starved it
+   first, because it is the widest thing in the row: in a 1024-wide window
+   only the last folder survived and by 900 the trail was gone entirely,
+   leaving no way to walk back up. The floor holds a few crumbs no matter
+   how narrow the window gets, and the filter box beside it gives up its
+   width several times faster to pay for them. */
 .breadcrumb {
   display: flex;
   align-items: center;
   gap: 2px;
-  min-width: 20px;
-  flex-shrink: 1;
-  overflow: hidden;
+  min-width: 140px;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   font-size: 13px;
   margin-left: 2px;
 }
+
+.breadcrumb::-webkit-scrollbar { display: none; }
 
 .crumbGroup {
   display: flex;
@@ -189,6 +206,21 @@
 
 .sortLabel { white-space: nowrap; }
 
+/* In a narrow window the sort button says the same thing with its icon and
+   its tooltip alone, so its word is the cheapest width in the row to give
+   back to the trail. */
+@media (max-width: 1200px) {
+  .sortLabel { display: none; }
+  .sortBtn   { padding: 0 8px; }
+}
+
+/* At the narrowest window the app allows, the row closes up its own spacing
+   rather than taking the last of the trail's width: the gaps and the side
+   padding are the only slack left once every control is at its minimum. */
+@media (max-width: 960px) {
+  .toolbar { gap: 4px; padding: 0 10px; }
+}
+
 .sortDrop {
   position: absolute;
   top: calc(100% + 4px);
@@ -233,8 +265,10 @@
   gap: 7px;
   padding: 0 10px;
   height: 30px;
-  width: 190px;
-  flex-shrink: 0;
+  /* It yields its width several times faster than the trail beside it, but
+     never below a field you can actually read what you typed in. */
+  min-width: 120px;
+  flex: 0 6 190px;
   border-radius: 6px;
   background: var(--surface2);
   border: 1px solid var(--strokeSoft);
@@ -283,32 +317,6 @@
   color: var(--text);
   background: var(--hover);
 }
-
-/* ── Select pill ──────────────────────────────────────────────────────────── */
-.selectBtn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--stroke);
-  border-radius: 6px;
-  color: var(--text2);
-  font-size: 12px;
-  flex-shrink: 0;
-  transition: color var(--transition), background-color var(--transition), border-color var(--transition);
-}
-
-.selectBtn:hover { background: var(--hover); }
-
-.selectBtnActive {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.selectBtnActive:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 
 /* ── View toggle (segmented control) ─────────────────────────────────────── */
 .viewToggleGroup {
@@ -546,7 +554,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .iconBtn, .crumb, .sortBtn, .sortOption, .selectBtn, .viewToggleBtn,
+  .iconBtn, .crumb, .sortBtn, .sortOption, .viewToggleBtn,
   .bulkBtn, .footerCheckout, .favItem, .favPinItem, .searchWrap {
     transition: none;
   }
