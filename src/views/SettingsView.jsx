@@ -37,6 +37,9 @@ export default function SettingsView() {
   const [sortPersistence, setSortPersistence] = useState('default')
   const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
   const [systemAccentHex, setSystemAccentHex] = useState(null)
+  const [connections, setConnections] = useState([])
+  // null means "last used" — see resolveActiveConnection in App.
+  const [defaultConnection, setDefaultConnection] = useState(null)
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -52,6 +55,15 @@ export default function SettingsView() {
       setUpdateStatus(payload)
     })
     return () => unsub?.()
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('connections').then((list) => {
+      if (Array.isArray(list)) setConnections(list)
+    }).catch(() => {})
+    window.winraid?.config.get('defaultConnection').then((id) => {
+      setDefaultConnection(id ?? null)
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -201,6 +213,32 @@ export default function SettingsView() {
     handleCacheModeChange(DIRECTORY_CACHE_OPTIONS[next].value)
   }
 
+  // "Last used" plus one row per connection. The value is the connection id,
+  // or null for "last used", which is exactly what the config field holds.
+  const defaultConnectionOptions = [
+    { value: null, label: 'Last used', desc: 'Whichever connection you were in last.' },
+    ...connections.map((conn) => ({
+      value: conn.id,
+      label: conn.name,
+      desc: (conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath) ?? '',
+    })),
+  ]
+
+  async function handleDefaultConnectionChange(value) {
+    setDefaultConnection(value)
+    await window.winraid?.config.set('defaultConnection', value)
+  }
+
+  function handleDefaultConnectionKeyDown(e) {
+    const currentIndex = defaultConnectionOptions.findIndex((o) => o.value === defaultConnection)
+    if (currentIndex < 0) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    const direction = e.key === 'ArrowDown' ? 1 : -1
+    const next = (currentIndex + direction + defaultConnectionOptions.length) % defaultConnectionOptions.length
+    handleDefaultConnectionChange(defaultConnectionOptions[next].value)
+  }
+
   const status = updateStatus?.status
   const isChecking    = status === 'checking'
   const isDownloading = status === 'downloading'
@@ -289,6 +327,47 @@ export default function SettingsView() {
               </div>
             </div>
           </section>
+
+          {connections.length > 1 && (
+            <section className={styles.card} aria-label="Connections">
+              <h2 className={styles.cardTitle}>Connections</h2>
+              <div className={styles.cardBody}>
+                <div className={styles.stackedField}>
+                  <span className={styles.fieldLabel}>Default connection</span>
+                  <div
+                    className={styles.radioList}
+                    role="radiogroup"
+                    aria-label="Default connection"
+                    onKeyDown={handleDefaultConnectionKeyDown}
+                  >
+                    {defaultConnectionOptions.map((option) => {
+                      const isActive = option.value === defaultConnection
+                      return (
+                        <button
+                          key={option.value ?? 'last-used'}
+                          type="button"
+                          role="radio"
+                          aria-checked={isActive}
+                          aria-label={option.label}
+                          tabIndex={isActive ? 0 : -1}
+                          className={styles.radioRow}
+                          onClick={() => { if (!isActive) handleDefaultConnectionChange(option.value) }}
+                        >
+                          <span className={styles.radioDot} aria-hidden="true">
+                            {isActive && <span className={styles.radioDotFill} />}
+                          </span>
+                          <span className={styles.radioRowText}>
+                            <span className={styles.radioRowLabel}>{option.label}</span>
+                            <span className={styles.radioRowDesc}>{option.desc}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
 
           <section className={styles.card} aria-label="Play">
             <h2 className={styles.cardTitle}>Play</h2>
