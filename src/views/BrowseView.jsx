@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ChevronRight, HardDrive, Download,
   AlertCircle, Loader, FolderPlus, List, LayoutGrid,
@@ -117,8 +118,13 @@ export default function BrowseView({
   const [sortDropOpen, setSortDropOpen]       = useState(false)
   const [favMenuOpen, setFavMenuOpen]         = useState(false)
   const [crumbMenuOpen, setCrumbMenuOpen]     = useState(false)
+  // Where to draw the overflow menu. The trail clips its own overflow, so a
+  // menu nested inside it is invisible however it is positioned — it is
+  // drawn at the document level instead, anchored to the marker.
+  const [crumbMenuAt, setCrumbMenuAt]         = useState(null)
   const breadcrumbRef = useRef(null)
-  const crumbMenuRef  = useRef(null)
+  const crumbMenuRef    = useRef(null)
+  const crumbMarkerRef  = useRef(null)
   const sortDropRef   = useRef(null)
   const favDropRef    = useRef(null)
 
@@ -180,7 +186,11 @@ export default function BrowseView({
   useEffect(() => {
     if (!crumbMenuOpen) return
     function onDown(e) {
-      if (!crumbMenuRef.current?.contains(e.target)) setCrumbMenuOpen(false)
+      // The menu is drawn at the document level, so "outside" means outside
+      // both it and the marker that opened it.
+      if (crumbMenuRef.current?.contains(e.target)) return
+      if (crumbMarkerRef.current?.contains(e.target)) return
+      setCrumbMenuOpen(false)
     }
     function onKey(e) {
       if (e.key === 'Escape') setCrumbMenuOpen(false)
@@ -338,6 +348,32 @@ export default function BrowseView({
           canServerEdit={browse.selectedConn?.type === 'sftp'}
         />
       )}
+      {crumbMenuOpen && crumbMenuAt && createPortal(
+        <div
+          ref={crumbMenuRef}
+          className={styles.crumbMenu}
+          role="menu"
+          aria-label="Hidden folders"
+          style={{ top: crumbMenuAt.top, left: crumbMenuAt.left }}
+        >
+          {hiddenCrumbs.map((c) => (
+            <button
+              key={c.path}
+              type="button"
+              role="menuitem"
+              className={styles.crumbMenuItem}
+              onClick={() => { setCrumbMenuOpen(false); navigate(c.path) }}
+              onDragOver={(e) => handleDragOverFolder(e, c.path)}
+              onDragLeave={handleDragLeaveFolder}
+              onDrop={(e) => { setCrumbMenuOpen(false); handleDrop(e, c.path) }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>,
+        document.body,
+      )}
+
       {showPlay && (
         <PlayOverlay
           covering
@@ -477,35 +513,22 @@ export default function BrowseView({
 
         <div className={styles.breadcrumb} ref={breadcrumbRef}>
           {breadcrumbOverflow && (
-            <span className={styles.crumbEllipsisWrap} ref={crumbMenuRef}>
+            <span className={styles.crumbEllipsisWrap}>
               <button
                 type="button"
+                ref={crumbMarkerRef}
                 className={styles.crumbEllipsis}
                 aria-label="Hidden folders"
                 aria-haspopup="menu"
                 aria-expanded={crumbMenuOpen}
-                onClick={() => setCrumbMenuOpen((v) => !v)}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  setCrumbMenuAt({ top: Math.round(rect.bottom + 6), left: Math.round(rect.left) })
+                  setCrumbMenuOpen((v) => !v)
+                }}
               >
                 ...
               </button>
-              {crumbMenuOpen && (
-                <div className={styles.crumbMenu} role="menu" aria-label="Hidden folders">
-                  {hiddenCrumbs.map((c) => (
-                    <button
-                      key={c.path}
-                      type="button"
-                      role="menuitem"
-                      className={styles.crumbMenuItem}
-                      onClick={() => { setCrumbMenuOpen(false); navigate(c.path) }}
-                      onDragOver={(e) => handleDragOverFolder(e, c.path)}
-                      onDragLeave={handleDragLeaveFolder}
-                      onDrop={(e) => { setCrumbMenuOpen(false); handleDrop(e, c.path) }}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </span>
           )}
           {crumbs.map((c, i) => (

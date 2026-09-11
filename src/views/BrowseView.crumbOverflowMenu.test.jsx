@@ -27,6 +27,13 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 //     folder above the current one, outermost first, named by folder
 //   - picking one navigates there and closes the menu
 //   - Escape closes it without navigating
+//
+// One thing here cannot be tested at this level. The trail clips its own
+// overflow, so a menu nested inside it is in the DOM and invisible — which
+// is what the first attempt did, and these tests passed anyway, because
+// jsdom has no clipping. The menu is drawn at the document level for that
+// reason, and that it is actually visible and hit-testable is checked in
+// the preview harness, not here.
 
 const CONNECTIONS = [
   { id: 'conn-1', name: 'Atlas', localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' } },

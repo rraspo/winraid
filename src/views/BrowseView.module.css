@@ -100,11 +100,11 @@
 
 .crumbEllipsis:hover { color: var(--text); background: var(--hover); }
 
+/* Drawn at the document level: the trail clips its own overflow, so a menu
+   nested inside it is invisible however it is positioned. */
 .crumbMenu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 60;
+  position: fixed;
+  z-index: 200;
   min-width: 180px;
   max-width: 300px;
   max-height: 320px;
