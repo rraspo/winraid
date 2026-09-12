@@ -1,4 +1,4 @@
-import { Plus, Star } from 'lucide-react'
+import { Plus, Pin } from 'lucide-react'
 import ConnectionIcon from '../components/ConnectionIcon'
 import Tooltip from '../components/ui/Tooltip'
 import styles from './ConnectionsView.module.css'
@@ -97,7 +97,7 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
                           : `Make ${connection.name} the default connection`}
                         onClick={() => onSetDefault?.(connection.id === defaultConnectionId ? null : connection.id)}
                       >
-                        <Star size={14} fill={connection.id === defaultConnectionId ? 'currentColor' : 'none'} />
+                        <Pin size={14} fill={connection.id === defaultConnectionId ? 'currentColor' : 'none'} />
                       </button>
                     </Tooltip>
                     <span className={[styles.statusDot, statusDotClass(word)].join(' ')} />

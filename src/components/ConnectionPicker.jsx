@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Star } from 'lucide-react'
+import { ChevronDown, Pin } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
 import styles from './ConnectionPicker.module.css'
 
@@ -88,7 +88,7 @@ export default function ConnectionPicker({ connections = [], connectionId, onSel
                     : `Make ${connection.name} the default connection`}
                   onClick={() => onSetDefault?.(isDefault ? null : connection.id)}
                 >
-                  <Star size={12} fill={isDefault ? 'currentColor' : 'none'} />
+                  <Pin size={12} fill={isDefault ? 'currentColor' : 'none'} />
                 </button>
               </div>
             )
