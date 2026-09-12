@@ -9,7 +9,7 @@ import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
 
-export default function SizeView({ connectionId, connection, connections, onSelectConnection, onBrowsePath }) {
+export default function SizeView({ connectionId, connection, connections, onSelectConnection, onBrowsePath, defaultConnectionId = null, onSetDefault }) {
   const [phase,      setPhase]      = useState(PHASE.IDLE)
   const [tree,       setTree]       = useState(null)
   const [focused,    setFocused]    = useState(null)
@@ -193,6 +193,8 @@ export default function SizeView({ connectionId, connection, connections, onSele
                 connections={connections}
                 connectionId={connectionId}
                 onSelect={onSelectConnection}
+                defaultConnectionId={defaultConnectionId}
+                onSetDefault={onSetDefault}
               />
             )}
           </div>

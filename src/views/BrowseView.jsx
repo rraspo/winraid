@@ -42,6 +42,7 @@ export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
   onSelectConnection, onBack, onForward, canGoBack = false, canGoForward = false,
+  defaultConnectionId = null, onSetDefault,
 }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
@@ -509,6 +510,8 @@ export default function BrowseView({
             else if (onOpenTab) onOpenTab(connId, 'browse')
             else onNavigate?.('connections')
           }}
+          defaultConnectionId={defaultConnectionId}
+          onSetDefault={onSetDefault}
         />
 
         <div className={styles.breadcrumb} ref={breadcrumbRef}>

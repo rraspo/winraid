@@ -206,6 +206,25 @@
   background: var(--hover);
 }
 
+/* The default connection — the one browse, play, backup and size open on.
+   Filled and in the accent so the chosen card is obvious across the grid
+   rather than only on hover. */
+.defaultBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text3);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.defaultBtn:hover { color: var(--text); background: var(--hover); }
+
+.defaultBtnOn { color: var(--accent); }
+.defaultBtnOn:hover { color: var(--accent); }
+
 /* A connection with no watch folder has nothing to start, so it says that
    rather than offering a control that could only fail. */
 .noWatchFolder {

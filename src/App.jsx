@@ -364,6 +364,8 @@ export default function App() {
   const activeTabIdRef = useRef(null)
   useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
   const [queuePaused, setQueuePaused] = useState(false)
+  // null means "last used" — see resolveActiveConnection.
+  const [defaultConnection, setDefaultConnection] = useState(null)
 
   // The Play wall, a screen in the content column like any other — opening
   // it leaves whichever view or tab was showing untouched underneath, so
@@ -377,6 +379,7 @@ export default function App() {
       if (!cfg) return
       setConnections(cfg.connections ?? [])
       setFavorites(cfg.favoritesByConnection ?? {})
+      setDefaultConnection(cfg.defaultConnection ?? null)
     })
   }, [])
 
@@ -696,6 +699,14 @@ export default function App() {
   }, [openTabs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Global watcher + queue toggle ----------------------------------------
+  // Which connection the connection-driven screens open on. Settings, the
+  // Connections screen and the switcher all write the same field, so the
+  // choice is held here and handed down rather than read in three places.
+  async function handleSetDefaultConnection(connectionId) {
+    setDefaultConnection(connectionId)
+    await window.winraid?.config.set('defaultConnection', connectionId)
+  }
+
   // Starting a watcher can fail for reasons the user can act on — the watch
   // folder has been renamed or is on a drive that is not mounted — so a
   // failure says so rather than leaving the card looking untouched.
@@ -740,6 +751,7 @@ export default function App() {
       connections, watcherStatuses: watcherStatus,
       onEditConnection: openConnEdit, onOpenTab: openConnectionTabExplicit,
       onStartWatching: handleStartWatching, onStopWatching: handleStopWatching,
+      defaultConnectionId: defaultConnection, onSetDefault: handleSetDefaultConnection,
     } :
     activeView === 'queue' ? {
       connections, onNavigate: navigate,
@@ -807,6 +819,8 @@ export default function App() {
                 }}
                 onClose={() => setPlayTarget(null)}
                 onOpenFolder={handlePlayOpenFolder}
+                defaultConnectionId={defaultConnection}
+                onSetDefault={handleSetDefaultConnection}
               />
             ) : activeTabId === null && activeView !== null && (
               <ActiveView {...activeViewProps} />
@@ -842,6 +856,8 @@ export default function App() {
                   onNavigate={navigate}
                   onOpenTab={openTab}
                   onSelectConnection={(connId) => { rememberActiveConnection(connId); openTab(connId, 'browse') }}
+                  defaultConnectionId={defaultConnection}
+                  onSetDefault={handleSetDefaultConnection}
                 />
               )
             })}
@@ -868,6 +884,8 @@ export default function App() {
                   connectionId={tab.connId}
                   connections={connections}
                   onSelectConnection={(connId) => { rememberActiveConnection(connId); openTab(connId, 'backup') }}
+                  defaultConnectionId={defaultConnection}
+                  onSetDefault={handleSetDefaultConnection}
                   backupRun={backupRun}
                   setBackupRun={setBackupRun}
                 />
@@ -887,6 +905,8 @@ export default function App() {
                     connection={conn}
                     connections={connections}
                     onSelectConnection={(connId) => { rememberActiveConnection(connId); openTab(connId, 'size') }}
+                    defaultConnectionId={defaultConnection}
+                    onSetDefault={handleSetDefaultConnection}
                     onBrowsePath={(remotePath) => {
                       navigateBrowseJump(tab.connId, remotePath)
                     }}

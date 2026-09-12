@@ -1,5 +1,6 @@
-import { Plus } from 'lucide-react'
+import { Plus, Star } from 'lucide-react'
 import ConnectionIcon from '../components/ConnectionIcon'
+import Tooltip from '../components/ui/Tooltip'
 import styles from './ConnectionsView.module.css'
 
 const FOLDER_MODE_LABELS = {
@@ -47,7 +48,7 @@ function ruleTags(connection) {
 // The Connections screen — every watched folder at a glance: its protocol,
 // host, watch/remote paths, rule summary and per-card actions. Verify opens
 // the same editor as Edit, where Verify & Clean lives (see ConnectionView).
-export default function ConnectionsView({ connections = [], watcherStatuses = {}, onEditConnection, onOpenTab, onStartWatching, onStopWatching }) {
+export default function ConnectionsView({ connections = [], watcherStatuses = {}, onEditConnection, onOpenTab, onStartWatching, onStopWatching, defaultConnectionId = null, onSetDefault }) {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -81,6 +82,24 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
                     <div className={styles.hostLine}>{hostLine(connection)}</div>
                   </div>
                   <div className={styles.statusGroup}>
+                    <Tooltip
+                      tip={connection.id === defaultConnectionId
+                        ? 'Browse, play, backup and size open on this connection. Choose again to go back to the last one used.'
+                        : 'Open browse, play, backup and size on this connection'}
+                      side="left"
+                    >
+                      <button
+                        type="button"
+                        className={[styles.defaultBtn, connection.id === defaultConnectionId ? styles.defaultBtnOn : ''].join(' ')}
+                        aria-pressed={connection.id === defaultConnectionId}
+                        aria-label={connection.id === defaultConnectionId
+                          ? `Stop ${connection.name} being the default connection`
+                          : `Make ${connection.name} the default connection`}
+                        onClick={() => onSetDefault?.(connection.id === defaultConnectionId ? null : connection.id)}
+                      >
+                        <Star size={14} fill={connection.id === defaultConnectionId ? 'currentColor' : 'none'} />
+                      </button>
+                    </Tooltip>
                     <span className={[styles.statusDot, statusDotClass(word)].join(' ')} />
                     <span className={styles.statusWord}>{word}</span>
                   </div>

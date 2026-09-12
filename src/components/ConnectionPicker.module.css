@@ -75,6 +75,30 @@
   padding: 5px;
 }
 
+/* Switching and pinning sit side by side on one row. */
+.itemRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.pin {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  color: var(--text3);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.pin:hover { color: var(--text); background: var(--hover); }
+
+.pinOn { color: var(--accent); }
+.pinOn:hover { color: var(--accent); }
+
 .item {
   position: relative;
   display: flex;

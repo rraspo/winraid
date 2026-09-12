@@ -58,7 +58,7 @@ export default function PlayWall({
   hiddenFromViewer, fileVersions,
   selectedPaths, onToggleSelect, onSelectRange, onClearSelection,
   onRequestBulkDelete, onRequestBulkMove, mutationInFlight,
-  connections, onSelectConnection,
+  connections, onSelectConnection, defaultConnectionId = null, onSetDefault,
 }) {
   const scrollContainerRef = useRef(null)
   const sentinelRef        = useRef(null)
@@ -194,6 +194,8 @@ export default function PlayWall({
               connections={connections}
               connectionId={connectionId}
               onSelect={onSelectConnection}
+              defaultConnectionId={defaultConnectionId}
+              onSetDefault={onSetDefault}
             />
           )}
           <Tooltip tip={shuffle ? 'Sequential order' : 'Shuffle'} side="bottom">

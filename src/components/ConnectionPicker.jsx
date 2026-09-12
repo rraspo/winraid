@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Star } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
 import styles from './ConnectionPicker.module.css'
 
@@ -13,7 +13,7 @@ function remoteRootOf(connection) {
 // showing and, with more than one connection configured, lets the screen
 // switch without leaving it. `onSelect(connectionId)` re-targets the caller;
 // the picker never navigates on its own.
-export default function ConnectionPicker({ connections = [], connectionId, onSelect }) {
+export default function ConnectionPicker({ connections = [], connectionId, onSelect, defaultConnectionId = null, onSetDefault }) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
 
@@ -55,25 +55,44 @@ export default function ConnectionPicker({ connections = [], connectionId, onSel
       </button>
       {open && (
         <div className={styles.menu} role="menu">
-          {connections.map((connection) => (
-            <button
-              key={connection.id}
-              type="button"
-              role="menuitem"
-              className={[styles.item, connection.id === connectionId ? styles.itemActive : ''].join(' ')}
-              aria-current={connection.id === connectionId ? 'true' : undefined}
-              onClick={() => {
-                setOpen(false)
-                if (connection.id !== connectionId) onSelect?.(connection.id)
-              }}
-            >
-              <ConnectionIcon icon={connection.icon ?? null} size={13} />
-              <span className={styles.itemLabel}>
-                <span className={styles.itemName}>{connection.name}</span>{' '}
-                <span className={styles.itemRoot}>{remoteRootOf(connection)}</span>
-              </span>
-            </button>
-          ))}
+          {connections.map((connection) => {
+            const isDefault = connection.id === defaultConnectionId
+            return (
+              // Switching and pinning are separate controls: choosing a
+              // connection must not silently change which one these screens
+              // open on, and pinning one must not drag you onto it.
+              <div key={connection.id} className={styles.itemRow} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={[styles.item, connection.id === connectionId ? styles.itemActive : ''].join(' ')}
+                  aria-current={connection.id === connectionId ? 'true' : undefined}
+                  onClick={() => {
+                    setOpen(false)
+                    if (connection.id !== connectionId) onSelect?.(connection.id)
+                  }}
+                >
+                  <ConnectionIcon icon={connection.icon ?? null} size={13} />
+                  <span className={styles.itemLabel}>
+                    <span className={styles.itemName}>{connection.name}</span>{' '}
+                    <span className={styles.itemRoot}>{remoteRootOf(connection)}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={isDefault}
+                  className={[styles.pin, isDefault ? styles.pinOn : ''].join(' ')}
+                  aria-label={isDefault
+                    ? `Stop ${connection.name} being the default connection`
+                    : `Make ${connection.name} the default connection`}
+                  onClick={() => onSetDefault?.(isDefault ? null : connection.id)}
+                >
+                  <Star size={12} fill={isDefault ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>
