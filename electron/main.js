@@ -45,6 +45,7 @@ import * as queue from './queue.js'
 import { deletesLocalAfterUpload } from './folder-mode.js'
 import { wireTrayEvents } from './tray-events.js'
 import { watchableConnections } from './watchable.js'
+import { CONFIG_SET_ALLOWLIST } from './config-allowlist.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -789,16 +790,13 @@ function registerIPC() {
     return { ok: true }
   })
 
-  const CONFIG_SET_ALLOWLIST = [
-    'localFolder', 'operation', 'folderMode', 'extensions', 'ignoredExtensions',
-    'backup', 'connections', 'backupByConnection',
-    'browse', 'playDefaults', 'snapshot', 'thumbSeek', 'activeConnectionId',
-    'favoritesByConnection', 'appearance',
-  ]
-
   ipcMain.handle('config:set', async (_e, key, value) => {
     const topKey = String(key).split('.')[0]
     if (!CONFIG_SET_ALLOWLIST.includes(topKey)) {
+      // Logged rather than dropped in silence: the return value has no
+      // caller, so a setting whose key was never allowlisted looks like it
+      // saved and is simply gone on restart.
+      log('warn', `Refused config write to "${key}" — not in the allowlist`)
       return { error: 'forbidden key' }
     }
     const { setConfig } = await import('./config.js')

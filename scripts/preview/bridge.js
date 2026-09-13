@@ -21,6 +21,7 @@ import {
   SIZE_TREES, SIZE_META, MEDIA_FILES, SYSTEM_ACCENT_COLOR,
 } from './fixtures.js'
 import { SCREEN_NAMES } from './screens.js'
+import { CONFIG_SET_ALLOWLIST } from '../../electron/config-allowlist.js'
 
 function clone(value) {
   return value === undefined ? value : JSON.parse(JSON.stringify(value))
@@ -95,7 +96,16 @@ window.winraid = {
 
   config: {
     get: (key) => Promise.resolve(key == null ? clone(configStore) : clone(getByPath(configStore, key))),
+    // The real main process refuses a write to a key that is not allowlisted.
+    // The harness has to refuse it too, or it verifies a setting the built
+    // app cannot save — which is exactly how the default-connection setting
+    // passed here and failed on Windows.
     set: (key, value) => {
+      const topKey = String(key).split('.')[0]
+      if (!CONFIG_SET_ALLOWLIST.includes(topKey)) {
+        console.error(`[preview] refused config write to "${key}" — not in electron/config-allowlist.js`)
+        return Promise.resolve({ error: 'forbidden key' })
+      }
       setByPath(configStore, key, value)
       return Promise.resolve(undefined)
     },
