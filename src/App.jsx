@@ -833,6 +833,7 @@ export default function App() {
                 <BrowseView
                   key={tab.id}
                   style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none' }}
+                  active={activeTabId === tab.id && connEdit === null && playTarget === null}
                   browseRestore={browseRestoreByTab[tab.id] ?? null}
                   onBrowseRestoreConsumed={() => clearTabBrowseRestore(tab.id)}
                   onHistoryPush={(entry) => {

@@ -43,6 +43,10 @@ export default function BrowseView({
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
   onSelectConnection, onBack, onForward, canGoBack = false, canGoForward = false,
   defaultConnectionId = null, onSetDefault,
+  // Whether this tab is the one currently on screen. Tabs stay mounted while
+  // hidden, so anything that describes what is in front of the user has to
+  // know the difference.
+  active = true,
 }) {
   const browse = useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsumed, connectionsProp, connectionId })
   const {
@@ -132,17 +136,23 @@ export default function BrowseView({
   // Contextual notices now live in the toast stack as sticky toasts (no inline
   // banner shifting the layout). They clear when the condition clears or the
   // tab unmounts.
+  // These two describe the folder in front of you, so they are gated on this
+  // tab being the one on screen. A browse tab stays mounted while hidden to
+  // keep its place, which is why a warning about a mergerfs mount used to
+  // follow you to Settings and to other tabs, describing a folder none of
+  // them were showing. Ordinary toasts are announcements and are untouched:
+  // they sit out their few seconds wherever you go.
   useEffect(() => {
-    if (mergerfsWarning) toast.show({ id: `mergerfs:${selectedId}`, sticky: true, type: 'warning', msg: MERGERFS_MSG })
+    if (active && mergerfsWarning) toast.show({ id: `mergerfs:${selectedId}`, sticky: true, type: 'warning', msg: MERGERFS_MSG })
     else toast.dismiss(`mergerfs:${selectedId}`)
     return () => toast.dismiss(`mergerfs:${selectedId}`)
-  }, [mergerfsWarning, selectedId])
+  }, [active, mergerfsWarning, selectedId])
 
   useEffect(() => {
-    if (error) toast.show({ id: `dir-error:${selectedId}`, sticky: true, type: 'error', msg: error })
+    if (active && error) toast.show({ id: `dir-error:${selectedId}`, sticky: true, type: 'error', msg: error })
     else toast.dismiss(`dir-error:${selectedId}`)
     return () => toast.dismiss(`dir-error:${selectedId}`)
-  }, [error, selectedId])
+  }, [active, error, selectedId])
 
   useEffect(() => {
     if (!selectedId) return
