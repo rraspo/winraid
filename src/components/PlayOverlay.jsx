@@ -30,7 +30,7 @@ function toQuickLookFile(playFile, fileVersions) {
   }
 }
 
-export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null, connections, onSelectConnection, onOpenFolder }) {
+export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null, connections, onSelectConnection, onOpenFolder, covering = false }) {
   const [scanRoot, setScanRoot] = useState(path)
   // When the user navigates between folders via a breadcrumb, the file
   // they were just looking at carries into the new scope as the trail seed
@@ -255,7 +255,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
   }, [playlist, goTo])
 
   return (
-    <div ref={overlayRef} className={styles.overlay} data-fullscreen={isFullscreen ? 'true' : undefined} role="region" aria-label="Play" tabIndex={-1}>
+    <div ref={overlayRef} className={styles.overlay} data-fullscreen={isFullscreen ? 'true' : undefined} data-cover={covering ? 'true' : undefined} role="region" aria-label="Play" tabIndex={-1}>
       <PlayWall
         connectionId={connectionId}
         connections={connections}

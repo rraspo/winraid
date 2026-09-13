@@ -8,6 +8,16 @@
   outline: none;
 }
 
+/* Opened from the Play button inside the browser rather than from the nav
+   rail. There it is not the screen, it is drawn over one, so it covers the
+   way Quick Look does instead of taking a share of the browser's column and
+   leaving the file list showing above it. */
+.overlay[data-cover='true'] {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+}
+
 /* Expanded by the wall's own Fullscreen control — covers the app window
    instead of the browser fullscreen API. */
 .overlay[data-fullscreen='true'] {

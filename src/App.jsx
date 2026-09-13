@@ -448,7 +448,7 @@ export default function App() {
       return [...prev, { id: tabId, connId: entry.connectionId, type: 'browse' }]
     })
     setActiveTabId(tabId)
-    setTabBrowseRestore(tabId, { path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
+    setTabBrowseRestore(tabId, { path: entry.path, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
   }
 
   // The scope the mouse side buttons act on: whichever tab or view is
@@ -559,7 +559,7 @@ export default function App() {
       setPlayTarget(null)
     }
     if (type === 'browse' && path) {
-      setTabBrowseRestore(id, { path, quickLookFile: null, connectionId: connId, highlightFile: null, token: Date.now() })
+      setTabBrowseRestore(id, { path, connectionId: connId, highlightFile: null, token: Date.now() })
     }
     return id
   }
@@ -573,8 +573,8 @@ export default function App() {
   // together, directly into that tab's own browse scope.
   function navigateBrowseJump(connId, path, highlightFile = null) {
     const tabId = openTab(connId, 'browse')
-    push(`browse:${tabId}`, { kind: 'browse', path, connectionId: connId, quickLookFile: null, highlightFile })
-    setTabBrowseRestore(tabId, { path, quickLookFile: null, connectionId: connId, highlightFile, token: Date.now() })
+    push(`browse:${tabId}`, { kind: 'browse', path, connectionId: connId, highlightFile })
+    setTabBrowseRestore(tabId, { path, connectionId: connId, highlightFile, token: Date.now() })
   }
 
   function activateTab(id) {

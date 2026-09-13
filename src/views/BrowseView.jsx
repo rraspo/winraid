@@ -296,19 +296,14 @@ export default function BrowseView({
           connectionId={selectedId}
           remoteBasePath={cfgRemotePath}
           files={fileEntries}
-          onNavigate={(f) => {
-            setSelectedFile(f)
-            onHistoryPush?.({ kind: 'browse', path, quickLookFile: f, connectionId: selectedId })
-          }}
+          onNavigate={(f) => setSelectedFile(f)}
           onClose={() => {
             setShowQuickLook(false)
             setSelectedFile(null)
-            onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
           }}
           onDelete={(target) => {
             setShowQuickLook(false)
             setSelectedFile(null)
-            onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId: selectedId })
             setDeleteTarget(target)
           }}
           onOpenFolder={(folderPath) => {
@@ -322,6 +317,7 @@ export default function BrowseView({
       )}
       {showPlay && (
         <PlayOverlay
+          covering
           connectionId={selectedId}
           path={path}
           onClose={() => setShowPlay(false)}
