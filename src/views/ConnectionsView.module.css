@@ -57,6 +57,7 @@
 }
 
 .card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -66,10 +67,61 @@
   border: 1px solid var(--strokeSoft);
 }
 
+/* The default connection leads the list and reads differently from the rest:
+   an accent edge and a tinted ground, so which one every other screen opens
+   on is answered by looking rather than by hovering a control. */
+.cardDefault {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--strokeSoft));
+  background: color-mix(in srgb, var(--accent) 5%, var(--card));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.defaultRibbon {
+  position: absolute;
+  top: 0;
+  right: 18px;
+  padding: 2px 9px 3px;
+  border-radius: 0 0 5px 5px;
+  background: var(--accent);
+  color: var(--onAccent);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* The pin sits in the card's corner rather than among the actions: it is a
+   standing property of the connection, not something you do to it. */
+.pinBtn {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  color: var(--text3);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.pinBtn:hover { color: var(--text); background: var(--hover); }
+
+/* Once pinned the ribbon owns the corner, so the control drops below it. */
+.pinBtnOn {
+  top: 30px;
+  color: var(--accent);
+}
+
+.pinBtnOn:hover { color: var(--accent); }
+
 .cardTop {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Room for the pin in the corner, so it never lands on the status. */
+  padding-right: 34px;
 }
 
 .iconTile {
@@ -205,24 +257,6 @@
 .actionButton:hover {
   background: var(--hover);
 }
-
-/* The default connection — the one browse, play, backup and size open on.
-   It sits with the card's other actions and is named, because as a bare
-   icon in the corner it read as decoration and went unnoticed. The chosen
-   card carries the accent so it is still obvious across the grid. */
-.defaultBtn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.defaultBtnOn {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-
-.defaultBtnOn:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 
 /* A connection with no watch folder has nothing to start, so it says that
    rather than offering a control that could only fail. */

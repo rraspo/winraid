@@ -841,7 +841,14 @@ export default function App() {
                     if (entry.kind === 'browse' && entry.path) {
                       const conn = connections.find((c) => c.id === tab.connId)
                       const atRoot = entry.path === remoteRootOf(conn)
-                      setTabLabel(tab.id, atRoot ? null : lastPathSegment(entry.path))
+                      // A path with no last segment ("/", which is what a tab
+                      // reports in the moment before its connection resolves)
+                      // has no folder to name it after. Clearing the label
+                      // rather than setting an empty one lets the tab fall
+                      // back to the connection's name, which is what it did
+                      // before it was labelled at all.
+                      const folder = lastPathSegment(entry.path)
+                      setTabLabel(tab.id, atRoot || !folder ? null : folder)
                     }
                   }}
                   onBack={() => { const entry = back(scopeKey); if (entry) applyBrowseHistoryEntry(entry, tab.id) }}

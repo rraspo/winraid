@@ -26,7 +26,9 @@ export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, 
             {isEditor
               ? <FileText size={12} />
               : <ConnectionIcon icon={conn?.icon ?? null} size={12} />}
-            <span>{isEditor ? tab.name : (tab.label ?? conn?.name ?? tab.connId)}</span>
+            {/* `||` rather than `??`: an empty label is as good as no label,
+                and a nameless tab tells the user nothing. */}
+            <span>{isEditor ? tab.name : (tab.label || conn?.name || tab.connId)}</span>
             {isEditor
               ? (isDirty && <span className={styles.dirtyDot} title="Unsaved changes">●</span>)
               : <span className={styles.tabType}>{tab.type}</span>}

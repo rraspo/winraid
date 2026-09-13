@@ -74,16 +74,21 @@ describe('choosing the default connection from the connections screen', () => {
     expect(onSetDefault).toHaveBeenCalledWith('c2')
   })
 
-  it('says what it does rather than relying on an icon', () => {
+  it('marks the default card in words, not only by the control', () => {
     setup({ defaultConnectionId: 'c1' })
-    expect(within(card('Vault')).getByRole('button', { name: 'Make Vault the default connection' }).textContent).toContain('Set default')
-    expect(within(card('Atlas')).getByRole('button', { name: /default/ }).textContent).toContain('Default')
+    expect(card('Atlas').textContent).toContain('Default')
+    expect(card('Vault').textContent).not.toContain('Default')
   })
 
-  it('keeps the control with the card’s other actions', () => {
-    setup()
-    const labels = within(card('Atlas')).getAllByRole('button').map((b) => b.textContent.trim())
-    expect(labels).toContain('Set default')
-    expect(labels).toContain('Browse files')
+  it('puts the default connection at the top of the list', () => {
+    setup({ defaultConnectionId: 'c2' })
+    const names = screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))
+    expect(names).toEqual(['Vault', 'Atlas'])
+  })
+
+  it('leaves the order alone when nothing is pinned', () => {
+    setup({ defaultConnectionId: null })
+    const names = screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))
+    expect(names).toEqual(['Atlas', 'Vault'])
   })
 })

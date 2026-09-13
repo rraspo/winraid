@@ -49,6 +49,14 @@ function ruleTags(connection) {
 // host, watch/remote paths, rule summary and per-card actions. Verify opens
 // the same editor as Edit, where Verify & Clean lives (see ConnectionView).
 export default function ConnectionsView({ connections = [], watcherStatuses = {}, onEditConnection, onOpenTab, onStartWatching, onStopWatching, defaultConnectionId = null, onSetDefault }) {
+  // The default connection leads the list. It is the one every other screen
+  // opens on, so it is the one you look for first — and being first is half
+  // of what tells you it is the default at all.
+  const orderedConnections = [
+    ...connections.filter((c) => c.id === defaultConnectionId),
+    ...connections.filter((c) => c.id !== defaultConnectionId),
+  ]
+
   return (
     <div className={styles.container}>
       <div className={styles.header}>
@@ -66,10 +74,31 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
         <div className={styles.empty}>No connections yet</div>
       ) : (
         <div className={styles.grid}>
-          {connections.map((connection) => {
+          {orderedConnections.map((connection) => {
             const word = watcherWord(watcherStatuses[connection.id])
+            const isDefault = connection.id === defaultConnectionId
             return (
-              <article key={connection.id} className={styles.card} aria-label={connection.name}>
+              <article
+                key={connection.id}
+                className={[styles.card, isDefault ? styles.cardDefault : ''].join(' ')}
+                aria-label={connection.name}
+              >
+                {isDefault && <span className={styles.defaultRibbon}>Default</span>}
+                {/* Short, like every other tooltip in the app — the card's
+                    ribbon already says which connection is the default. */}
+                <Tooltip tip={isDefault ? 'Clear default' : 'Make default'} side="left">
+                  <button
+                    type="button"
+                    className={[styles.pinBtn, isDefault ? styles.pinBtnOn : ''].join(' ')}
+                    aria-pressed={isDefault}
+                    aria-label={isDefault
+                      ? `Stop ${connection.name} being the default connection`
+                      : `Make ${connection.name} the default connection`}
+                    onClick={() => onSetDefault?.(isDefault ? null : connection.id)}
+                  >
+                    <Pin size={14} fill={isDefault ? 'currentColor' : 'none'} />
+                  </button>
+                </Tooltip>
                 <div className={styles.cardTop}>
                   <div className={styles.iconTile}>
                     <ConnectionIcon icon={connection.icon ?? null} size={18} />
@@ -103,25 +132,6 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
                     <span key={tag} className={styles.tag}>{tag}</span>
                   ))}
                   <div className={styles.actions}>
-                    <Tooltip
-                      tip={connection.id === defaultConnectionId
-                        ? 'Browse, play, backup and size open on this connection. Choose again to go back to the last one used.'
-                        : 'Open browse, play, backup and size on this connection'}
-                      side="top"
-                    >
-                      <button
-                        type="button"
-                        className={[styles.actionButton, styles.defaultBtn, connection.id === defaultConnectionId ? styles.defaultBtnOn : ''].join(' ')}
-                        aria-pressed={connection.id === defaultConnectionId}
-                        aria-label={connection.id === defaultConnectionId
-                          ? `Stop ${connection.name} being the default connection`
-                          : `Make ${connection.name} the default connection`}
-                        onClick={() => onSetDefault?.(connection.id === defaultConnectionId ? null : connection.id)}
-                      >
-                        <Pin size={13} fill={connection.id === defaultConnectionId ? 'currentColor' : 'none'} />
-                        {connection.id === defaultConnectionId ? 'Default' : 'Set default'}
-                      </button>
-                    </Tooltip>
                     {!connection.localFolder ? (
                       <span className={styles.noWatchFolder}>No watch folder</span>
                     ) : word === 'Watching' ? (
