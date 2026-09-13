@@ -42,7 +42,7 @@ export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
   onSelectConnection, onBack, onForward, canGoBack = false, canGoForward = false,
-  defaultConnectionId = null, onSetDefault,
+  defaultConnectionId = null, onSetDefault, trashByConnection = {},
   // Whether this tab is the one currently on screen. Tabs stay mounted while
   // hidden, so anything that describes what is in front of the user has to
   // know the difference.
@@ -116,6 +116,7 @@ export default function BrowseView({
   }
 
   const sftpCfg = (connections ?? []).find((c) => c.id === selectedId)?.sftp ?? null
+  const trashed = Boolean(trashByConnection?.[selectedId]?.folder)
 
   const [diskUsage, setDiskUsage]             = useState(null)
   const [showPlay, setShowPlay]               = useState(false)
@@ -395,6 +396,7 @@ export default function BrowseView({
           canServerEdit={browse.selectedConn?.type === 'sftp'}
           onMutated={handlePlayMutated}
           sftpCfg={sftpCfg}
+          trashByConnection={trashByConnection}
         />
       )}
       <DragGhost
@@ -416,6 +418,7 @@ export default function BrowseView({
       {deleteTarget && (
         <DeleteModal
           target={deleteTarget}
+          trashed={trashed}
           onConfirm={handleDelete}
           onCancel={() => setDeleteTarget(null)}
         />
@@ -439,6 +442,7 @@ export default function BrowseView({
         <BulkDeleteModal
           count={selected.size}
           names={selectedEntries.map((e) => e.name)}
+          trashed={trashed}
           onConfirm={handleBulkDelete}
           onCancel={() => setBulkAction(null)}
         />

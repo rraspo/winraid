@@ -357,6 +357,9 @@ export default function App() {
   const [connections, setConnections] = useState([])
   // Per-connection favorite directory paths: { [connId]: string[] }
   const [favorites,   setFavorites]   = useState({})
+  // Per-connection trash folder, set in Settings: { [connId]: { folder } }.
+  // A connection with no entry deletes permanently.
+  const [trashByConnection, setTrashByConnection] = useState({})
 
   // --- Tab state ------------------------------------------------------------
   const [openTabs,    setOpenTabs]    = useState([])   // [{ id, connId, type, label? }]
@@ -380,6 +383,7 @@ export default function App() {
       setConnections(cfg.connections ?? [])
       setFavorites(cfg.favoritesByConnection ?? {})
       setDefaultConnection(cfg.defaultConnection ?? null)
+      setTrashByConnection(cfg.trashByConnection ?? {})
     })
   }, [])
 
@@ -761,6 +765,9 @@ export default function App() {
       },
     } :
     activeView === 'logs' ? { logNav } :
+    activeView === 'settings' ? {
+      onTrashByConnectionChanged: setTrashByConnection,
+    } :
     {}
 
   // The active tab's type stands in for the global view when a tab (rather
@@ -811,6 +818,7 @@ export default function App() {
                 connectionId={playTarget.connectionId}
                 path={playTarget.path}
                 connections={connections}
+                trashByConnection={trashByConnection}
                 onSelectConnection={(connId) => {
                   const conn = connections.find((c) => c.id === connId)
                   if (!conn) return
@@ -858,6 +866,7 @@ export default function App() {
                   connections={connections}
                   connectionId={tab.connId}
                   favoritesByConnection={favorites}
+                  trashByConnection={trashByConnection}
                   onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
                   onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
                   onNavigateFavorite={navigateFavorite}

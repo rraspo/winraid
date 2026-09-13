@@ -30,7 +30,8 @@ function toQuickLookFile(playFile, fileVersions) {
   }
 }
 
-export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null, connections, onSelectConnection, onOpenFolder, covering = false, defaultConnectionId = null, onSetDefault }) {
+export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null, connections, onSelectConnection, onOpenFolder, covering = false, defaultConnectionId = null, onSetDefault, trashByConnection = {} }) {
+  const trashed = Boolean(trashByConnection?.[connectionId]?.folder)
   const [scanRoot, setScanRoot] = useState(path)
   // When the user navigates between folders via a breadcrumb, the file
   // they were just looking at carries into the new scope as the trail seed
@@ -314,6 +315,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
       {pendingDelete && (
         <DeleteModal
           target={pendingDelete}
+          trashed={trashed}
           onConfirm={confirmDelete}
           onCancel={cancelDelete}
         />
@@ -322,6 +324,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
         <BulkDeleteModal
           count={selectedFiles.length}
           names={selectedFiles.map((file) => file.path.split('/').pop())}
+          trashed={trashed}
           onConfirm={confirmBulkDelete}
           onCancel={cancelBulkAction}
         />

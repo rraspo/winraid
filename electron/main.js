@@ -30,7 +30,10 @@ import { listCommand, parseListOutput, readdirEntries } from './remote-list.js'
 import { validateRemotePath } from './validation.js'
 import { backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
 import { moveRemotePath } from './remote-move.js'
-import { moveToTrash, listTrash, restoreFromTrash, purgeTrash } from './remote-trash.js'
+import { listTrash, restoreFromTrash, purgeTrash } from './remote-trash.js'
+import { deleteRemote } from './remote-delete.js'
+import { checkTrashFolder } from './trash-folder-check.js'
+import { resolveTrashFolder, trashContextFor } from './trash-context.js'
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
@@ -1570,23 +1573,44 @@ function registerIPC() {
   })
 
   // -- Remote browser: delete file or directory tree ------------------------
-  // A delete moves the item into the connection's trash; nothing is unlinked
-  // until the trash is purged.
+  // A delete moves the item into the connection's own trash folder when one
+  // is configured; without one it is unlinked (or rm -rf'd) for good.
   ipcMain.handle('remote:delete', async (_e, connectionId, remotePath, isDir) => {
     if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
-      const trash = await _trashContext(connectionId)
-      if (trash.error) return { ok: false, error: trash.error }
-      const { trashPath } = await moveToTrash(trash.deps, trash.root, remotePath, isDir)
-      log('info', `Remote ${isDir ? 'directory' : 'file'} moved to trash [${await _connLabel(connectionId)}]: ${remotePath} -> ${trashPath}`)
+      const { error, deps } = await _connWriteDeps(connectionId)
+      if (error) return { ok: false, error }
+      const trashFolder = await _configuredTrashFolder(connectionId)
+      const result = await deleteRemote(deps, { trashFolder, path: remotePath, isDir })
+      const label = await _connLabel(connectionId)
+      if (result.trashed) {
+        log('info', `Remote ${isDir ? 'directory' : 'file'} moved to trash [${label}]: ${remotePath} -> ${result.trashPath}`)
+      } else {
+        log('info', `Remote ${isDir ? 'directory' : 'file'} deleted [${label}]: ${remotePath}`)
+      }
       emitActivity({
         type: 'delete', connectionId,
         payload: { name: remotePath.split('/').pop(), parentDir: remotePath.slice(0, remotePath.lastIndexOf('/')) || '/' },
       })
-      return { ok: true }
+      return result
     } catch (err) {
       log('error', `Remote delete failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       emitActivity({ type: 'delete', connectionId, level: 'error', error: err.message })
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote browser: check a candidate trash folder before it is saved -----
+  ipcMain.handle('remote:trashCheck', async (_e, connectionId, folder) => {
+    try {
+      const { error, deps } = await _connWriteDeps(connectionId)
+      if (error) return { ok: false, error }
+      const conn = await _getConnConfig(connectionId)
+      const root = conn?.sftp?.remotePath
+      if (!validateRemotePath(root)) return { ok: false, error: 'This connection has no remote folder to check against.' }
+      return await checkTrashFolder(deps, { root, folder })
+    } catch (err) {
+      log('error', `Trash folder check failed [${await _connLabel(connectionId)}]: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -1634,6 +1658,7 @@ function registerIPC() {
     try {
       const trash = await _trashContext(connectionId)
       if (trash.error) return { ok: false, error: trash.error }
+      if (trash.noFolder) return { ok: true, entries: [] }
       return { ok: true, entries: await listTrash(trash.deps, trash.root) }
     } catch (err) {
       log('error', `Trash list failed [${await _connLabel(connectionId)}]: ${err.message}`)
@@ -1647,6 +1672,7 @@ function registerIPC() {
     try {
       const trash = await _trashContext(connectionId)
       if (trash.error) return { ok: false, error: trash.error }
+      if (trash.noFolder) return { ok: false, error: 'This connection has no trash folder configured.' }
       const { restoredPath, renamed } = await restoreFromTrash(trash.deps, trash.root, entryId)
       log('info', `Restored from trash [${await _connLabel(connectionId)}]: ${restoredPath}${renamed ? ' (renamed, original name was taken)' : ''}`)
       return { ok: true, restoredPath, renamed }
@@ -1662,6 +1688,7 @@ function registerIPC() {
     try {
       const trash = await _trashContext(connectionId)
       if (trash.error) return { ok: false, error: trash.error }
+      if (trash.noFolder) return { ok: false, error: 'This connection has no trash folder configured.' }
       const { purged, errors } = await purgeTrash(trash.deps, trash.root, entryId)
       const label = await _connLabel(connectionId)
       log('info', `Trash purged [${label}]: ${entryId ?? 'all entries'} (${purged} removed)`)
@@ -3249,21 +3276,19 @@ async function remoteMove(connectionId, srcPath, dstPath) {
   return moveRemotePath({ client, sftp, warn }, srcPath, dstPath)
 }
 
-// Resolves what a trash operation needs for a connection — the folder its trash
-// lives in and the pooled primitives — or { error } to hand back to the renderer.
-async function _trashContext(connectionId) {
+// Resolves the pooled primitives any remote write against a connection
+// needs — permanent delete included, which never touches the trash folder
+// at all — or { error } to hand back to the renderer.
+async function _connWriteDeps(connectionId) {
   if (typeof connectionId !== 'string' || !connectionId.trim()) return { error: 'Invalid connectionId' }
   const conn = await _getConnConfig(connectionId)
   if (!conn) return { error: 'Connection not found' }
-  if (conn.type !== 'sftp') return { error: 'The trash is only available for SFTP connections' }
-  const root = conn.sftp?.remotePath
-  if (!validateRemotePath(root)) return { error: 'This connection has no remote folder to keep a trash in' }
+  if (conn.type !== 'sftp') return { error: 'This operation is only available for SFTP connections' }
   const sftp = await _poolGet(connectionId)
   if (!sftp) return { error: 'Connection unavailable' }
   _poolTouch(connectionId)
   const client = _sftpPool.get(connectionId)?.client
   return {
-    root,
     deps: {
       sftp,
       // Sizing a large folder must not hold a delete hostage; a timeout records 0.
@@ -3274,6 +3299,23 @@ async function _trashContext(connectionId) {
       warn: (message) => log('warn', `Trash [${connectionId}]: ${message}`),
     },
   }
+}
+
+// A connection's own trash folder, chosen by the user in Settings — blank or
+// unset means deletes on that connection stay permanent.
+async function _configuredTrashFolder(connectionId) {
+  const { getConfig } = await import('./config.js')
+  return resolveTrashFolder(getConfig('trashByConnection')?.[connectionId]?.folder)
+}
+
+// Resolves what a trash operation (list/restore/purge) needs for a
+// connection — the configured folder and the pooled primitives — or
+// { error } for an invalid connection, or { noFolder: true } for a valid SFTP
+// connection with no trash folder configured yet.
+async function _trashContext(connectionId) {
+  const base = await _connWriteDeps(connectionId)
+  const folder = base.error ? null : await _configuredTrashFolder(connectionId)
+  return trashContextFor(base, folder)
 }
 
 async function _connLabel(connId) {

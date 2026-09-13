@@ -263,8 +263,10 @@ contextBridge.exposeInMainWorld('winraid', {
     writeFile: (connectionId, path, content) => ipcRenderer.invoke('remote:write-file', connectionId, path, content),
     /** Write binary content (ArrayBuffer/Uint8Array/Buffer) to a remote file. opts.atomic uses tmp+rename for overwrite safety. */
     writeFileBinary: (connectionId, path, data, opts) => ipcRenderer.invoke('remote:write-file-binary', connectionId, path, data, opts),
-    /** Move a remote file or directory tree into the connection's trash. */
+    /** Move a remote file or directory tree into the connection's trash, or delete it for good when none is configured. */
     delete: (connectionId, path, isDir) => ipcRenderer.invoke('remote:delete', connectionId, path, isDir),
+    /** Check a candidate trash folder before it is saved. Returns { ok } or { ok: false, error }. */
+    trashCheck: (connectionId, folder) => ipcRenderer.invoke('remote:trashCheck', connectionId, folder),
     /** List the connection's trash. Returns { ok, entries: [{ id, originalPath, name, deletedAt, size, isDir, restorable }] }. */
     trashList: (connectionId) => ipcRenderer.invoke('remote:trashList', connectionId),
     /** Restore a trash entry. Returns { ok, restoredPath, renamed } — renamed when the original name was taken. */

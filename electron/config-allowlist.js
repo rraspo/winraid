@@ -10,5 +10,5 @@ export const CONFIG_SET_ALLOWLIST = [
   'localFolder', 'operation', 'folderMode', 'extensions', 'ignoredExtensions',
   'backup', 'connections', 'backupByConnection',
   'browse', 'playDefaults', 'snapshot', 'thumbSeek', 'activeConnectionId',
-  'favoritesByConnection', 'appearance', 'defaultConnection',
+  'favoritesByConnection', 'appearance', 'defaultConnection', 'trashByConnection',
 ]
