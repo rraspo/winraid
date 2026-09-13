@@ -54,6 +54,49 @@
   flex-shrink: 0;
 }
 
+/* Narrowing the folder you are looking at. A directory can hold hundreds,
+   and reading down the list was the only way to find one. */
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.filterIcon {
+  color: var(--text3);
+  flex-shrink: 0;
+}
+
+.filterInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 12.5px;
+}
+
+.filterInput::placeholder { color: var(--text3); }
+
+.filterClear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  color: var(--text3);
+  transition: color var(--transition), background-color var(--transition);
+}
+
+.filterClear:hover { color: var(--text); background: var(--hover); }
+
 .upBtn {
   display: flex;
   align-items: center;
