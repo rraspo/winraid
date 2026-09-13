@@ -1,7 +1,13 @@
 import { shQuote } from './shell-quote.js'
+import { TRASH_DIR } from './trash.js'
 
 // Directories every NAS scatters around that are noise in a file tree.
 const NOISE_FILTER = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.@__thumb'`
+
+// The app's trash is pruned rather than filtered: `-not -name '.*'` hides the
+// trash directory's own line but find still descends into it and prints every
+// deleted file as an ordinary one, which the Size map would then count.
+const TRASH_PRUNE = `-name ${shQuote(TRASH_DIR)} -prune -o`
 
 // One `find` walk of rootPath, printing a tab-separated
 // type/size/mtime/root-relative-path line per entry.
@@ -21,7 +27,7 @@ const NOISE_FILTER = `-not -path '*/@eaDir*' -not -name '#recycle' -not -name '.
 // represented safely in a command line and no real path needs them.
 export function buildRemoteTreeCommand(rootPath) {
   const root = shQuote(rootPath.replace(/\/+$/, '') || '/')
-  const walk = `find ${shQuote(rootPath)} -mindepth 1 ${NOISE_FILTER} -not -name '.*'`
+  const walk = `find ${shQuote(rootPath)} -mindepth 1 ${TRASH_PRUNE} ${NOISE_FILTER} -not -name '.*' -print`
 
   return `root=${root}; ${walk}` +
     ` | while IFS= read -r p; do` +

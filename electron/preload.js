@@ -263,9 +263,15 @@ contextBridge.exposeInMainWorld('winraid', {
     writeFile: (connectionId, path, content) => ipcRenderer.invoke('remote:write-file', connectionId, path, content),
     /** Write binary content (ArrayBuffer/Uint8Array/Buffer) to a remote file. opts.atomic uses tmp+rename for overwrite safety. */
     writeFileBinary: (connectionId, path, data, opts) => ipcRenderer.invoke('remote:write-file-binary', connectionId, path, data, opts),
-    /** Delete a remote file or directory tree. */
+    /** Move a remote file or directory tree into the connection's trash. */
     delete: (connectionId, path, isDir) => ipcRenderer.invoke('remote:delete', connectionId, path, isDir),
-    /** Move / rename a remote path via SFTP rename. */
+    /** List the connection's trash. Returns { ok, entries: [{ id, originalPath, name, deletedAt, size, isDir, restorable }] }. */
+    trashList: (connectionId) => ipcRenderer.invoke('remote:trashList', connectionId),
+    /** Restore a trash entry. Returns { ok, restoredPath, renamed } — renamed when the original name was taken. */
+    trashRestore: (connectionId, entryId) => ipcRenderer.invoke('remote:trashRestore', connectionId, entryId),
+    /** Permanently delete one trash entry, or all of them when entryId is omitted. Returns { ok, purged }. */
+    trashPurge: (connectionId, entryId) => ipcRenderer.invoke('remote:trashPurge', connectionId, entryId),
+    /** Move / rename a remote path (SSH mv, SFTP rename fallback). */
     move: (connectionId, src, dst) => ipcRenderer.invoke('remote:move', connectionId, src, dst),
     /** Create a remote directory. */
     mkdir: (connectionId, path) => ipcRenderer.invoke('remote:mkdir', connectionId, path),

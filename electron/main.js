@@ -21,14 +21,16 @@ import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
 import { pathToFileURL } from 'url'
 import { readFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync, unlink as unlinkAsync } from 'fs/promises'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { homedir, userInfo, tmpdir } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { initActivity, pushActivity, tailActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
-import { listCommand, parseListOutput } from './remote-list.js'
+import { listCommand, parseListOutput, readdirEntries } from './remote-list.js'
 import { validateRemotePath } from './validation.js'
-import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
+import { backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
+import { moveRemotePath } from './remote-move.js'
+import { moveToTrash, listTrash, restoreFromTrash, purgeTrash } from './remote-trash.js'
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
@@ -1394,12 +1396,7 @@ function registerIPC() {
       return new Promise((resolve) => {
         sftp.readdir(remotePath, (err, list) => {
           if (err) return resolve({ ok: false, error: err.message })
-          const entries = sortEntries(list.map((e) => ({
-            name:     e.filename,
-            type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
-            size:     e.attrs.size ?? 0,
-            modified: (e.attrs.mtime ?? 0) * 1000,
-          })))
+          const entries = sortEntries(readdirEntries(list))
           log('info', `[perf] list via readdir: ${entries.length} entries in ${Date.now() - tReaddir}ms — ${remotePath}`)
           resolve({ ok: true, entries })
         })
@@ -1573,20 +1570,15 @@ function registerIPC() {
   })
 
   // -- Remote browser: delete file or directory tree ------------------------
+  // A delete moves the item into the connection's trash; nothing is unlinked
+  // until the trash is purged.
   ipcMain.handle('remote:delete', async (_e, connectionId, remotePath, isDir) => {
     if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
-      const sftp = await _poolGet(connectionId)
-      if (!sftp) return { ok: false, error: 'Connection unavailable' }
-      _poolTouch(connectionId)
-      if (isDir) {
-        await sftpRmRf(sftp, remotePath)
-      } else {
-        await new Promise((res, rej) =>
-          sftp.unlink(remotePath, (e) => e ? rej(e) : res())
-        )
-      }
-      log('info', `Remote ${isDir ? 'directory' : 'file'} deleted [${await _connLabel(connectionId)}]: ${remotePath}`)
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      const { trashPath } = await moveToTrash(trash.deps, trash.root, remotePath, isDir)
+      log('info', `Remote ${isDir ? 'directory' : 'file'} moved to trash [${await _connLabel(connectionId)}]: ${remotePath} -> ${trashPath}`)
       emitActivity({
         type: 'delete', connectionId,
         payload: { name: remotePath.split('/').pop(), parentDir: remotePath.slice(0, remotePath.lastIndexOf('/')) || '/' },
@@ -1605,51 +1597,10 @@ function registerIPC() {
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
-      _poolTouch(connectionId)
-      const poolEntry = _sftpPool.get(connectionId)
-      const client = poolEntry?.client
-
-      // Prefer SSH exec mv — handles cross-device moves (mergerfs EXDEV) that
-      // sftp.rename() cannot; fall back to sftp.rename() for restricted shells.
       const label = await _connLabel(connectionId)
-      let result
-      let usedFallback = false
-      if (client) {
-        result = await new Promise((resolve) => {
-          client.exec(`mv -- ${shQuote(srcPath)} ${shQuote(dstPath)}`, (err, stream) => {
-            if (err) {
-              log('warn', `Remote move [${label}]: SSH exec error (${err.message}), falling back to SFTP rename`)
-              return resolve(null)
-            }
-            stream.resume()  // drain stdout so the SSH window doesn't stall
-            const stderrChunks = []
-            stream.stderr.on('data', (chunk) => stderrChunks.push(chunk))
-            stream.on('error', (streamErr) => {
-              log('warn', `Remote move [${label}]: SSH stream error (${streamErr.message}), falling back to SFTP rename`)
-              resolve(null)
-            })
-            stream.on('close', (code) => {
-              if (code === 0) return resolve({ ok: true })
-              const stderr = stderrChunks.join('').trim()
-              log('warn', `Remote move [${label}]: mv exited ${code}${stderr ? ` — ${stderr}` : ''}, falling back to SFTP rename`)
-              resolve(null)
-            })
-          })
-        })
-      } else {
-        log('warn', `Remote move [${label}]: no SSH client in pool, using SFTP rename`)
-      }
-      if (!result) {
-        usedFallback = true
-        result = await new Promise((resolve) => {
-          sftp.rename(srcPath, dstPath, (err) => {
-            if (err) return resolve({ ok: false, error: err.message })
-            resolve({ ok: true })
-          })
-        })
-      }
+      const result = await remoteMove(connectionId, srcPath, dstPath)
       if (result.ok) {
-        log('info', `Remote move [${label}] (${usedFallback ? 'sftp rename' : 'ssh mv'}): ${srcPath} -> ${dstPath}`)
+        log('info', `Remote move [${label}] (${result.via}): ${srcPath} -> ${dstPath}`)
         const name   = dstPath.split('/').pop()
         const dstDir = dstPath.slice(0, dstPath.lastIndexOf('/')) || '/'
         const srcDir = srcPath.slice(0, srcPath.lastIndexOf('/')) || '/'
@@ -1665,12 +1616,62 @@ function registerIPC() {
         log('error', `Remote move failed [${label}]   to: ${dstPath} — ${result.error}`)
         emitActivity({ type: 'move', connectionId, level: 'error', error: result.error })
       }
-      return result
+      return result.ok ? { ok: true } : { ok: false, error: result.error }
     } catch (err) {
       const label = await _connLabel(connectionId)
       log('error', `Remote move/rename failed [${label}] from: ${srcPath}`)
       log('error', `Remote move/rename failed [${label}]   to: ${dstPath} — ${err.message}`)
       emitActivity({ type: 'move', connectionId, level: 'error', error: err.message })
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote trash: list, restore, purge ------------------------------------
+  // Returns { ok, entries: [{ id, originalPath, name, deletedAt, size, isDir, restorable }] }.
+  // An entry whose record is unreadable lists with restorable: false and a null
+  // originalPath; it can still be purged.
+  ipcMain.handle('remote:trashList', async (_e, connectionId) => {
+    try {
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      return { ok: true, entries: await listTrash(trash.deps, trash.root) }
+    } catch (err) {
+      log('error', `Trash list failed [${await _connLabel(connectionId)}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Returns { ok, restoredPath, renamed } — renamed is true when the original
+  // name was taken and the entry landed beside it instead of overwriting it.
+  ipcMain.handle('remote:trashRestore', async (_e, connectionId, entryId) => {
+    try {
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      const { restoredPath, renamed } = await restoreFromTrash(trash.deps, trash.root, entryId)
+      log('info', `Restored from trash [${await _connLabel(connectionId)}]: ${restoredPath}${renamed ? ' (renamed, original name was taken)' : ''}`)
+      return { ok: true, restoredPath, renamed }
+    } catch (err) {
+      log('error', `Trash restore failed [${await _connLabel(connectionId)}]: ${entryId} — ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Permanently deletes one entry, or the whole trash when entryId is omitted.
+  // Returns { ok, purged } plus an error when any entry could not be removed.
+  ipcMain.handle('remote:trashPurge', async (_e, connectionId, entryId) => {
+    try {
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      const { purged, errors } = await purgeTrash(trash.deps, trash.root, entryId)
+      const label = await _connLabel(connectionId)
+      log('info', `Trash purged [${label}]: ${entryId ?? 'all entries'} (${purged} removed)`)
+      if (errors.length) {
+        for (const failure of errors) log('error', `Trash purge failed [${label}]: ${failure.id} — ${failure.error}`)
+        return { ok: false, purged, error: `${errors.length} item${errors.length === 1 ? '' : 's'} could not be deleted: ${errors[0].error}` }
+      }
+      return { ok: true, purged }
+    } catch (err) {
+      log('error', `Trash purge failed [${await _connLabel(connectionId)}]: ${entryId ?? 'all entries'} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -3233,6 +3234,46 @@ async function _poolConnect(connId) {
 async function _getConnConfig(connId) {
   const { getConfig } = await import('./config.js')
   return (getConfig().connections ?? []).find((c) => c.id === connId) ?? null
+}
+
+// The app's single remote move over a pooled connection: SSH `mv` with an SFTP
+// rename fallback. Resolves { ok, via } or { ok: false, error }; callers own
+// logging the outcome and emitting activity.
+async function remoteMove(connectionId, srcPath, dstPath) {
+  const sftp = await _poolGet(connectionId)
+  if (!sftp) return { ok: false, error: 'Connection unavailable' }
+  _poolTouch(connectionId)
+  const client = _sftpPool.get(connectionId)?.client
+  const label = await _connLabel(connectionId)
+  const warn = (message) => log('warn', `Remote move [${label}]: ${message}`)
+  return moveRemotePath({ client, sftp, warn }, srcPath, dstPath)
+}
+
+// Resolves what a trash operation needs for a connection — the folder its trash
+// lives in and the pooled primitives — or { error } to hand back to the renderer.
+async function _trashContext(connectionId) {
+  if (typeof connectionId !== 'string' || !connectionId.trim()) return { error: 'Invalid connectionId' }
+  const conn = await _getConnConfig(connectionId)
+  if (!conn) return { error: 'Connection not found' }
+  if (conn.type !== 'sftp') return { error: 'The trash is only available for SFTP connections' }
+  const root = conn.sftp?.remotePath
+  if (!validateRemotePath(root)) return { error: 'This connection has no remote folder to keep a trash in' }
+  const sftp = await _poolGet(connectionId)
+  if (!sftp) return { error: 'Connection unavailable' }
+  _poolTouch(connectionId)
+  const client = _sftpPool.get(connectionId)?.client
+  return {
+    root,
+    deps: {
+      sftp,
+      // Sizing a large folder must not hold a delete hostage; a timeout records 0.
+      exec: client ? (command) => execWithTimeout(client, command, 30_000) : null,
+      move: (src, dst) => remoteMove(connectionId, src, dst),
+      newId: randomUUID,
+      now: Date.now,
+      warn: (message) => log('warn', `Trash [${connectionId}]: ${message}`),
+    },
+  }
 }
 
 async function _connLabel(connId) {
