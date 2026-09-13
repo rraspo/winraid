@@ -456,12 +456,22 @@ export default function SettingsView({ onTrashByConnectionChanged } = {}) {
                           onChange={(e) => handleTrashDraftChange(conn.id, e.target.value)}
                         />
                         {savedFolder && (
-                          <Button size="sm" variant="ghost" onClick={() => handleTrashOff(conn.id)}>
-                            Turn off trash for {conn.name}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Turn off trash for ${conn.name}`}
+                            onClick={() => handleTrashOff(conn.id)}
+                          >
+                            Turn off
                           </Button>
                         )}
-                        <Button size="sm" onClick={() => handleTrashSave(conn.id)} disabled={checking}>
-                          {checking ? 'Checking...' : `Save trash folder for ${conn.name}`}
+                        <Button
+                          size="sm"
+                          aria-label={`Save trash folder for ${conn.name}`}
+                          onClick={() => handleTrashSave(conn.id)}
+                          disabled={checking}
+                        >
+                          {checking ? 'Checking…' : 'Save'}
                         </Button>
                       </div>
                       {!savedFolder && <p className={styles.hint}>Deletes on this connection are permanent.</p>}
