@@ -10,9 +10,13 @@ import ConnectionsView from './ConnectionsView'
 // connection side by side. The Connections screen is where that comparison
 // already happens, so the choice belongs on the cards themselves.
 //
+// It sits with the card's other actions and carries a label. As a bare icon
+// in the card's corner it read as decoration and was missed entirely, which
+// is the whole failure this control existed to fix.
+//
 // DOM contract, per connection card:
-//   - a control named "Make <name> the default connection" that calls
-//     onSetDefault(<id>)
+//   - a control named "Make <name> the default connection", alongside the
+//     card's other actions, that calls onSetDefault(<id>)
 //   - the card that is the default says so, and its control instead offers
 //     to clear it, calling onSetDefault(null) — clearing returns to "last
 //     used", the same value Settings writes
@@ -68,5 +72,18 @@ describe('choosing the default connection from the connections screen', () => {
     const { onSetDefault } = setup({ defaultConnectionId: 'c1' })
     fireEvent.click(within(card('Vault')).getByRole('button', { name: 'Make Vault the default connection' }))
     expect(onSetDefault).toHaveBeenCalledWith('c2')
+  })
+
+  it('says what it does rather than relying on an icon', () => {
+    setup({ defaultConnectionId: 'c1' })
+    expect(within(card('Vault')).getByRole('button', { name: 'Make Vault the default connection' }).textContent).toContain('Set default')
+    expect(within(card('Atlas')).getByRole('button', { name: /default/ }).textContent).toContain('Default')
+  })
+
+  it('keeps the control with the card’s other actions', () => {
+    setup()
+    const labels = within(card('Atlas')).getAllByRole('button').map((b) => b.textContent.trim())
+    expect(labels).toContain('Set default')
+    expect(labels).toContain('Browse files')
   })
 })

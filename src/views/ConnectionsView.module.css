@@ -207,23 +207,22 @@
 }
 
 /* The default connection — the one browse, play, backup and size open on.
-   Filled and in the accent so the chosen card is obvious across the grid
-   rather than only on hover. */
+   It sits with the card's other actions and is named, because as a bare
+   icon in the corner it read as decoration and went unnoticed. The chosen
+   card carries the accent so it is still obvious across the grid. */
 .defaultBtn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  color: var(--text3);
-  transition: color var(--transition), background-color var(--transition);
+  gap: 6px;
 }
 
-.defaultBtn:hover { color: var(--text); background: var(--hover); }
+.defaultBtnOn {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 
-.defaultBtnOn { color: var(--accent); }
-.defaultBtnOn:hover { color: var(--accent); }
+.defaultBtnOn:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 
 /* A connection with no watch folder has nothing to start, so it says that
    rather than offering a control that could only fail. */

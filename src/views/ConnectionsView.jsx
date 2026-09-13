@@ -82,24 +82,6 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
                     <div className={styles.hostLine}>{hostLine(connection)}</div>
                   </div>
                   <div className={styles.statusGroup}>
-                    <Tooltip
-                      tip={connection.id === defaultConnectionId
-                        ? 'Browse, play, backup and size open on this connection. Choose again to go back to the last one used.'
-                        : 'Open browse, play, backup and size on this connection'}
-                      side="left"
-                    >
-                      <button
-                        type="button"
-                        className={[styles.defaultBtn, connection.id === defaultConnectionId ? styles.defaultBtnOn : ''].join(' ')}
-                        aria-pressed={connection.id === defaultConnectionId}
-                        aria-label={connection.id === defaultConnectionId
-                          ? `Stop ${connection.name} being the default connection`
-                          : `Make ${connection.name} the default connection`}
-                        onClick={() => onSetDefault?.(connection.id === defaultConnectionId ? null : connection.id)}
-                      >
-                        <Pin size={14} fill={connection.id === defaultConnectionId ? 'currentColor' : 'none'} />
-                      </button>
-                    </Tooltip>
                     <span className={[styles.statusDot, statusDotClass(word)].join(' ')} />
                     <span className={styles.statusWord}>{word}</span>
                   </div>
@@ -121,6 +103,25 @@ export default function ConnectionsView({ connections = [], watcherStatuses = {}
                     <span key={tag} className={styles.tag}>{tag}</span>
                   ))}
                   <div className={styles.actions}>
+                    <Tooltip
+                      tip={connection.id === defaultConnectionId
+                        ? 'Browse, play, backup and size open on this connection. Choose again to go back to the last one used.'
+                        : 'Open browse, play, backup and size on this connection'}
+                      side="top"
+                    >
+                      <button
+                        type="button"
+                        className={[styles.actionButton, styles.defaultBtn, connection.id === defaultConnectionId ? styles.defaultBtnOn : ''].join(' ')}
+                        aria-pressed={connection.id === defaultConnectionId}
+                        aria-label={connection.id === defaultConnectionId
+                          ? `Stop ${connection.name} being the default connection`
+                          : `Make ${connection.name} the default connection`}
+                        onClick={() => onSetDefault?.(connection.id === defaultConnectionId ? null : connection.id)}
+                      >
+                        <Pin size={13} fill={connection.id === defaultConnectionId ? 'currentColor' : 'none'} />
+                        {connection.id === defaultConnectionId ? 'Default' : 'Set default'}
+                      </button>
+                    </Tooltip>
                     {!connection.localFolder ? (
                       <span className={styles.noWatchFolder}>No watch folder</span>
                     ) : word === 'Watching' ? (
