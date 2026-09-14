@@ -4,7 +4,7 @@ import {
   ChevronRight, HardDrive, Download,
   AlertCircle, Loader, FolderPlus, List, LayoutGrid,
   Trash2, FolderInput, X as XIcon, Play, Search, ArrowUpDown, Star,
-  ArrowLeft, ArrowRight, Home, Clock, Plus, RefreshCw,
+  ArrowLeft, Home, Plus, RefreshCw,
 } from 'lucide-react'
 import { isFavorite, favName } from '../utils/favorites'
 import { normalizeForSearch } from '../utils/normalizeForSearch'
@@ -41,7 +41,7 @@ function parentFolder(remotePath) {
 export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigateFavorite, onNavigate, onOpenTab,
-  onSelectConnection, onBack, onForward, canGoBack = false, canGoForward = false,
+  onSelectConnection, onBack, canGoBack = false,
   defaultConnectionId = null, onSetDefault, trashByConnection = {},
   // Whether this tab is the one currently on screen. Tabs stay mounted while
   // hidden, so anything that describes what is in front of the user has to
@@ -504,18 +504,6 @@ export default function BrowseView({
             <ArrowLeft size={15} />
           </button>
         </Tooltip>
-        <Tooltip tip="Forward" side="bottom">
-          <button
-            type="button"
-            className={styles.iconBtn}
-            aria-label="Forward"
-            onClick={onForward}
-            disabled={!canGoForward}
-          >
-            <ArrowRight size={15} />
-          </button>
-        </Tooltip>
-
         <ConnectionPicker
           connections={connections}
           connectionId={selectedId}
@@ -528,45 +516,45 @@ export default function BrowseView({
           onSetDefault={onSetDefault}
         />
 
-        <div className={styles.breadcrumb} ref={breadcrumbRef}>
+        <div className={styles.breadcrumbWrap}>
           {breadcrumbOverflow && (
-            <span className={styles.crumbEllipsisWrap}>
-              <button
-                type="button"
-                ref={crumbMarkerRef}
-                className={styles.crumbEllipsis}
-                aria-label="Hidden folders"
-                aria-haspopup="menu"
-                aria-expanded={crumbMenuOpen}
-                onClick={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect()
-                  setCrumbMenuAt({ top: Math.round(rect.bottom + 6), left: Math.round(rect.left) })
-                  setCrumbMenuOpen((v) => !v)
-                }}
-              >
-                ...
-              </button>
-            </span>
+            <button
+              type="button"
+              ref={crumbMarkerRef}
+              className={styles.crumbEllipsis}
+              aria-label="Hidden folders"
+              aria-haspopup="menu"
+              aria-expanded={crumbMenuOpen}
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setCrumbMenuAt({ top: Math.round(rect.bottom + 6), left: Math.round(rect.left) })
+                setCrumbMenuOpen((v) => !v)
+              }}
+            >
+              ...
+            </button>
           )}
-          {crumbs.map((c, i) => (
-            <span key={c.path} className={styles.crumbGroup}>
-              {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
-              <button
-                type="button"
-                className={[
-                  styles.crumb,
-                  c.path === path ? styles.crumbActive : '',
-                ].join(' ')}
-                title={c.path === path ? 'Copy full path' : undefined}
-                onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
-                onDragOver={(e) => handleDragOverFolder(e, c.path)}
-                onDragLeave={handleDragLeaveFolder}
-                onDrop={(e) => handleDrop(e, c.path)}
-              >
-                {i === 0 ? <HardDrive size={11} /> : c.label}
-              </button>
-            </span>
-          ))}
+          <div className={styles.breadcrumb} ref={breadcrumbRef}>
+            {crumbs.map((c, i) => (
+              <span key={c.path} className={styles.crumbGroup}>
+                {i > 0 && <ChevronRight size={11} className={styles.crumbSep} />}
+                <button
+                  type="button"
+                  className={[
+                    styles.crumb,
+                    c.path === path ? styles.crumbActive : '',
+                  ].join(' ')}
+                  title={c.path === path ? 'Copy full path' : undefined}
+                  onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
+                  onDragOver={(e) => handleDragOverFolder(e, c.path)}
+                  onDragLeave={handleDragLeaveFolder}
+                  onDrop={(e) => handleDrop(e, c.path)}
+                >
+                  {i === 0 ? <HardDrive size={11} /> : c.label}
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
 
         <div className={styles.favWrap} ref={favDropRef}>
@@ -675,17 +663,6 @@ export default function BrowseView({
             disabled={busy || loading || noConfig || mergerfsWarning}
           >
             <FolderPlus size={15} />
-          </button>
-        </Tooltip>
-
-        <Tooltip tip="Activity" side="bottom">
-          <button
-            type="button"
-            className={styles.iconBtn}
-            aria-label="Activity"
-            onClick={() => onNavigate?.('dashboard')}
-          >
-            <Clock size={15} />
           </button>
         </Tooltip>
 

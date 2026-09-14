@@ -53,18 +53,35 @@
    only the last folder survived and by 900 the trail was gone entirely,
    leaving no way to walk back up. The floor holds a few crumbs no matter
    how narrow the window gets, and the filter box beside it gives up its
-   width several times faster to pay for them. */
-.breadcrumb {
+   width several times faster to pay for them.
+
+   The hidden-folders marker used to sit inside this scrolling track,
+   pinned over whatever had scrolled underneath it — which meant the crumb
+   sitting exactly at the scroll boundary was only ever partly covered, and
+   the sliver poking out past the marker still hit-tested to it instead of
+   to itself. The marker is a plain sibling of the scrolling track instead:
+   it keeps its own space in the row, the track starts after it, and a
+   crumb can never land underneath it. */
+.breadcrumbWrap {
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 140px;
   flex: 1 1 auto;
+  margin-left: 2px;
+  overflow: hidden;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   font-size: 13px;
-  margin-left: 2px;
 }
 
 .breadcrumb::-webkit-scrollbar { display: none; }
@@ -78,20 +95,10 @@
 
 .crumbSep { color: var(--text3); flex-shrink: 0; }
 
-/* The marker sticks to the left edge and paints over whatever has scrolled
-   under it, so it is the only thing clickable there. That makes it the way
-   back up: choosing it lists the folders it is hiding. */
-.crumbEllipsisWrap {
-  position: sticky;
-  left: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  background: var(--bg);
-}
-
+/* Choosing it lists the folders it is hiding — the way back up while the
+   trail is scrolled to the folder you are in. */
 .crumbEllipsis {
+  flex-shrink: 0;
   padding: 2px 4px;
   border-radius: 4px;
   color: var(--text3);
