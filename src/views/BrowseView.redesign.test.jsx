@@ -18,10 +18,13 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 //
 // DOM contract:
 //   - <div role="toolbar" aria-label="Browser"> holding buttons named
-//     "Back", "Forward", the connection picker (named "Connection: <name>"),
+//     "Back", the connection picker (named "Connection: <name>"),
 //     "Favorites", "Jump to sync root", "Sort order",
-//     "New folder", "Activity", "Grid view", "List view"; the active view
+//     "New folder", "Grid view", "List view"; the active view
 //     toggle has aria-pressed="true"
+//   - there is no "Forward" button and no "Activity" button: the toolbar is
+//     short of width, Forward is rarely reached for, and Activity only
+//     jumped to the Dashboard the nav rail already opens
 //   - the filter input keeps the placeholder "Search this folder"
 //   - "Favorites" opens a menu (role="menu") listing the favorites by name
 //     plus "Add current folder" / "Remove current folder"
@@ -88,10 +91,12 @@ describe('BrowseView redesign', () => {
   it('renders the toolbar with every control in prototype order', async () => {
     await mount()
     const names = within(toolbar()).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent.trim())
-    for (const expected of ['Back', 'Forward', 'Connection: Atlas', 'Favorites', 'Jump to sync root', 'Sort order', 'New folder', 'Activity', 'Grid view', 'List view']) {
+    for (const expected of ['Back', 'Connection: Atlas', 'Favorites', 'Jump to sync root', 'Sort order', 'New folder', 'Grid view', 'List view']) {
       expect(names).toContain(expected)
     }
     expect(names).not.toContain('Select')
+    expect(names).not.toContain('Forward')
+    expect(names).not.toContain('Activity')
     expect(names.indexOf('Back')).toBeLessThan(names.indexOf('Favorites'))
     expect(names.indexOf('Favorites')).toBeLessThan(names.indexOf('Sort order'))
     expect(names.indexOf('Sort order')).toBeLessThan(names.indexOf('Grid view'))
