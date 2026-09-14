@@ -295,10 +295,12 @@
   gap: 8px;
 }
 
-/* ---- Modal dialogs (SSH wizard / Verify confirm / Verify results) ---- */
+/* ---- Modal dialogs (SSH wizard / Verify confirm / Verify results) ----
+   Starts below the title bar so the window stays draggable and its
+   controls stay reachable while a dialog is open. */
 .overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-height) 0 0 0;
   background: color-mix(in srgb, black 45%, transparent);
   display: flex;
   align-items: center;

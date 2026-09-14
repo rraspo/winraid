@@ -2,10 +2,11 @@
    QuickLookOverlay — fullscreen SFTP file preview overlay
    ============================================================================= */
 
-/* Full-viewport backdrop */
+/* Full-viewport backdrop — starts below the title bar so the window stays
+   draggable and Minimize/Maximize/Close stay reachable while open. */
 .overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-height) 0 0 0;
   z-index: 1000;
   background: color-mix(in oklab, var(--bg) 82%, transparent);
   display: flex;
@@ -107,10 +108,14 @@
   white-space: nowrap;
 }
 
+/* flex-shrink: 0 keeps every crumb at its natural width — a shrunk crumb's
+   text still paints at full width, bleeding into the next crumb's box and
+   handing that crumb's clicks to whichever one paints on top. The parent's
+   own overflow: hidden (see .filePath) clips whatever doesn't fit instead. */
 .filePathCrumb {
   display: inline-flex;
   align-items: center;
-  min-width: 0;
+  flex-shrink: 0;
 }
 
 .filePathSegment {

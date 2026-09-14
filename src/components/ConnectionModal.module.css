@@ -1,8 +1,10 @@
 /* ConnectionModal */
 
+/* Starts below the title bar so the window stays draggable and its
+   controls stay reachable while the dialog is open. */
 .overlay {
   position: fixed;
-  inset: 0;
+  inset: var(--titlebar-height) 0 0 0;
   background: color-mix(in srgb, black 50%, transparent);
   display: flex;
   align-items: center;

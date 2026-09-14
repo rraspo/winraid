@@ -116,6 +116,12 @@
   --sidebar-width:    220px;
   --statusbar-height: 26px;
   --header-height:    52px;
+  /* The frameless window's own chrome (see TitleBar.module.css). Every
+     full-window fixed layer starts below this, not at inset: 0 — on
+     Windows the title bar's drag region is handed to the OS as window
+     caption, so a layer painted over it steals clicks from Minimize,
+     Maximize and Close whatever its z-index says. */
+  --titlebar-height:  40px;
 }
 
 /* =============================================================================

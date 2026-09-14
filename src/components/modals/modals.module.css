@@ -1,6 +1,13 @@
+/* position: fixed (not absolute) so this blocks the whole window — nav
+   rail and tabs included — while the dialog is open, and so it starts
+   below the title bar like every other full-window layer instead of
+   painting over the frameless window's own drag region and controls. A
+   plain `position: absolute` version of this used to size itself to
+   whatever content pane it was mounted in, which left the rest of the
+   window clickable underneath a supposedly modal dialog. */
 .modalOverlay {
-  position: absolute;
-  inset: 0;
+  position: fixed;
+  inset: var(--titlebar-height) 0 0 0;
   background: color-mix(in oklab, var(--bg) 70%, transparent);
   display: flex;
   align-items: center;

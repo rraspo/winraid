@@ -645,12 +645,19 @@ export default function QuickLookOverlay({
   function beginTrim() {
     const v = mediaRef.current
     const dur = v?.duration
-    const safe = Number.isFinite(dur) ? dur : 0
+    // A zero (or not-yet-known) duration collapses the start and end
+    // handles onto the same pixel — trimPct divides by trimDur, so both
+    // render at 0% and the later one in DOM order eats every click on the
+    // other. Wait for real metadata instead of opening a degenerate range.
+    if (!Number.isFinite(dur) || dur <= 0) {
+      toast.show({ msg: "Video duration isn't available yet — try again in a moment.", type: 'error' })
+      return
+    }
     v?.pause?.()
     setTrimFile(file)
     setTrimIn(0)
-    setTrimOut(safe)
-    setTrimDur(safe)
+    setTrimOut(dur)
+    setTrimDur(dur)
     setTrimPos(Number.isFinite(v?.currentTime) ? v.currentTime : 0)
     setTrimPlaying(false)
     setTrimming(true)

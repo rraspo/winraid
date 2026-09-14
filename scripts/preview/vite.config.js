@@ -50,6 +50,11 @@ export default defineConfig({
   },
   server: {
     port: 5180,
+    // hit-audit.mjs and shoot.mjs hardcode this port; a silent fallback to
+    // the next free one would have them probe/audit whatever else is
+    // listening on 5180 instead — a stale server, or another worktree's
+    // concurrent preview run — without either script noticing.
+    strictPort: true,
     host: '127.0.0.1',
   },
 })

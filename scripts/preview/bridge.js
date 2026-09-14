@@ -246,7 +246,10 @@ window.winraid = {
     trimVideo: () => Promise.resolve({ ok: true, outPath: '' }),
     rotateVideo: () => Promise.resolve({ ok: true, outPath: '' }),
     cropVideo: () => Promise.resolve({ ok: true, outPath: '' }),
-    trimCapability: () => Promise.resolve({ ok: true, mode: 'none' }),
+    // 'nas' (server-side ffmpeg, no local-trim consent needed) rather than
+    // 'none' — so the quick-look-trim preview screen reaches the actual trim
+    // timeline instead of stalling on the "no engine available" setup card.
+    trimCapability: () => Promise.resolve({ ok: true, mode: 'nas' }),
     downloadFfmpeg: () => Promise.resolve({ ok: true, path: '' }),
     cancelFfmpegDownload: () => Promise.resolve({ ok: true }),
     onFfmpegDownloadProgress: (callback) => channels.ffmpegDownloadProgress.subscribe(callback),
@@ -344,12 +347,39 @@ function clickButton(name) {
   }
 }
 
+// Right-clicks an element, the way EntryMenu's cursor-anchored context menu
+// actually opens — distinct from clicking its own "..." button, which
+// anchors to the button instead. Fires a real `contextmenu` event at the
+// element's own on-screen position rather than a synthesized click.
+function openContextMenu(selector, description) {
+  return {
+    description: description ?? `right-click ${selector}`,
+    find: () => findFirst(selector),
+    act: (el) => {
+      const rect = el.getBoundingClientRect()
+      el.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }))
+    },
+  }
+}
+
 // Every screen is reached through the nav rail (Browse, Size map and
 // Backup open the active connection's tab); overlays and tabs are then
 // opened from inside the Browse screen.
 const FIRST_IMAGE_ENTRY = '[data-entry-path$=".jpg"]'
+const FIRST_VIDEO_ENTRY = '[data-entry-path$=".mp4"]'
 const FIRST_TEXT_ENTRY = '[data-entry-path$=".md"], [data-entry-path$=".txt"]'
 const VIEW_TOGGLE_BUTTON = '[class*="viewToggleBtn"]'
+// EntryMenu's own "..." button — the only <button> inside a file row (a
+// folder row also has its name button, so this only targets files).
+const FIRST_IMAGE_ENTRY_MENU_BTN = `${FIRST_IMAGE_ENTRY} button`
+// The row's selection checkbox — a plain click on its label selects that
+// one entry, the same as the real ctrl-click shortcut it also serves.
+const FIRST_IMAGE_ENTRY_CHECKBOX = `${FIRST_IMAGE_ENTRY} label`
 
 const SCREEN_STEPS = {
   dashboard: [],
@@ -374,12 +404,33 @@ const SCREEN_STEPS = {
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),
   ],
+  'quick-look-crop': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),
+    clickButton('Crop'),
+  ],
+  'quick-look-trim': [
+    clickNav('Browse'),
+    clickSelector(FIRST_VIDEO_ENTRY, 'open the first video entry in Quick Look'),
+    clickButton('Trim'),
+  ],
   editor: [
     clickNav('Browse'),
     clickSelector(FIRST_TEXT_ENTRY, 'open the first text entry in an editor tab'),
   ],
   play: [
     clickNav('Play wall'),
+  ],
+  // Opened from the Play button inside the browser toolbar rather than the
+  // nav rail — the covering mode that draws over the browser instead of
+  // taking a nav destination of its own.
+  'play-covering': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="Play media slideshow"]', 'open Play covering the browser'),
+  ],
+  'play-fullscreen': [
+    clickNav('Play wall'),
+    clickButton('Fullscreen'),
   ],
   size: [
     clickNav('Size map'),
@@ -397,6 +448,34 @@ const SCREEN_STEPS = {
   // #tray hash route (see src/main.jsx), switched to below before main.jsx
   // mounts. No further driving is needed once that route is loaded.
   tray: [],
+  'delete-dialog': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
+    clickButton('Delete'),
+  ],
+  'bulk-delete-dialog': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickButton('Delete'),
+  ],
+  // The folder picker opened from Move / Rename's Browse button.
+  'move-picker': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
+    clickButton('Move / Rename'),
+    clickButton('Browse'),
+  ],
+  'favorites-menu': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="Favorites"]', 'open the Favorites menu'),
+  ],
+  // The real trigger is a right-click, not the "..." button — a
+  // cursor-anchored menu clamps to the viewport differently than a
+  // button-anchored one.
+  'entry-context-menu': [
+    clickNav('Browse'),
+    openContextMenu(FIRST_IMAGE_ENTRY, 'right-click the first image entry'),
+  ],
 }
 
 // A screen whose steps could not all run never becomes "ready": the shoot
