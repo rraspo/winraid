@@ -422,6 +422,12 @@ const SCREEN_STEPS = {
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
   ],
+  // Row 1's connection picker menu, open — carries the cross-connection
+  // favourites list below a divider under the connection list.
+  'browse-connection-picker-favorites': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label^="Connection:"]', 'open the connection picker menu'),
+  ],
   'quick-look': [
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),

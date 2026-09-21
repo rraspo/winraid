@@ -241,8 +241,12 @@ export const SYSTEM_ACCENT_COLOR = '#0078D4'
 // this same object by the bridge.
 export const CONFIG = {
   connections: CONNECTIONS,
+  // Two connections carry favourites so the connection picker's
+  // cross-connection list screen has something real to show beyond the
+  // open connection's own entries.
   favoritesByConnection: {
     atlas: ['/mnt/user/media/photos'],
+    'work-documents': ['/mnt/user/documents'],
   },
   backupByConnection: BACKUP_BY_CONNECTION,
   browse: {

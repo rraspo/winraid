@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, Pin } from 'lucide-react'
+import { ChevronDown, Pin, Star } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
+import { favName } from '../utils/favorites'
 import styles from './ConnectionPicker.module.css'
 
 // Remote root shown under the connection's name — the SFTP path when the
@@ -13,7 +14,13 @@ function remoteRootOf(connection) {
 // showing and, with more than one connection configured, lets the screen
 // switch without leaving it. `onSelect(connectionId)` re-targets the caller;
 // the picker never navigates on its own.
-export default function ConnectionPicker({ connections = [], connectionId, onSelect, defaultConnectionId = null, onSetDefault }) {
+export default function ConnectionPicker({
+  connections = [], connectionId, onSelect, defaultConnectionId = null, onSetDefault,
+  // Cross-connection favourites, pre-ordered by the caller (open connection
+  // first) — this component only renders what it's given and looks up each
+  // entry's connection name for display; it doesn't decide ordering.
+  favorites = [], onSelectFavorite,
+}) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
 
@@ -93,6 +100,33 @@ export default function ConnectionPicker({ connections = [], connectionId, onSel
               </div>
             )
           })}
+          {favorites.length > 0 && (
+            <>
+              <div className={styles.divider} />
+              <div className={styles.favSection}>
+                {favorites.map(({ connectionId: favConnId, path: favPath }) => (
+                  <button
+                    key={`${favConnId}:${favPath}`}
+                    type="button"
+                    role="menuitem"
+                    className={styles.favItem}
+                    onClick={() => {
+                      setOpen(false)
+                      onSelectFavorite?.(favConnId, favPath)
+                    }}
+                  >
+                    <Star size={13} className={styles.favItemStar} fill="currentColor" />
+                    <span className={styles.favItemLabel}>
+                      <span className={styles.favItemName}>{favName(favPath)}</span>{' '}
+                      <span className={styles.favItemConn}>
+                        {connections.find((c) => c.id === favConnId)?.name ?? favConnId}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

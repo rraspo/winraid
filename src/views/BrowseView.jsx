@@ -42,6 +42,7 @@ function parentFolder(remotePath) {
 export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigate, onOpenTab,
+  onNavigateFavorite,
   onSelectConnection, onBack, canGoBack = false, onForward, canGoForward = false,
   defaultConnectionId = null, onSetDefault, trashByConnection = {},
   // Whether this tab is the one currently on screen. Tabs stay mounted while
@@ -326,6 +327,16 @@ export default function BrowseView({
   const favoritesMap  = favoritesByConnection ?? (selectedId ? { [selectedId]: favorites ?? [] } : {})
   const openFavorites = favoritesMap[selectedId] ?? []
   const faved          = isFavorite(openFavorites, path)
+  // Cross-connection favourites list for the connection picker menu — the
+  // open connection's own favourites first, every other connection's
+  // favourites following in map order. Each entry keeps the connection id
+  // it belongs to so picking one can jump there.
+  const favoriteEntries = [
+    ...openFavorites.map((favPath) => ({ connectionId: selectedId, path: favPath })),
+    ...Object.entries(favoritesMap)
+      .filter(([favConnId]) => favConnId !== selectedId)
+      .flatMap(([favConnId, paths]) => (paths ?? []).map((favPath) => ({ connectionId: favConnId, path: favPath }))),
+  ]
 
   return (
     <div
@@ -535,6 +546,8 @@ export default function BrowseView({
             }}
             defaultConnectionId={defaultConnectionId}
             onSetDefault={onSetDefault}
+            favorites={favoriteEntries}
+            onSelectFavorite={onNavigateFavorite}
           />
 
           <div className={styles.breadcrumbWrap}>
