@@ -5,7 +5,7 @@ import {
   AlertCircle, Loader, CirclePlus, List, LayoutGrid,
   Trash2, Scissors, Copy, ClipboardPaste, Pencil,
   X as XIcon, Play, Search, ArrowUpDown, MoreHorizontal,
-  ArrowLeft, Home, RefreshCw,
+  ArrowLeft, ArrowRight, ArrowUp, Home, RefreshCw,
 } from 'lucide-react'
 import { isFavorite } from '../utils/favorites'
 import { normalizeForSearch } from '../utils/normalizeForSearch'
@@ -42,7 +42,7 @@ function parentFolder(remotePath) {
 export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigate, onOpenTab,
-  onSelectConnection, onBack, canGoBack = false,
+  onSelectConnection, onBack, canGoBack = false, onForward, canGoForward = false,
   defaultConnectionId = null, onSetDefault, trashByConnection = {},
   // Whether this tab is the one currently on screen. Tabs stay mounted while
   // hidden, so anything that describes what is in front of the user has to
@@ -485,11 +485,34 @@ export default function BrowseView({
             </button>
           </Tooltip>
 
-          {/* Forward and Up one level have no working control yet — the
-              slots stay reserved so a later card can wire them in without
-              moving everything else in the row. */}
-          <span className={styles.inertSlot} data-testid="toolbar-slot-forward" aria-hidden="true" />
-          <span className={styles.inertSlot} data-testid="toolbar-slot-up" aria-hidden="true" />
+          <Tooltip tip="Forward" side="bottom">
+            <button
+              type="button"
+              className={styles.iconBtn}
+              aria-label="Forward"
+              onClick={onForward}
+              disabled={!canGoForward}
+            >
+              <ArrowRight size={15} />
+            </button>
+          </Tooltip>
+
+          {/* Up walks one path segment above the current directory — distinct
+              from "Jump to sync root" (the overflow menu's Home-equivalent),
+              which always lands on the connection's configured root however
+              deep the current folder is. Disabled once path has no parent
+              left to climb to. */}
+          <Tooltip tip="Up one level" side="bottom">
+            <button
+              type="button"
+              className={styles.iconBtn}
+              aria-label="Up one level"
+              onClick={() => navigate(parentFolder(path))}
+              disabled={path === '/'}
+            >
+              <ArrowUp size={15} />
+            </button>
+          </Tooltip>
 
           <Tooltip tip="Refresh" side="bottom">
             <button

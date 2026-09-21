@@ -34,11 +34,6 @@
 
 .toolbarSpacer { flex: 1; min-width: 8px; }
 
-/* Forward and Up one level have no working control in this card — an
-   empty slot the same footprint as an icon button holds their place in
-   the row without offering a control that does nothing. */
-.inertSlot { width: 30px; height: 30px; flex-shrink: 0; }
-
 /* Row 2's group dividers — drawn only at a group change (New Folder |
    file management | Sort/View | overflow), never inside a group. */
 .rowPipe {

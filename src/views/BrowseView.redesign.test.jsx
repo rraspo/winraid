@@ -11,11 +11,12 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 // Contract under test — the remote browser's toolbar on the Windows-11-
 // Explorer-style redesign: two 40px rows instead of one 48px row.
 //
-// Row 1 (navigation): Back, an inert Forward slot, an inert Up-one-level
-// slot, Refresh, the connection picker, the breadcrumb trail, a flex
-// spacer, then Search. Forward and Up one level have no working control in
-// this card — their slots are present but render nothing interactive, so a
-// later card can wire them in without another toolbar rewrite.
+// Row 1 (navigation): Back, Forward, Up one level, Refresh, the connection
+// picker, the breadcrumb trail, a flex spacer, then Search. Forward is a
+// restoration of the per-tab back/forward stack the parent (App.jsx) owns;
+// Up one level derives the parent of the current directory and is disabled
+// at the filesystem root. See BrowseView.navigation.test.jsx for the
+// dedicated coverage of both.
 //
 // Row 2 (commands): "New Folder" (icon + words), a pipe, the icon-only
 // file-management cluster (Cut/Copy/Paste/Rename/Delete), a pipe, "Sort"
@@ -90,21 +91,29 @@ function commandRow() {
 }
 
 describe('BrowseView redesign — two-row toolbar', () => {
-  it('lays out row 1 with navigation controls in order, Forward/Up one level inert', async () => {
+  it('lays out row 1 with Back, Forward and Up one level wired for navigation', async () => {
     await mount()
     const row = navRow()
     const names = within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())
 
-    expect(names).not.toContain('Forward')
-    expect(names).not.toContain('Up one level')
-    expect(within(row).queryByTestId('toolbar-slot-forward')).toBeTruthy()
-    expect(within(row).queryByTestId('toolbar-slot-up')).toBeTruthy()
-
-    for (const expected of ['Back', 'Refresh', 'Connection: Atlas']) {
+    for (const expected of ['Back', 'Forward', 'Up one level', 'Refresh', 'Connection: Atlas']) {
       expect(names).toContain(expected)
     }
-    expect(names.indexOf('Back')).toBeLessThan(names.indexOf('Refresh'))
+    expect(names.indexOf('Back')).toBeLessThan(names.indexOf('Forward'))
+    expect(names.indexOf('Forward')).toBeLessThan(names.indexOf('Up one level'))
+    expect(names.indexOf('Up one level')).toBeLessThan(names.indexOf('Refresh'))
     expect(names.indexOf('Refresh')).toBeLessThan(names.indexOf('Connection: Atlas'))
+
+    // This standalone mount wires no onForward/canGoForward (that's the
+    // parent's job — see BrowseView.navigation.test.jsx), so Forward stays
+    // disabled here the same way Back does with no onBack/canGoBack.
+    expect(within(row).getByRole('button', { name: 'Forward' })).toBeDisabled()
+    // Up is live at the mounted (non-root) path.
+    expect(within(row).getByRole('button', { name: 'Up one level' })).toBeEnabled()
+
+    expect(within(row).queryByTestId('toolbar-slot-forward')).toBeNull()
+    expect(within(row).queryByTestId('toolbar-slot-up')).toBeNull()
+
     expect(within(row).getByPlaceholderText('Search this folder')).toBeTruthy()
   })
 

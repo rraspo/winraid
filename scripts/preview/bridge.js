@@ -401,6 +401,15 @@ const SCREEN_STEPS = {
   'browse-list': [
     clickNav('Browse'),
   ],
+  // Row 1's Forward button, live: walk into a folder then Back out of it,
+  // leaving a forward entry to step into. Up one level needs no screen of
+  // its own — it is enabled on every other 'browse' screen already, since
+  // none of them sit at the filesystem root.
+  'browse-forward-enabled': [
+    clickNav('Browse'),
+    clickSelector('[data-entry-path$="/photos"]', 'open the photos folder'),
+    clickSelector('button[aria-label="Back"]', 'go back to the media root, leaving Forward enabled'),
+  ],
   // Row 2's "..." overflow menu, open — the two-row toolbar's command bar
   // with its grouped, divider-separated menu on screen.
   'browse-command-overflow': [

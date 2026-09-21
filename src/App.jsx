@@ -407,7 +407,7 @@ export default function App() {
   // browse tabs currently record entries (every real folder move); global
   // views, size/backup tabs and the play overlay have no history of their
   // own, so back/forward is a no-op while one of them is showing.
-  const { push, back, forward, canGoBack } = useNavHistory()
+  const { push, back, forward, canGoBack, canGoForward } = useNavHistory()
   // Per-tab browse restore signal, keyed by tab id — so aiming a background
   // tab at a folder never disturbs the tab in front.
   const [browseRestoreByTab, setBrowseRestoreByTab] = useState({})
@@ -860,7 +860,9 @@ export default function App() {
                     }
                   }}
                   onBack={() => { const entry = back(scopeKey); if (entry) applyBrowseHistoryEntry(entry, tab.id) }}
+                  onForward={() => { const entry = forward(scopeKey); if (entry) applyBrowseHistoryEntry(entry, tab.id) }}
                   canGoBack={canGoBack(scopeKey)}
+                  canGoForward={canGoForward(scopeKey)}
                   connections={connections}
                   connectionId={tab.connId}
                   favoritesByConnection={favorites}
