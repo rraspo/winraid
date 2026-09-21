@@ -158,6 +158,9 @@ export const REMOTE_ENTRIES = {
     { name: 'manual.pdf', type: 'file', size: 912_000, modified: NOW - 3 * DAYS },
     { name: 'notes.txt', type: 'file', size: 2_100, modified: NOW - 4 * DAYS },
     { name: 'README.md', type: 'file', size: 4_500, modified: NOW - 10 * DAYS },
+    // An extension the Kind column doesn't recognize, so its list-view
+    // screen shows the extension-uppercase fallback rather than a blank cell.
+    { name: 'project.blend', type: 'file', size: 88_000, modified: NOW - 5 * DAYS },
   ],
   'atlas:/mnt/user/media/photos': Array.from({ length: 12 }, (_, i) => {
     const index = String(i + 1).padStart(2, '0')

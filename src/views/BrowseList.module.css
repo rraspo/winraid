@@ -37,9 +37,20 @@
 }
 
 .colName    { flex: 1; min-width: 0; }
+.colKind    { width: 110px; flex-shrink: 0; }
 .colSize    { width: 80px;  flex-shrink: 0; text-align: right; }
 .colDate    { width: 110px; flex-shrink: 0; text-align: right; }
 .colActions { width: 36px;  flex-shrink: 0; }
+
+/* Value-based column allocation, the same policy the toolbar above this
+   list already follows: yield the lowest-value column first rather than
+   shrinking everything at once. Kind is the newest column and the one a
+   sync tool's user needs least for triage — Size and Modified carry more
+   value for deciding what to act on — so it's the first to go as the
+   window narrows, before either of them loses a pixel. */
+@media (max-width: 1000px) {
+  .colKind, .rowKind { display: none; }
+}
 
 /* ── Entry row ────────────────────────────────────────────────────────────── */
 .row {
@@ -87,7 +98,17 @@
   color: var(--text2);
 }
 
-/* ── Size / date / actions cells ─────────────────────────────────────────── */
+/* ── Kind / size / date / actions cells ──────────────────────────────────── */
+.rowKind {
+  width: 110px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text3);
+  font-size: var(--font-size-xs);
+}
+
 .rowSize {
   width: 80px;
   flex-shrink: 0;

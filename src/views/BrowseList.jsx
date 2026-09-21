@@ -195,6 +195,7 @@ const BrowseList = memo(function BrowseList({
             <span className={styles.checkmark} />
           </label>
           <span className={styles.colName}>Name</span>
+          <span className={styles.colKind}>Kind</span>
           <span className={styles.colSize}>Size</span>
           <span className={styles.colDate}>Modified</span>
           <span className={styles.colActions} />

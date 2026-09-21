@@ -128,6 +128,17 @@ function findDeadSpots() {
     return Boolean(label && (label.control === control || label.contains(control)))
   }
 
+  // An open dropdown (role="menu") is drawn on top of whatever sits beneath
+  // it by design — the same "meant to be covered" reasoning as the
+  // full-window layer check below, just scoped to the menu's own footprint
+  // instead of the whole page. A control the menu doesn't contain is
+  // exempt from being reported as covered by it; a control inside the menu
+  // still has to hit-test cleanly against its own siblings.
+  const coveredByOpenMenu = (hit, control) => {
+    const menu = hit?.closest('[role="menu"]')
+    return Boolean(menu) && !menu.contains(control)
+  }
+
   // When a full-window layer (a viewer or a dialog backdrop) is open, what it
   // covers is meant to be covered, so only controls inside the topmost such
   // layer are judged. The title bar's own controls are always judged: a
@@ -166,7 +177,7 @@ function findDeadSpots() {
         const y = rect.top + (rect.bottom - rect.top) * fy
         if (isCaption(x, y)) caption++
         const hit = document.elementFromPoint(x, y)
-        if (!reachesControl(hit, control)) {
+        if (!reachesControl(hit, control) && !coveredByOpenMenu(hit, control)) {
           const key = hit ? describe(hit) : '(nothing)'
           coveredBy.set(key, (coveredBy.get(key) ?? 0) + 1)
         }

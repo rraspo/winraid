@@ -4,6 +4,7 @@ import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
 import { formatSize, formatDate } from '../../utils/format'
 import { isImageFile, isVideoFile, isEditableFile } from '../../utils/fileTypes'
+import { fileKind } from '../../utils/fileKind'
 import styles from '../../views/BrowseList.module.css'
 
 const BrowseListRow = memo(function BrowseListRow({
@@ -112,6 +113,7 @@ const BrowseListRow = memo(function BrowseListRow({
           <span className={styles.nameText}>{entry.name}</span>
         )}
       </div>
+      <span className={styles.rowKind}>{fileKind(entry)}</span>
       <span className={styles.rowSize}>{isDir ? '\u2014' : formatSize(entry.size)}</span>
       <span className={styles.rowDate}>{formatDate(entry.modified)}</span>
       <div className={styles.rowActions}>
