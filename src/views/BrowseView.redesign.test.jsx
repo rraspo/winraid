@@ -8,34 +8,36 @@ import * as toast from '../services/toast'
 
 vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="play-overlay" /> }))
 
-// Contract under test — the remote browser on the redesign, after
-// ref/remote-browser.png and ref/remote-browser-list.png: one toolbar row
-// (history, connection picker, breadcrumbs, favorites, sync root, filter,
-// sort, Select, new folder, activity, view toggle), the grid or the list,
-// the bulk bar while something is selected, and a footer with the count,
-// the drop hint and the checkout link. Every behavior in BrowseView.test.jsx
-// and BrowseView.typeAhead.test.jsx stays.
+// Contract under test — the remote browser's toolbar on the Windows-11-
+// Explorer-style redesign: two 40px rows instead of one 48px row.
 //
-// DOM contract:
-//   - <div role="toolbar" aria-label="Browser"> holding buttons named
-//     "Back", the connection picker (named "Connection: <name>"),
-//     "Favorites", "Jump to sync root", "Sort order",
-//     "New folder", "Grid view", "List view"; the active view
-//     toggle has aria-pressed="true"
-//   - there is no "Forward" button and no "Activity" button: the toolbar is
-//     short of width, Forward is rarely reached for, and Activity only
-//     jumped to the Dashboard the nav rail already opens
-//   - the filter input keeps the placeholder "Search this folder"
-//   - "Favorites" opens a menu (role="menu") listing the favorites by name
-//     plus "Add current folder" / "Remove current folder"
-//   - there is no "Select" mode toggle: checking an entry is what starts a
-//     selection, and the bulk bar appears for as long as something is
-//     selected. The toggle only duplicated what the checkboxes already do
-//     and cost the breadcrumb trail the width it needs.
-//   - the footer <footer> shows "<n> folders · <m> files", the text "Drop
-//     files from Explorer or paste an image / URL to upload here", and a
-//     "Check out to local mirror" control
-//   - list view keeps the column headers Name / Size / Modified
+// Row 1 (navigation): Back, an inert Forward slot, an inert Up-one-level
+// slot, Refresh, the connection picker, the breadcrumb trail, a flex
+// spacer, then Search. Forward and Up one level have no working control in
+// this card — their slots are present but render nothing interactive, so a
+// later card can wire them in without another toolbar rewrite.
+//
+// Row 2 (commands): "New Folder" (icon + words), a pipe, the icon-only
+// file-management cluster (Cut/Copy/Paste/Rename/Delete), a pipe, "Sort"
+// and "View" (icon + word + chevron each), a pipe, then the overflow ("...")
+// button — inline right after its pipe, no spacer pushing it to the edge.
+// Cut/Copy/Paste stay permanently disabled placeholders (no clipboard
+// capability exists yet); Rename enables at exactly one selection; Delete
+// and Cut/Copy/Paste-independent-of-selection Paste follow the card's
+// enablement rules. Sort and View are relocations of the old sort dropdown
+// and the old grid/list segmented pair (View now reports and lets you
+// change the mode from one button).
+//
+// The below-toolbar selection bar is gone entirely: the bulk actions it
+// held (Delete, Rename) now live in row 2's file-management cluster, and
+// its Download/Move buttons are cut (Download survives via the row's own
+// "..." menu; Move has no replacement yet).
+//
+// The overflow ("...") menu groups four sections behind divider rules
+// (reusing EntryMenu's own `.menuDivider` styling): jump/play, favorites,
+// selection, and a still-empty group reserved for Properties/Options. Only
+// the items that already exist today are wired: Jump to sync root, Play
+// slideshow, Add/Remove favourite, and Select all.
 
 const CONNECTIONS = [
   { id: 'conn-1', name: 'Atlas', type: 'sftp', localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' } },
@@ -74,70 +76,150 @@ afterEach(() => {
 })
 
 async function mount(props = {}) {
-  render(<BrowseView onHistoryPush={() => {}} connectionId="conn-1" favorites={['/mnt/user/data/Photos']} onToggleFavorite={vi.fn()} onNavigateFavorite={vi.fn()} {...props} />)
+  render(<BrowseView onHistoryPush={() => {}} connectionId="conn-1" favoritesByConnection={{ 'conn-1': ['/mnt/user/data/Photos'] }} onToggleFavorite={vi.fn()} {...props} />)
   await screen.findByText('readme.txt')
   await act(async () => {})
 }
 
-function toolbar() {
-  return screen.getByRole('toolbar', { name: 'Browser' })
+function navRow() {
+  return screen.getByRole('toolbar', { name: 'Browser navigation' })
 }
 
-function tool(name) {
-  return within(toolbar()).getByRole('button', { name })
+function commandRow() {
+  return screen.getByRole('toolbar', { name: 'Browser commands' })
 }
 
-describe('BrowseView redesign', () => {
-  it('renders the toolbar with every control in prototype order', async () => {
+describe('BrowseView redesign — two-row toolbar', () => {
+  it('lays out row 1 with navigation controls in order, Forward/Up one level inert', async () => {
     await mount()
-    const names = within(toolbar()).getAllByRole('button').map((button) => button.getAttribute('aria-label') ?? button.textContent.trim())
-    for (const expected of ['Back', 'Connection: Atlas', 'Favorites', 'Jump to sync root', 'Sort order', 'New folder', 'Grid view', 'List view']) {
+    const row = navRow()
+    const names = within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())
+
+    expect(names).not.toContain('Forward')
+    expect(names).not.toContain('Up one level')
+    expect(within(row).queryByTestId('toolbar-slot-forward')).toBeTruthy()
+    expect(within(row).queryByTestId('toolbar-slot-up')).toBeTruthy()
+
+    for (const expected of ['Back', 'Refresh', 'Connection: Atlas']) {
       expect(names).toContain(expected)
     }
-    expect(names).not.toContain('Select')
-    expect(names).not.toContain('Forward')
-    expect(names).not.toContain('Activity')
-    expect(names.indexOf('Back')).toBeLessThan(names.indexOf('Favorites'))
-    expect(names.indexOf('Favorites')).toBeLessThan(names.indexOf('Sort order'))
-    expect(names.indexOf('Sort order')).toBeLessThan(names.indexOf('Grid view'))
-    expect(within(toolbar()).getByPlaceholderText('Search this folder')).toBeTruthy()
+    expect(names.indexOf('Back')).toBeLessThan(names.indexOf('Refresh'))
+    expect(names.indexOf('Refresh')).toBeLessThan(names.indexOf('Connection: Atlas'))
+    expect(within(row).getByPlaceholderText('Search this folder')).toBeTruthy()
   })
 
-  it('marks the active view toggle', async () => {
+  it('lays out row 2 with New Folder, the file-management cluster, Sort, View and overflow, in order', async () => {
     await mount()
-    expect(tool('List view').getAttribute('aria-pressed')).toBe('true')
-    expect(tool('Grid view').getAttribute('aria-pressed')).toBe('false')
-    fireEvent.click(tool('Grid view'))
-    expect(tool('Grid view').getAttribute('aria-pressed')).toBe('true')
+    const row = commandRow()
+    const names = within(row).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent.trim())
+
+    expect(names).toEqual([
+      'New Folder', 'Cut', 'Copy', 'Paste', 'Rename', 'Delete selected',
+      'Sort order', 'View', 'More options',
+    ])
   })
 
-  it('opens the favorites menu with the saved folders and the pin action', async () => {
-    const onNavigateFavorite = vi.fn()
-    await mount({ onNavigateFavorite })
-    fireEvent.click(tool('Favorites'))
-    const menu = screen.getByRole('menu')
-    fireEvent.click(within(menu).getByRole('menuitem', { name: /Photos/ }))
-    expect(onNavigateFavorite).toHaveBeenCalledWith('conn-1', '/mnt/user/data/Photos')
-    fireEvent.click(tool('Favorites'))
-    expect(within(screen.getByRole('menu')).getByRole('menuitem', { name: /current folder/i })).toBeTruthy()
-  })
-
-  it('offers no selection-mode toggle', async () => {
+  it('draws exactly three pipe separators on row 2, none on row 1', async () => {
     await mount()
-    expect(within(toolbar()).queryByRole('button', { name: 'Select' })).toBeNull()
+    expect(within(navRow()).queryAllByTestId('toolbar-pipe')).toHaveLength(0)
+    expect(within(commandRow()).getAllByTestId('toolbar-pipe')).toHaveLength(3)
   })
 
-  it('raises and drops the bulk bar as entries are checked and unchecked', async () => {
+  it('keeps Cut, Copy and Paste permanently disabled placeholders', async () => {
+    await mount()
+    const row = commandRow()
+    expect(within(row).getByRole('button', { name: 'Cut' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Copy' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Paste' })).toBeDisabled()
+
+    const rowEl = screen.getByText('readme.txt').closest('.row')
+    await userEvent.setup().click(rowEl.querySelector('.checkbox'))
+    expect(within(row).getByRole('button', { name: 'Cut' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Copy' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Paste' })).toBeDisabled()
+  })
+
+  it('enables Rename only at exactly one selection, Delete at one or more', async () => {
     const user = userEvent.setup()
     await mount()
-    expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
+    const row = commandRow()
+    expect(within(row).getByRole('button', { name: 'Rename' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Delete selected' })).toBeDisabled()
 
-    const row = screen.getByText('readme.txt').closest('.row')
-    await user.click(row.querySelector('.checkbox'))
-    expect(screen.getByRole('toolbar', { name: 'Selection' })).toBeTruthy()
+    const rows = document.querySelectorAll('.row')
+    await user.click(rows[0].querySelector('.checkbox'))
+    expect(within(row).getByRole('button', { name: 'Rename' })).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
 
-    await user.click(row.querySelector('.checkbox'))
+    await user.click(rows[1].querySelector('.checkbox'))
+    expect(within(row).getByRole('button', { name: 'Rename' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
+  })
+
+  it('removes the selection bar entirely — no "Selection" toolbar appears while entries are checked', async () => {
+    const user = userEvent.setup()
+    await mount()
+    const rowEl = screen.getByText('readme.txt').closest('.row')
+    await user.click(rowEl.querySelector('.checkbox'))
     expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
+    await user.click(rowEl.querySelector('.checkbox'))
+    expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
+  })
+
+  it('relocates Sort as icon + word + chevron, unchanged options', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(within(commandRow()).getByRole('button', { name: 'Sort order' }))
+    const menu = screen.getByText('Name Z-A')
+    fireEvent.click(menu)
+    expect(within(commandRow()).getByRole('button', { name: 'Sort order' }).textContent).toContain('Name Z-A')
+  })
+
+  it('reports and switches view mode through the single View button', async () => {
+    const user = userEvent.setup()
+    await mount()
+    const viewBtn = within(commandRow()).getByRole('button', { name: 'View' })
+    expect(viewBtn.querySelector('svg')).toBeTruthy()
+
+    await user.click(viewBtn)
+    await user.click(screen.getByRole('menuitem', { name: 'Grid view' }))
+    await screen.findByText('readme.txt')
+    // Switching back confirms the button still drives both directions.
+    await user.click(within(commandRow()).getByRole('button', { name: 'View' }))
+    await user.click(screen.getByRole('menuitem', { name: 'List view' }))
+    await screen.findByText('Name')
+  })
+
+  it('opens the overflow menu with four groups behind dividers, only wiring what exists today', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
+    const menu = screen.getByRole('menu')
+    const items = within(menu).getAllByRole('menuitem').map((i) => i.textContent.trim())
+
+    expect(items).toEqual(['Jump to sync root', 'Play slideshow', 'Add to favourites', 'Select all'])
+    expect(within(menu).queryByRole('menuitem', { name: 'Select none' })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: 'Invert selection' })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: 'Properties' })).toBeNull()
+    expect(within(menu).queryByRole('menuitem', { name: 'Options' })).toBeNull()
+    expect(within(menu).getByTestId('overflow-group-properties')).toBeTruthy()
+  })
+
+  it('overflow "Add to favourites" toggles the current folder and reads its state back', async () => {
+    const user = userEvent.setup()
+    const onToggleFavorite = vi.fn()
+    await mount({ onToggleFavorite, favoritesByConnection: { 'conn-1': ['/mnt/user/data'] } })
+    await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from favourites' }))
+    expect(onToggleFavorite).toHaveBeenCalledWith('/mnt/user/data')
+  })
+
+  it('overflow "Select all" selects every entry in the current folder', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Select all' }))
+    expect(within(commandRow()).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
   })
 
   it('shows the count, the drop hint and the checkout link in the footer', async () => {
