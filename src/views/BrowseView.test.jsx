@@ -77,7 +77,7 @@ afterEach(() => {
 describe('BrowseView', () => {
   it('renders the header toolbar', async () => {
     render(<BrowseView onHistoryPush={() => {}} />)
-    expect(await screen.findByRole('button', { name: 'New folder' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'New Folder' })).toBeInTheDocument()
   })
 
   it('renders breadcrumb path segments', async () => {
@@ -347,26 +347,29 @@ describe('BrowseView', () => {
     expect(row.className).not.toContain('rowSelected')
   })
 
-  it('bulk action bar appears when a row is selected', async () => {
+  it('enables the toolbar Delete command when a row is selected', async () => {
     const user = userEvent.setup()
     render(<BrowseView onHistoryPush={() => {}} />)
     await screen.findByText('Documents')
 
+    expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled()
     await user.click(screen.getByText('Documents').closest('.row').querySelector('.checkbox'))
 
-    expect(screen.getByText(/1 selected/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Delete selected' })).toBeEnabled()
   })
 
-  it('multiple checkboxes accumulate selection', async () => {
+  it('multiple checkboxes accumulate selection — Delete stays enabled, Rename disables past one', async () => {
     const user = userEvent.setup()
     render(<BrowseView onHistoryPush={() => {}} />)
     await screen.findByText('Documents')
 
     const rows = document.querySelectorAll('.row')
     await user.click(rows[0].querySelector('.checkbox'))
-    await user.click(rows[1].querySelector('.checkbox'))
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeEnabled()
 
-    expect(screen.getByText(/2 selected/)).toBeInTheDocument()
+    await user.click(rows[1].querySelector('.checkbox'))
+    expect(screen.getByRole('button', { name: 'Delete selected' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled()
   })
 
   it('grid checkbox selects card without navigating', async () => {
@@ -374,8 +377,9 @@ describe('BrowseView', () => {
     const { container } = render(<BrowseView onHistoryPush={() => {}} />)
     await screen.findByText('Documents')
 
-    // Switch to grid mode via the toggle button
-    await user.click(container.querySelector('.viewToggleBtn'))
+    // Switch to grid mode via the View button's dropdown
+    await user.click(screen.getByRole('button', { name: 'View' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Grid view' }))
     await screen.findByText('Documents') // wait for grid to render
 
     window.winraid.remote.list.mockClear()
@@ -392,8 +396,9 @@ describe('BrowseView', () => {
     const { container } = render(<BrowseView onHistoryPush={() => {}} />)
     await screen.findByText('readme.txt')
 
-    // Switch to grid mode via the toggle button
-    await user.click(container.querySelector('.viewToggleBtn'))
+    // Switch to grid mode via the View button's dropdown
+    await user.click(screen.getByRole('button', { name: 'View' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Grid view' }))
     await screen.findByText('readme.txt') // wait for grid to render
 
     const card = container.querySelector('[data-entry-path$="/readme.txt"]')
@@ -462,15 +467,24 @@ describe('BrowseView', () => {
     expect(docRow.className).toContain('lastVisited')
   })
 
-  it('renders a Play button in the toolbar', async () => {
+  // Play relocated from its own toolbar button into the overflow ("...")
+  // menu on row 2 as "Play slideshow".
+  function openPlaySlideshow() {
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Play slideshow' }))
+  }
+
+  it('offers Play slideshow from the overflow menu', async () => {
     render(<BrowseView onHistoryPush={() => {}} />)
-    expect(await screen.findByLabelText('Play media slideshow')).toBeInTheDocument()
+    await screen.findByRole('button', { name: 'New Folder' })
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    expect(screen.getByRole('menuitem', { name: 'Play slideshow' })).toBeInTheDocument()
   })
 
-  it('mounts PlayOverlay when Play is clicked and unmounts on close', async () => {
+  it('mounts PlayOverlay when Play slideshow is chosen and unmounts on close', async () => {
     render(<BrowseView onHistoryPush={() => {}} />)
-    await screen.findByRole('button', { name: 'New folder' })
-    fireEvent.click(screen.getByLabelText('Play media slideshow'))
+    await screen.findByRole('button', { name: 'New Folder' })
+    openPlaySlideshow()
     expect(screen.getByTestId('play-overlay')).toBeInTheDocument()
     fireEvent.click(screen.getByText('close-play'))
     expect(screen.queryByTestId('play-overlay')).not.toBeInTheDocument()
@@ -488,7 +502,7 @@ describe('BrowseView', () => {
       ok: true,
       entries: SAMPLE_ENTRIES.filter((entry) => entry.name !== 'readme.txt'),
     })
-    fireEvent.click(screen.getByLabelText('Play media slideshow'))
+    openPlaySlideshow()
     await act(async () => { fireEvent.click(screen.getByText('mutate-here')) })
     expect(window.winraid.remote.list.mock.calls.length).toBeGreaterThan(listCallsBefore)
     expect(window.winraid.remote.list).toHaveBeenLastCalledWith('conn-1', '/mnt/user/data')
@@ -503,7 +517,7 @@ describe('BrowseView', () => {
     await act(async () => { await remoteFS.list('conn-1', '/mnt/user/data/Photos/2024') })
     expect(remoteFS.getSnapshot('conn-1', '/mnt/user/data/Photos/2024')).not.toBeNull()
     const listCallsBefore = window.winraid.remote.list.mock.calls.length
-    fireEvent.click(screen.getByLabelText('Play media slideshow'))
+    openPlaySlideshow()
     await act(async () => { fireEvent.click(screen.getByText('mutate-elsewhere')) })
     expect(remoteFS.getSnapshot('conn-1', '/mnt/user/data/Photos/2024')).toBeNull()
     expect(remoteFS.getSnapshot('conn-1', '/mnt/user/data')).not.toBeNull()

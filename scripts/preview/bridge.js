@@ -373,7 +373,7 @@ function openContextMenu(selector, description) {
 const FIRST_IMAGE_ENTRY = '[data-entry-path$=".jpg"]'
 const FIRST_VIDEO_ENTRY = '[data-entry-path$=".mp4"]'
 const FIRST_TEXT_ENTRY = '[data-entry-path$=".md"], [data-entry-path$=".txt"]'
-const VIEW_TOGGLE_BUTTON = '[class*="viewToggleBtn"]'
+const VIEW_BUTTON = 'button[aria-label="View"]'
 // EntryMenu's own "..." button — the only <button> inside a file row (a
 // folder row also has its name button, so this only targets files).
 const FIRST_IMAGE_ENTRY_MENU_BTN = `${FIRST_IMAGE_ENTRY} button`
@@ -395,10 +395,23 @@ const SCREEN_STEPS = {
   ],
   browse: [
     clickNav('Browse'),
-    clickSelector(VIEW_TOGGLE_BUTTON, 'switch Browse to grid view'),
+    clickSelector(VIEW_BUTTON, 'open the View dropdown'),
+    clickButton('Grid view'),
   ],
   'browse-list': [
     clickNav('Browse'),
+  ],
+  // Row 2's "..." overflow menu, open — the two-row toolbar's command bar
+  // with its grouped, divider-separated menu on screen.
+  'browse-command-overflow': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+  ],
+  // A row checked — row 2's file-management cluster goes from its resting
+  // disabled state (nothing selected) to Rename/Delete enabled.
+  'browse-selection': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
   ],
   'quick-look': [
     clickNav('Browse'),
@@ -426,7 +439,8 @@ const SCREEN_STEPS = {
   // taking a nav destination of its own.
   'play-covering': [
     clickNav('Browse'),
-    clickSelector('button[aria-label="Play media slideshow"]', 'open Play covering the browser'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+    clickButton('Play slideshow'),
   ],
   'play-fullscreen': [
     clickNav('Play wall'),
@@ -456,7 +470,7 @@ const SCREEN_STEPS = {
   'bulk-delete-dialog': [
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
-    clickButton('Delete'),
+    clickSelector('button[aria-label="Delete selected"]', 'open the toolbar bulk-delete dialog'),
   ],
   // The folder picker opened from Move / Rename's Browse button.
   'move-picker': [
@@ -465,9 +479,13 @@ const SCREEN_STEPS = {
     clickButton('Move / Rename'),
     clickButton('Browse'),
   ],
+  // The standalone Favorites button and its cross-connection browsing
+  // dropdown are gone from the toolbar — the add/remove toggle that
+  // survives now lives in the row 2 overflow menu, so this screen opens
+  // that instead.
   'favorites-menu': [
     clickNav('Browse'),
-    clickSelector('button[aria-label="Favorites"]', 'open the Favorites menu'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
   ],
   // The real trigger is a right-click, not the "..." button — a
   // cursor-anchored menu clamps to the viewport differently than a

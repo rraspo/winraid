@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, within, act } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
 import * as remoteFS from '../services/remoteFS'
@@ -7,23 +7,22 @@ import * as toast from '../services/toast'
 
 vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="play-overlay" /> }))
 
-// Contract under test — favorites span every connection, as the design
-// has them. Before this the browser was handed one connection's slice, so
-// a folder starred under another connection could be saved and never
-// reached again.
+// Contract under test — favorites on the two-row toolbar. The toolbar no
+// longer carries a standalone Favorites button with a cross-connection
+// browsing dropdown (that capability has no toolbar home in this redesign);
+// what survives is the add/remove toggle, relocated into the overflow
+// ("...") menu as a single "Add to favourites" / "Remove from favourites"
+// line, scoped to the open connection's current folder.
 //
 // DOM contract:
-//   - the browser takes `favoritesByConnection`, a map of connection id to
-//     the paths saved under it, in place of a single connection's array
-//   - the Favorites menu lists every saved folder from every connection,
-//     each entry showing the folder name and, under it, the name of the
-//     connection it belongs to; the open connection's favorites come first
-//   - choosing an entry calls onNavigateFavorite(connectionId, path) with
-//     that entry's own connection, so picking one from another connection
-//     lands on that connection and folder
-//   - the star still adds or removes the current folder under the open
-//     connection, and reads as saved when the current folder is one of the
-//     open connection's favorites
+//   - the browser still takes `favoritesByConnection`, a map of connection
+//     id to the paths saved under it (or the legacy single-connection
+//     `favorites` array)
+//   - the overflow menu's favourites line reads "Remove from favourites"
+//     when the current folder is one of the open connection's saved
+//     folders, "Add to favourites" otherwise
+//   - choosing it calls onToggleFavorite(path) for the folder currently
+//     open, under the open connection — never another one
 
 const CONNECTIONS = [
   { id: 'conn-1', name: 'Atlas', type: 'sftp', localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' } },
@@ -36,8 +35,8 @@ const ENTRIES = [
 ]
 
 const FAVORITES_BY_CONNECTION = {
-  'conn-1': ['/mnt/user/data/Photos'],
-  'conn-2': ['/mnt/user/docs/work/Invoices', '/mnt/user/docs/Contracts'],
+  'conn-1': ['/mnt/user/data'],
+  'conn-2': ['/mnt/user/docs/work/Invoices'],
 }
 
 beforeEach(() => {
@@ -65,61 +64,57 @@ afterEach(() => {
 })
 
 async function mount(props = {}) {
-  const onNavigateFavorite = vi.fn()
-  const onToggleFavorite   = vi.fn()
+  const onToggleFavorite = vi.fn()
   render(
     <BrowseView
       onHistoryPush={() => {}}
       connectionId="conn-1"
       favoritesByConnection={FAVORITES_BY_CONNECTION}
       onToggleFavorite={onToggleFavorite}
-      onNavigateFavorite={onNavigateFavorite}
       {...props}
     />,
   )
   await screen.findByText('readme.txt')
   await act(async () => {})
-  return { onNavigateFavorite, onToggleFavorite }
+  return { onToggleFavorite }
 }
 
-function openFavorites() {
-  fireEvent.click(screen.getByRole('button', { name: 'Favorites' }))
+function openOverflow() {
+  fireEvent.click(screen.getByRole('button', { name: 'More options' }))
   return screen.getByRole('menu')
 }
 
-describe('BrowseView favorites across connections', () => {
-  it('lists every connection\'s favorites, the open connection first, each named with its connection', async () => {
+describe('BrowseView favorites — overflow menu toggle', () => {
+  it('reads "Remove from favourites" when the current folder is already saved', async () => {
     await mount()
-    const items = within(openFavorites()).getAllByRole('menuitem')
-      .map((item) => item.textContent.replace(/\s+/g, ' ').trim())
-      .filter((text) => !/current folder/i.test(text))
-    expect(items).toEqual([
-      'Photos Atlas',
-      'Invoices Vault',
-      'Contracts Vault',
-    ])
+    openOverflow()
+    expect(screen.getByRole('menuitem', { name: 'Remove from favourites' })).toBeInTheDocument()
   })
 
-  it('jumps to a favorite of another connection with that connection', async () => {
-    const { onNavigateFavorite } = await mount()
-    fireEvent.click(within(openFavorites()).getByRole('menuitem', { name: /Invoices/ }))
-    expect(onNavigateFavorite).toHaveBeenCalledWith('conn-2', '/mnt/user/docs/work/Invoices')
+  it('reads "Add to favourites" when the current folder is not saved', async () => {
+    await mount({ favoritesByConnection: { 'conn-1': [] } })
+    openOverflow()
+    expect(screen.getByRole('menuitem', { name: 'Add to favourites' })).toBeInTheDocument()
   })
 
-  it('jumps to a favorite of the open connection with its own id', async () => {
-    const { onNavigateFavorite } = await mount()
-    fireEvent.click(within(openFavorites()).getByRole('menuitem', { name: /Photos/ }))
-    expect(onNavigateFavorite).toHaveBeenCalledWith('conn-1', '/mnt/user/data/Photos')
-  })
-
-  it('still adds the current folder under the open connection', async () => {
+  it('toggles the current folder under the open connection, not another one', async () => {
     const { onToggleFavorite } = await mount()
-    fireEvent.click(within(openFavorites()).getByRole('menuitem', { name: /Add current folder/i }))
+    openOverflow()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from favourites' }))
     expect(onToggleFavorite).toHaveBeenCalledWith('/mnt/user/data')
   })
 
-  it('says so when nothing is saved anywhere', async () => {
-    await mount({ favoritesByConnection: {} })
-    expect(within(openFavorites()).getByText('No favorites yet')).toBeTruthy()
+  it('closes the overflow menu after toggling', async () => {
+    await mount()
+    openOverflow()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove from favourites' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('has no cross-connection favorites list in the toolbar', async () => {
+    await mount()
+    openOverflow()
+    expect(screen.queryByText('Invoices')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Favorites' })).toBeNull()
   })
 })

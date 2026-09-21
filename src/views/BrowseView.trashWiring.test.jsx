@@ -7,10 +7,10 @@ import * as toast from '../services/toast'
 
 // Contract under test — both of BrowseView's delete dialogs (the single-item
 // one opened from a row's "..." menu, and the bulk one opened from the
-// selection toolbar) tell the truth about where the file is going. That
-// truth comes from the active connection's entry in `trashByConnection`, a
-// prop passed down from Settings by way of App — not read independently by
-// this view.
+// toolbar's "Delete selected" command) tell the truth about where the file
+// is going. That truth comes from the active connection's entry in
+// `trashByConnection`, a prop passed down from Settings by way of App — not
+// read independently by this view.
 
 vi.mock('../components/PlayOverlay', () => ({ default: () => null }))
 
@@ -105,7 +105,7 @@ describe('BrowseView bulk delete', () => {
     )
     await screen.findByText('readme.txt')
     fireEvent.click(within(entryRow()).getByRole('checkbox'))
-    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Selection' })).getByRole('button', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected' }))
 
     const dialog = screen.getByRole('dialog')
     expect(dialog).toHaveTextContent(/trash/i)
@@ -117,7 +117,7 @@ describe('BrowseView bulk delete', () => {
     render(<BrowseView onHistoryPush={() => {}} trashByConnection={{}} />)
     await screen.findByText('readme.txt')
     fireEvent.click(within(entryRow()).getByRole('checkbox'))
-    fireEvent.click(within(screen.getByRole('toolbar', { name: 'Selection' })).getByRole('button', { name: 'Delete' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete selected' }))
 
     expect(screen.getByRole('dialog')).toHaveTextContent(/permanently/i)
   })
