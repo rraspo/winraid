@@ -8,13 +8,12 @@ import * as toast from '../services/toast'
 
 vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="play-overlay" /> }))
 
-// Contract under test — the two controls WR-99 reserved slots for in row 1.
+// Contract under test — the Forward and Up one level controls in nav row 1.
 //
-// Forward is a restoration: WR-98 removed the toolbar button but never the
-// underlying per-tab useNavHistory stack, which App.jsx still owns and
-// drives through onForward/canGoForward — the exact props onBack/canGoBack
-// already use for Back. BrowseView's own job is just to render the button
-// and wire those two props through, so that is what is tested here.
+// Forward renders from props alone: the per-tab useNavHistory stack lives in
+// App.jsx, which drives onForward/canGoForward — the exact props onBack and
+// canGoBack already use for Back. BrowseView's own job is just to render the
+// button and wire those two props through, so that is what is tested here.
 //
 // Up one level is new: it derives the parent of the current directory and
 // calls the same navigate() the breadcrumb trail's own ancestor clicks use.
