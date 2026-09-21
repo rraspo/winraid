@@ -111,6 +111,59 @@ describe('toggleSelectAll / clearSelection', () => {
   })
 })
 
+describe('invertSelection', () => {
+  it('selects everything visible when nothing was selected', () => {
+    const { result } = setup()
+    act(() => result.current.invertSelection())
+    expect(result.current.selected).toEqual(new Set(['a.txt', 'b.txt', 'c.txt', 'd.txt']))
+  })
+
+  it('clears the selection when everything visible was selected', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(0, {}))
+    act(() => result.current.invertSelection())
+    // Note the inverse should read as "all except a.txt" — assert that below
+    // rather than assuming, then flip once more to reach empty.
+    expect(result.current.selected).toEqual(new Set(['b.txt', 'c.txt', 'd.txt']))
+  })
+
+  it('complements the selection against the current entries', () => {
+    const { result } = setup()
+    act(() => result.current.handleItemPointer(1, {})) // select b.txt
+    act(() => result.current.invertSelection())
+    expect(result.current.selected).toEqual(new Set(['a.txt', 'c.txt', 'd.txt']))
+  })
+
+  // The `entries` a caller passes in is the filtered+sorted list a search
+  // query has already narrowed — not the raw directory listing. An invert
+  // must never pull a name hidden by that filter into the selection, and
+  // must not treat a name selected before the filter narrowed the list as
+  // still "selected" once it drops out of view.
+  it('respects an active search filter — only entries in the current list flip', () => {
+    const { result, rerender } = renderHook(
+      ({ entries }) => useSelection({ entries, path: '/foo' }),
+      { initialProps: { entries: ENTRIES } },
+    )
+    // Select c.txt and d.txt while every entry is still visible.
+    act(() => result.current.handleItemPointer(2, { ctrl: true }))
+    act(() => result.current.handleItemPointer(3, { ctrl: true }))
+    expect(result.current.selected).toEqual(new Set(['c.txt', 'd.txt']))
+
+    // A search query narrows the list to only a.txt and b.txt — c.txt and
+    // d.txt drop out of the filtered+sorted list useSelection is handed.
+    const VISIBLE = [
+      { name: 'a.txt', type: 'file' },
+      { name: 'b.txt', type: 'file' },
+    ]
+    rerender({ entries: VISIBLE })
+
+    act(() => result.current.invertSelection())
+    // Both visible entries flip on (neither was selected within this
+    // filtered view); neither hidden entry is pulled in by the invert.
+    expect(result.current.selected).toEqual(new Set(['a.txt', 'b.txt']))
+  })
+})
+
 describe('handleRubberBandEnd', () => {
   it('replaces selection with intersected entries (no modifiers)', () => {
     const { result } = setup()

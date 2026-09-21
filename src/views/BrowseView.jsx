@@ -778,9 +778,22 @@ export default function BrowseView({
                   >
                     Select all
                   </button>
-                  {/* Select none and Invert selection don't exist yet — this
-                      group stays open for them so a later addition doesn't
-                      need to move the dividers around it. */}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={entryMenuStyles.menuItem}
+                    onClick={() => { setOverflowMenuOpen(false); browse.clearSelection() }}
+                  >
+                    Select none
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={entryMenuStyles.menuItem}
+                    onClick={() => { setOverflowMenuOpen(false); browse.invertSelection() }}
+                  >
+                    Invert selection
+                  </button>
                 </div>
 
                 <div className={entryMenuStyles.menuDivider} />

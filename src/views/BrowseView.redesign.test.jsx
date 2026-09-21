@@ -36,9 +36,11 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 //
 // The overflow ("...") menu groups four sections behind divider rules
 // (reusing EntryMenu's own `.menuDivider` styling): jump/play, favorites,
-// selection, and a still-empty group reserved for Properties/Options. Only
-// the items that already exist today are wired: Jump to sync root, Play
-// slideshow, Add/Remove favourite, and Select all.
+// selection, and a still-empty group reserved for Properties/Options. The
+// selection group now wires all three of its items — Select all, Select
+// none, Invert selection — alongside Jump to sync root, Play slideshow and
+// Add/Remove favourite. See useSelection.test.js and
+// BrowseView.selectionMenu.test.jsx for Select none/Invert's own behavior.
 
 const CONNECTIONS = [
   { id: 'conn-1', name: 'Atlas', type: 'sftp', localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' } },
@@ -199,16 +201,17 @@ describe('BrowseView redesign — two-row toolbar', () => {
     await screen.findByText('Name')
   })
 
-  it('opens the overflow menu with four groups behind dividers, only wiring what exists today', async () => {
+  it('opens the overflow menu with four groups behind dividers, the selection group fully wired', async () => {
     const user = userEvent.setup()
     await mount()
     await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
     const menu = screen.getByRole('menu')
     const items = within(menu).getAllByRole('menuitem').map((i) => i.textContent.trim())
 
-    expect(items).toEqual(['Jump to sync root', 'Play slideshow', 'Add to favourites', 'Select all'])
-    expect(within(menu).queryByRole('menuitem', { name: 'Select none' })).toBeNull()
-    expect(within(menu).queryByRole('menuitem', { name: 'Invert selection' })).toBeNull()
+    expect(items).toEqual([
+      'Jump to sync root', 'Play slideshow', 'Add to favourites',
+      'Select all', 'Select none', 'Invert selection',
+    ])
     expect(within(menu).queryByRole('menuitem', { name: 'Properties' })).toBeNull()
     expect(within(menu).queryByRole('menuitem', { name: 'Options' })).toBeNull()
     expect(within(menu).getByTestId('overflow-group-properties')).toBeTruthy()
@@ -228,6 +231,33 @@ describe('BrowseView redesign — two-row toolbar', () => {
     await mount()
     await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
     fireEvent.click(screen.getByRole('menuitem', { name: 'Select all' }))
+    expect(within(commandRow()).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
+  })
+
+  it('overflow "Select none" clears the current selection, the same as Escape', async () => {
+    const user = userEvent.setup()
+    await mount()
+    await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Select all' }))
+    expect(within(commandRow()).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
+
+    await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Select none' }))
+    expect(within(commandRow()).getByRole('button', { name: 'Delete selected' })).toBeDisabled()
+  })
+
+  it('overflow "Invert selection" complements the selection against every entry in the current folder', async () => {
+    const user = userEvent.setup()
+    await mount()
+    const rowEl = screen.getByText('readme.txt').closest('.row')
+    await user.click(rowEl.querySelector('.checkbox'))
+    expect(within(commandRow()).getByRole('button', { name: 'Rename' })).toBeEnabled()
+
+    await user.click(within(commandRow()).getByRole('button', { name: 'More options' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Invert selection' }))
+    // readme.txt was the only selection; inverting over all four fixture
+    // entries leaves the other three selected.
+    expect(within(commandRow()).getByRole('button', { name: 'Rename' })).toBeDisabled()
     expect(within(commandRow()).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
   })
 
