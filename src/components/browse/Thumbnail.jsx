@@ -4,7 +4,7 @@ import VideoThumb from './VideoThumb'
 import { isImageFile, isVideoFile } from '../../utils/fileTypes'
 import styles from './Thumbnail.module.css'
 
-const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size, modified }) {
+const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size, modified, thumbnailsEnabled = true }) {
   const [error, setError]   = useState(false)
   const [loaded, setLoaded] = useState(false)
   // Cached images can finish loading before React attaches onLoad; catch that
@@ -18,7 +18,7 @@ const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size
   const isGrid = size === 'grid'
   const wrapClass = isGrid ? styles.thumbWrapGrid : styles.thumbWrapList
 
-  if (!error && isImageFile(name)) {
+  if (thumbnailsEnabled && !error && isImageFile(name)) {
     return (
       <span className={wrapClass}>
         {/* Skeleton sits BEHIND the img. While loading the img has no pixels
@@ -39,7 +39,7 @@ const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size
     )
   }
 
-  if (!error && isVideoFile(name)) {
+  if (thumbnailsEnabled && !error && isVideoFile(name)) {
     return (
       <span className={wrapClass}>
         <VideoThumb url={url} onError={() => setError(true)} />

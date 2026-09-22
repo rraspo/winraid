@@ -4,6 +4,7 @@ import { useDragDrop } from './useDragDrop'
 import { useDirFetch } from './useDirFetch'
 import { useEntryView } from './useEntryView'
 import { useBrowseMutations } from './useBrowseMutations'
+import { useBrowseOptions } from './useBrowseOptions'
 import { usePasteDrop } from './usePasteDrop'
 import * as toast from '../services/toast'
 
@@ -48,6 +49,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
   const [settingsLoaded,  setSettingsLoaded]  = useState(false)
+  // Reactive mirror of sortPersistRef — the ref stays the perf-friendly read
+  // path for useEntryView's per-navigation resolve, this is what a settings
+  // UI (the Options popover) reads and writes.
+  const [sortPersistence, setSortPersistenceState] = useState('default')
   const dirsFirstRef       = useRef(true)
   const sortPersistRef     = useRef('default')
   const cancelledRef       = useRef(false)
@@ -70,8 +75,17 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       if (browse?.cacheMode)        cacheModeRef.current   = browse.cacheMode
       if (browse?.cacheMutation)    cacheMutRef.current     = browse.cacheMutation
       if (browse?.dirsFirst != null) dirsFirstRef.current   = browse.dirsFirst
-      if (browse?.sortPersistence)  sortPersistRef.current  = browse.sortPersistence
+      if (browse?.sortPersistence)  { sortPersistRef.current = browse.sortPersistence; setSortPersistenceState(browse.sortPersistence) }
     }).catch(() => {}).finally(() => setSettingsLoaded(true))
+  }, [])
+
+  // Written by the Options popover's "Remember this sort for" control — the
+  // ref keeps useEntryView's read path free of a re-render, this state is
+  // what the popover displays as the current choice.
+  const setSortPersistence = useCallback((value) => {
+    sortPersistRef.current = value
+    setSortPersistenceState(value)
+    window.winraid?.config.set('browse.sortPersistence', value)
   }, [])
 
   // ── Persistence ────────────────────────────────────────────────────────────
@@ -231,7 +245,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     searchQuery, setSearchQuery,
     filteredEntries, fileEntries, entriesWithPaths,
     dirCount, fileCount,
-  } = useEntryView({ entries, path, dirsFirstRef, sortPersistRef })
+  } = useEntryView({ entries, path, dirsFirstRef, sortPersistRef, connectionId: selectedId })
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const navigate = useCallback((newPath) => {
@@ -336,6 +350,9 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setHighlightFile,
   })
 
+  // ── Sub-hook composition: per-view browse preferences (Options popover) ────
+  const browseOptionsApi = useBrowseOptions({ selectedId, selectedConn, connections, setConnections })
+
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
   const busy     = opInFlight || !!dragDrop.moveInFlight
   const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
@@ -350,6 +367,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
     sortMode, setSortMode,
+    sortPersistence, setSortPersistence,
     bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
@@ -362,6 +380,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
+    ...browseOptionsApi,
     // Sub-hook APIs — spread flat for backward compatibility
     ...pasteDrop,
     ...selection,

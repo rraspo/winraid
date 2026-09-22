@@ -14,13 +14,19 @@ const BrowseListRow = memo(function BrowseListRow({
   navigate, openQuickLook, onItemPointer,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
+  visibleColumns = { size: true, modified: true, kind: true }, thumbnailsEnabled = true,
 }) {
   const isDir = entry.type === 'dir'
   const menuRef = useRef(null)
   const icon = isDir
     ? <Folder size={14} className={styles.iconDir} />
     : (isImageFile(entry.name) || isVideoFile(entry.name))
-      ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="list" modified={entry.modified} />
+      ? (
+        <Thumbnail
+          name={entry.name} remotePath={entryPath} connectionId={connectionId}
+          size="list" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
+        />
+      )
       : <File size={14} className={styles.iconFile} />
 
   function handleRowClick(e) {
@@ -113,9 +119,9 @@ const BrowseListRow = memo(function BrowseListRow({
           <span className={styles.nameText}>{entry.name}</span>
         )}
       </div>
-      <span className={styles.rowKind}>{fileKind(entry)}</span>
-      <span className={styles.rowSize}>{isDir ? '\u2014' : formatSize(entry.size)}</span>
-      <span className={styles.rowDate}>{formatDate(entry.modified)}</span>
+      {visibleColumns.kind && <span className={styles.rowKind}>{fileKind(entry)}</span>}
+      {visibleColumns.size && <span className={styles.rowSize}>{isDir ? '\u2014' : formatSize(entry.size)}</span>}
+      {visibleColumns.modified && <span className={styles.rowDate}>{formatDate(entry.modified)}</span>}
       <div className={styles.rowActions}>
         <EntryMenu
           ref={menuRef}

@@ -36,12 +36,12 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 //
 // The overflow ("...") menu groups four sections behind divider rules
 // (reusing EntryMenu's own `.menuDivider` styling): jump/play, favorites,
-// selection, and a meta group (Properties so far; Options lands separately).
-// The selection group wires all three of its items — Select all, Select
-// none, Invert selection — alongside Jump to sync root, Play slideshow and
-// Add/Remove favourite. See useSelection.test.js and
-// BrowseView.selectionMenu.test.jsx for Select none/Invert's own behavior;
-// PropertiesModal.test.jsx covers the meta group's own dialog.
+// selection, and a meta group (Properties, Options). The selection group
+// wires all three of its items — Select all, Select none, Invert selection —
+// alongside Jump to sync root, Play slideshow and Add/Remove favourite. See
+// useSelection.test.js and BrowseView.selectionMenu.test.jsx for Select
+// none/Invert's own behavior; PropertiesModal.test.jsx and
+// OptionsPopover.test.jsx cover the meta group's own dialogs.
 
 const CONNECTIONS = [
   { id: 'conn-1', name: 'Atlas', type: 'sftp', localFolder: 'C:\\sync', sftp: { host: '10.0.0.1', remotePath: '/mnt/user/data' } },
@@ -212,7 +212,7 @@ describe('BrowseView redesign — two-row toolbar', () => {
     expect(items).toEqual([
       'Jump to sync root', 'Play slideshow', 'Add to favourites',
       'Select all', 'Select none', 'Invert selection',
-      'Properties',
+      'Properties', 'Options',
     ])
     expect(within(menu).getByTestId('overflow-group-properties')).toBeTruthy()
   })

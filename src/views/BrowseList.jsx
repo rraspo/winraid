@@ -4,6 +4,9 @@ import BrowseListRow from '../components/browse/BrowseListRow'
 import { useListVirtualizer } from '../hooks/useVirtualizers'
 import styles from './BrowseList.module.css'
 
+const DEFAULT_VISIBLE_COLUMNS = { size: true, modified: true, kind: true }
+const ROW_HEIGHT = { compact: 32, default: 41, roomy: 52 }
+
 const BrowseList = memo(function BrowseList({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
   path, selectedId, busy, selected, dragSourcePaths, lastVisitedDir,
@@ -14,10 +17,11 @@ const BrowseList = memo(function BrowseList({
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
+  visibleColumns = DEFAULT_VISIBLE_COLUMNS, thumbnailsEnabled = true, density = 'default',
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
-  const { rowVirtualizer } = useListVirtualizer(entries, listScrollEl)
+  const { rowVirtualizer } = useListVirtualizer(entries, listScrollEl, ROW_HEIGHT[density] ?? ROW_HEIGHT.default)
 
   // On unmount, snapshot the entry name at the top of the visible window
   // so a re-mount (via list/grid toggle) can restore the same scroll
@@ -195,9 +199,9 @@ const BrowseList = memo(function BrowseList({
             <span className={styles.checkmark} />
           </label>
           <span className={styles.colName}>Name</span>
-          <span className={styles.colKind}>Kind</span>
-          <span className={styles.colSize}>Size</span>
-          <span className={styles.colDate}>Modified</span>
+          {visibleColumns.kind && <span className={styles.colKind}>Kind</span>}
+          {visibleColumns.size && <span className={styles.colSize}>Size</span>}
+          {visibleColumns.modified && <span className={styles.colDate}>Modified</span>}
           <span className={styles.colActions} />
         </div>
       )}
@@ -237,6 +241,8 @@ const BrowseList = memo(function BrowseList({
                 checkLocalExists={checkLocalExists}
                 onRevealLocal={onRevealLocal}
                 onMiddleClickFolder={onMiddleClickFolder}
+                visibleColumns={visibleColumns}
+                thumbnailsEnabled={thumbnailsEnabled}
               />
             )
           })}

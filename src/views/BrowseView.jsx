@@ -21,6 +21,7 @@ import ConfirmModal from '../components/modals/ConfirmModal'
 import BulkDeleteModal from '../components/modals/BulkDeleteModal'
 import PasteImageModal from '../components/modals/PasteImageModal'
 import PropertiesModal from '../components/modals/PropertiesModal'
+import OptionsPopover from '../components/browse/OptionsPopover'
 import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
@@ -142,6 +143,7 @@ export default function BrowseView({
   // (single selection or a per-row "..."/right-click Properties) or several
   // (an overflow-menu "Properties" opened over a multi-selection).
   const [propertiesEntries, setPropertiesEntries] = useState(null)
+  const [optionsOpen, setOptionsOpen]         = useState(false)
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
   const [viewDropOpen, setViewDropOpen]       = useState(false)
@@ -312,7 +314,7 @@ export default function BrowseView({
       // Don't steal keys from the search input, modals, editors, etc.
       if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return
       // Bail if any modal is open — those should own keyboard input.
-      if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste || propertiesEntries) return
+      if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste || propertiesEntries || optionsOpen) return
       if (browse.entriesWithPaths.length === 0) return
 
       typeAheadBufRef.current += normalizeForSearch(e.key)
@@ -337,7 +339,7 @@ export default function BrowseView({
       clearTimeout(bufResetTimerRef.current)
       clearTimeout(cursorClearTimerRef.current)
     }
-  }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste, propertiesEntries])
+  }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste, propertiesEntries, optionsOpen])
 
   // `favoritesByConnection` is the map of every connection's saved folders.
   // `favorites` is the legacy single-connection array a caller can pass
@@ -764,7 +766,7 @@ export default function BrowseView({
                 aria-label="More options"
                 aria-haspopup="menu"
                 aria-expanded={overflowMenuOpen}
-                onClick={() => setOverflowMenuOpen((v) => !v)}
+                onClick={() => { setOverflowMenuOpen((v) => !v); setOptionsOpen(false) }}
               >
                 <MoreHorizontal size={15} />
               </button>
@@ -856,9 +858,30 @@ export default function BrowseView({
                   >
                     Properties
                   </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={entryMenuStyles.menuItem}
+                    onClick={() => { setOverflowMenuOpen(false); setOptionsOpen(true) }}
+                  >
+                    Options
+                  </button>
                 </div>
               </div>
             )}
+            <OptionsPopover
+              anchorRef={overflowMenuRef}
+              open={optionsOpen}
+              onClose={() => setOptionsOpen(false)}
+              browseOptions={browse.browseOptions}
+              onSetThumbnails={browse.setThumbnailsEnabled}
+              onSetColumn={browse.setColumnVisible}
+              onSetDensity={browse.setDensity}
+              onSetShowHidden={browse.setShowHiddenFiles}
+              sortPersistence={browse.sortPersistence}
+              onSetSortPersistence={browse.setSortPersistence}
+              onOpenSettings={() => { setOptionsOpen(false); onNavigate?.('settings') }}
+            />
           </div>
         </div>
       </div>
@@ -927,6 +950,9 @@ export default function BrowseView({
               onRevealLocal={revealLocal}
               onMiddleClickFolder={handleMiddleClickFolder}
               onProperties={openPropertiesForRow}
+              visibleColumns={browse.browseOptions.columns}
+              thumbnailsEnabled={browse.browseOptions.thumbnails}
+              density={browse.browseOptions.density}
             />
           )}
           {viewMode === 'grid' && (
@@ -970,6 +996,7 @@ export default function BrowseView({
               onRevealLocal={revealLocal}
               onMiddleClickFolder={handleMiddleClickFolder}
               onProperties={openPropertiesForRow}
+              thumbnailsEnabled={browse.browseOptions.thumbnails}
             />
           )}
           </div>

@@ -15,11 +15,15 @@ function parentPath(path) {
   return i <= 0 ? '/' : path.slice(0, i)
 }
 
-export function resolveSortMode(path, persistence) {
+export function resolveSortMode(path, persistence, connectionId) {
   if (persistence === 'default') return 'nameAsc'
   const prefs = load()
   if (persistence === 'folder') {
     return prefs[path] ?? 'nameAsc'
+  }
+  if (persistence === 'connection') {
+    if (!connectionId) return 'nameAsc'
+    return prefs[`connection:${connectionId}`] ?? 'nameAsc'
   }
   if (persistence === 'siblings') {
     const parent = parentPath(path)
@@ -30,11 +34,13 @@ export function resolveSortMode(path, persistence) {
   return 'nameAsc'
 }
 
-export function saveSortMode(path, mode, persistence) {
+export function saveSortMode(path, mode, persistence, connectionId) {
   if (persistence === 'default') return
   const prefs = load()
   if (persistence === 'folder') {
     prefs[path] = mode
+  } else if (persistence === 'connection') {
+    if (connectionId) prefs[`connection:${connectionId}`] = mode
   } else if (persistence === 'siblings') {
     const parent = parentPath(path)
     if (parent != null) prefs[`siblings:${parent}`] = mode

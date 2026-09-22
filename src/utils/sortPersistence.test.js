@@ -52,6 +52,23 @@ describe('resolveSortMode — siblings persistence', () => {
   })
 })
 
+describe('resolveSortMode — connection persistence', () => {
+  it('returns saved mode for any folder under the same connection', () => {
+    saveSortMode('/media/photos', 'recent', 'connection', 'conn-1')
+    expect(resolveSortMode('/media/photos', 'connection', 'conn-1')).toBe('recent')
+    expect(resolveSortMode('/media/videos', 'connection', 'conn-1')).toBe('recent')
+  })
+
+  it('does not bleed to a different connection', () => {
+    saveSortMode('/media/photos', 'recent', 'connection', 'conn-1')
+    expect(resolveSortMode('/media/photos', 'connection', 'conn-2')).toBe('nameAsc')
+  })
+
+  it('falls back to nameAsc without a connectionId', () => {
+    expect(resolveSortMode('/media', 'connection', null)).toBe('nameAsc')
+  })
+})
+
 describe('saveSortMode', () => {
   it('overwrites previous value for same path', () => {
     saveSortMode('/media', 'recent', 'folder')

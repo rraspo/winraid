@@ -523,6 +523,12 @@ const SCREEN_STEPS = {
     clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
     clickButton('Properties'),
   ],
+  // The Options popover, anchored to row 2's overflow button.
+  'browse-options-popover': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+    clickButton('Options'),
+  ],
 }
 
 // A screen whose steps could not all run never becomes "ready": the shoot

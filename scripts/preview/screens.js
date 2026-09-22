@@ -30,4 +30,5 @@ export const SCREEN_NAMES = [
   'favorites-menu',
   'entry-context-menu',
   'properties-dialog',
+  'browse-options-popover',
 ]

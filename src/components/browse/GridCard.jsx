@@ -12,12 +12,17 @@ const GridCard = memo(function GridCard({
   isSelected, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onProperties, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
-  localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
+  localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
 }) {
   const menuRef = useRef(null)
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
-    : <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="grid" modified={entry.modified} />
+    : (
+      <Thumbnail
+        name={entry.name} remotePath={entryPath} connectionId={connectionId}
+        size="grid" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
+      />
+    )
 
   function handleCardClick(e) {
     // Drop the 2nd+ click of a double-click — the row at this DOM position
