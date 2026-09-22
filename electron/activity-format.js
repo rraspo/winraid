@@ -32,6 +32,13 @@ export function describeActivity(type, payload = {}) {
           : { kind: 'remote', path: payload.dstDir, highlight: payload.name },
       }
 
+    case 'copy':
+      return {
+        title: `Copied ${payload.name}`,
+        detail: `→ ${payload.dstDir}`,
+        nav: { kind: 'remote', path: payload.dstDir, highlight: payload.name },
+      }
+
     case 'rename':
       return {
         title: `Renamed ${payload.oldName} → ${payload.newName}`,
@@ -80,6 +87,7 @@ export function describeActivity(type, payload = {}) {
 const FAILURE_TITLES = {
   upload:   'Upload failed',
   move:     'Move failed',
+  copy:     'Copy failed',
   rename:   'Rename failed',
   delete:   'Delete failed',
   mkdir:    'Create folder failed',

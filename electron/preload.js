@@ -235,6 +235,16 @@ contextBridge.exposeInMainWorld('winraid', {
     onOpenConnection: (cb) => on('tray:open-connection', cb),
   },
 
+  // -- Remote browser clipboard (cut/copy pointer, not the bytes) ----------
+  clipboard: {
+    /** Records a cut or copy pointer, replacing whatever was there. */
+    set: (mode, connectionId, paths) => ipcRenderer.invoke('clipboard:set', mode, connectionId, paths),
+    /** The current entry — { mode, connectionId, paths } — or null when empty. */
+    get: () => ipcRenderer.invoke('clipboard:get'),
+    /** Empties the clipboard. */
+    clear: () => ipcRenderer.invoke('clipboard:clear'),
+  },
+
   // -- Local filesystem ----------------------------------------------------
   local: {
     /** Wipes all contents of a folder then recreates it empty. */
@@ -277,6 +287,10 @@ contextBridge.exposeInMainWorld('winraid', {
     trashPurge: (connectionId, entryId) => ipcRenderer.invoke('remote:trashPurge', connectionId, entryId),
     /** Move / rename a remote path (SSH mv, SFTP rename fallback). */
     move: (connectionId, src, dst) => ipcRenderer.invoke('remote:move', connectionId, src, dst),
+    /** Copy a remote path server-side (SSH `cp -r`). No SFTP fallback exists — fails when the connection cannot exec. */
+    copy: (connectionId, src, dst) => ipcRenderer.invoke('remote:copy', connectionId, src, dst),
+    /** Whether this connection can run server-side commands at all. Returns { ok, capable: true | false | null }, null meaning not yet probed. */
+    execCapable: (connectionId) => ipcRenderer.invoke('remote:exec-capable', connectionId),
     /** Create a remote directory. */
     mkdir: (connectionId, path) => ipcRenderer.invoke('remote:mkdir', connectionId, path),
     /** Walk localFolder, stat each file against remote. No deletion — check only. */

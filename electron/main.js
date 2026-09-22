@@ -31,6 +31,8 @@ import { entryInfoCommand, readlinkCommand, parseEntryInfoOutput } from './remot
 import { validateRemotePath } from './validation.js'
 import { backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
 import { moveRemotePath } from './remote-move.js'
+import { copyRemotePath } from './remote-copy.js'
+import { createClipboardStore, shouldClearClipboardForConnectionsChange } from './clipboard.js'
 import { listTrash, restoreFromTrash, purgeTrash } from './remote-trash.js'
 import { deleteRemote } from './remote-delete.js'
 import { checkTrashFolder } from './trash-folder-check.js'
@@ -805,7 +807,15 @@ function registerIPC() {
       log('warn', `Refused config write to "${key}" — not in the allowlist`)
       return { error: 'forbidden key' }
     }
-    const { setConfig } = await import('./config.js')
+    const { setConfig, getConfig } = await import('./config.js')
+    if (topKey === 'connections') {
+      // A cut/copy pointer only means anything while the connection it
+      // targets still resolves to the same host/user/root — an edit or a
+      // deletion here can invalidate it.
+      if (shouldClearClipboardForConnectionsChange(clipboardStore.get(), getConfig().connections, value)) {
+        clipboardStore.clear()
+      }
+    }
     return setConfig(key, value)
   })
 
@@ -1400,6 +1410,11 @@ function registerIPC() {
         const t0 = Date.now()
         try {
           const { code, stdout } = await execWithTimeout(client, listCommand(remotePath), 60_000)
+          // The exec channel itself opened and ran — this connection can run
+          // server-side commands (cp included), whatever this particular
+          // command's exit code was. Cached on the pool entry so the
+          // clipboard's Copy button can reflect it without a fresh probe.
+          poolEntry.execCapable = true
           if (code === 0 && stdout.trim()) {
             const entries = sortEntries(parseListOutput(stdout))
             log('info', `[perf] list via find: ${entries.length} entries in ${Date.now() - t0}ms — ${remotePath}`)
@@ -1407,6 +1422,10 @@ function registerIPC() {
           }
           log('warn', `[perf] list find unusable (exit ${code}) after ${Date.now() - t0}ms, falling back to readdir — ${remotePath}`)
         } catch (e) {
+          // The exec channel itself was refused (a restricted / internal-sftp
+          // shell) rather than a command failing inside it — this connection
+          // cannot run cp either.
+          poolEntry.execCapable = false
           log('warn', `[perf] list find errored after ${Date.now() - t0}ms (${e.message}), falling back to readdir — ${remotePath}`)
         }
       }
@@ -1450,7 +1469,10 @@ function registerIPC() {
       let stdout, code
       try {
         ;({ code, stdout } = await execWithTimeout(client, pipeline, 60_000))
+        // Same exec-capability signal remote:list caches — the channel ran.
+        poolEntry.execCapable = true
       } catch (err) {
+        poolEntry.execCapable = false
         return { ok: false, error: err.message }
       }
 
@@ -1665,6 +1687,68 @@ function registerIPC() {
       emitActivity({ type: 'move', connectionId, level: 'error', error: err.message })
       return { ok: false, error: err.message }
     }
+  })
+
+  // -- Remote browser: copy (server-side `cp -r`, no SFTP fallback exists) --
+  ipcMain.handle('remote:copy', async (_e, connectionId, srcPath, dstPath) => {
+    if (!validateRemotePath(srcPath) || !validateRemotePath(dstPath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const client = _sftpPool.get(connectionId)?.client
+      const label = await _connLabel(connectionId)
+      const warn = (message) => log('warn', `Remote copy [${label}]: ${message}`)
+      const result = await copyRemotePath({ client, warn }, srcPath, dstPath)
+      if (result.ok) {
+        log('info', `Remote copy [${label}] (${result.via}): ${srcPath} -> ${dstPath}`)
+        const name   = dstPath.split('/').pop()
+        const dstDir = dstPath.slice(0, dstPath.lastIndexOf('/')) || '/'
+        emitActivity({ type: 'copy', connectionId, payload: { name, dstDir } })
+      } else {
+        log('error', `Remote copy failed [${label}] from: ${srcPath}`)
+        log('error', `Remote copy failed [${label}]   to: ${dstPath} — ${result.error}`)
+        emitActivity({ type: 'copy', connectionId, level: 'error', error: result.error })
+      }
+      return result
+    } catch (err) {
+      log('error', `Remote copy failed [${await _connLabel(connectionId)}]: ${err.message}`)
+      emitActivity({ type: 'copy', connectionId, level: 'error', error: err.message })
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Whether this connection has server-side exec at all — a byproduct of the
+  // exec probe remote:list and remote:tree already run, cached on the pool
+  // entry. `capable: null` means not yet known (no listing has happened on
+  // this connection this session); the caller treats that as "don't know
+  // yet" rather than as a hard no.
+  ipcMain.handle('remote:exec-capable', (_e, connectionId) => {
+    const poolEntry = _sftpPool.get(connectionId)
+    return { ok: true, capable: poolEntry?.execCapable ?? null }
+  })
+
+  // -- Clipboard: cut/copy pointer + paste ----------------------------------
+  // The clipboard itself holds only { mode, connectionId, paths }, set by the
+  // toolbar's Cut/Copy buttons — see clipboard.js. Paste is a per-file
+  // client-side loop (window.winraid.remote.move / .copy) so it reports
+  // partial failure per file, the same shape the bulk delete/move operations
+  // already use; there is no separate clipboard:paste IPC call.
+  ipcMain.handle('clipboard:set', (_e, mode, connectionId, paths) => {
+    if (mode !== 'cut' && mode !== 'copy') return { ok: false, error: 'Invalid clipboard mode' }
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
+    if (!Array.isArray(paths) || paths.length === 0 || !paths.every((p) => validateRemotePath(p))) {
+      return { ok: false, error: 'Invalid clipboard paths' }
+    }
+    clipboardStore.set(mode, connectionId, paths)
+    return { ok: true }
+  })
+
+  ipcMain.handle('clipboard:get', () => clipboardStore.get())
+
+  ipcMain.handle('clipboard:clear', () => {
+    clipboardStore.clear()
+    return { ok: true }
   })
 
   // -- Remote trash: list, restore, purge ------------------------------------
@@ -3226,6 +3310,10 @@ function mimeForPath(filePath) {
 const _sftpPool = new Map()
 const _sftpPoolPending = new Map()  // concurrency guard: connId → Promise
 const SFTP_POOL_TTL = 30_000  // 30 s idle before closing
+
+// The single cut/copy clipboard, shared across every tab and connection —
+// see clipboard.js for the pointer-not-bytes design.
+const clipboardStore = createClipboardStore()
 
 function _poolTouch(connId) {
   const entry = _sftpPool.get(connId)

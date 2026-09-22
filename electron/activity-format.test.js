@@ -21,6 +21,13 @@ describe('describeActivity', () => {
     expect(a.nav).toEqual({ kind: 'remote', path: '/media/archive/Trip' })
   })
 
+  it('copy: opens the destination dir and highlights the copy', () => {
+    const a = describeActivity('copy', { name: 'photo.jpg', dstDir: '/media/archive' })
+    expect(a.title).toBe('Copied photo.jpg')
+    expect(a.detail).toBe('→ /media/archive')
+    expect(a.nav).toEqual({ kind: 'remote', path: '/media/archive', highlight: 'photo.jpg' })
+  })
+
   it('rename: opens the parent and highlights the new name', () => {
     const a = describeActivity('rename', { oldName: 'a.jpg', newName: 'b.jpg', dir: '/media/a' })
     expect(a.title).toBe('Renamed a.jpg → b.jpg')
@@ -69,6 +76,7 @@ describe('failureTitle', () => {
   it('maps known types to a failure phrase', () => {
     expect(failureTitle('move')).toBe('Move failed')
     expect(failureTitle('delete')).toBe('Delete failed')
+    expect(failureTitle('copy')).toBe('Copy failed')
   })
   it('falls back for unknown types', () => {
     expect(failureTitle('whatever')).toBe('Operation failed')
