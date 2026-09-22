@@ -113,15 +113,6 @@ export default function OptionsPopover({
         ]}
       />
 
-      <label className={styles.toggleRow}>
-        <input
-          type="checkbox"
-          checked={browseOptions.showHidden}
-          onChange={(e) => onSetShowHidden(e.target.checked)}
-        />
-        Show hidden files
-      </label>
-
       <SegmentedControl
         label="Remember this sort for"
         value={sortPersistence}

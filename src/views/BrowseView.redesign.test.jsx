@@ -187,7 +187,9 @@ describe('BrowseView redesign — two-row toolbar', () => {
     await user.click(within(commandRow()).getByRole('button', { name: 'Sort order' }))
     const menu = screen.getByText('Name Z-A')
     fireEvent.click(menu)
-    expect(within(commandRow()).getByRole('button', { name: 'Sort order' }).textContent).toContain('Name Z-A')
+    // Sort's button always shows the literal word "Sort" — the current
+    // selection only appears inside the open dropdown, never on the button.
+    expect(within(commandRow()).getByRole('button', { name: 'Sort order' }).textContent).toContain('Sort')
   })
 
   it('reports and switches view mode through the single View button', async () => {

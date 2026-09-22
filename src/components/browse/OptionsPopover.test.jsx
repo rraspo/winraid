@@ -63,17 +63,24 @@ describe('OptionsPopover — shape', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('lists Thumbnails, columns, Density, Show hidden files, sort scope, then All settings, in order', () => {
+  it('lists Thumbnails, columns, Density, sort scope, then All settings, in order', () => {
     render(<Harness />)
     const menu = screen.getByRole('menu')
     const text = menu.textContent
-    const order = ['Thumbnails', 'Size', 'Modified', 'Kind', 'Density', 'Show hidden files', 'Remember this sort for', 'All settings']
+    const order = ['Thumbnails', 'Size', 'Modified', 'Kind', 'Density', 'Remember this sort for', 'All settings']
     let lastIndex = -1
     for (const label of order) {
       const idx = text.indexOf(label)
       expect(idx).toBeGreaterThan(lastIndex)
       lastIndex = idx
     }
+  })
+
+  it('does not render the Show hidden files row — nothing downstream reads the flag', () => {
+    render(<Harness />)
+    const menu = screen.getByRole('menu')
+    expect(within(menu).queryByText('Show hidden files')).toBeNull()
+    expect(within(menu).queryByRole('checkbox', { name: 'Show hidden files' })).toBeNull()
   })
 })
 
@@ -101,13 +108,6 @@ describe('OptionsPopover — controls', () => {
     render(<Harness onSetDensity={onSetDensity} />)
     fireEvent.click(screen.getByRole('radio', { name: 'Compact' }))
     expect(onSetDensity).toHaveBeenCalledWith('compact')
-  })
-
-  it('toggles show hidden files', () => {
-    const onSetShowHidden = vi.fn()
-    render(<Harness onSetShowHidden={onSetShowHidden} />)
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Show hidden files' }))
-    expect(onSetShowHidden).toHaveBeenCalledWith(true)
   })
 
   it('offers this folder / this connection / everywhere for the sort scope', () => {

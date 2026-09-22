@@ -5,7 +5,7 @@ import {
   AlertCircle, Loader, CirclePlus, List, LayoutGrid,
   Trash2, Scissors, Copy, ClipboardPaste, Pencil,
   X as XIcon, Play, Search, ArrowUpDown, MoreHorizontal,
-  ArrowLeft, ArrowRight, ArrowUp, Home, RefreshCw,
+  ArrowLeft, ArrowRight, ArrowUp, Home, RefreshCw, Check,
 } from 'lucide-react'
 import { isFavorite } from '../utils/favorites'
 import { normalizeForSearch } from '../utils/normalizeForSearch'
@@ -708,28 +708,26 @@ export default function BrowseView({
           <span className={styles.rowPipe} data-testid="toolbar-pipe" aria-hidden="true" />
 
           <div className={styles.sortWrap} ref={sortDropRef}>
-            <Tooltip tip="Sort order" side="bottom">
-              <button
-                className={styles.sortBtn}
-                onClick={() => setSortDropOpen((v) => !v)}
-                aria-label="Sort order"
-              >
-                <ArrowUpDown size={13} />
-                <span className={styles.sortLabel}>
-                  {SORT_OPTIONS.find((o) => o.value === sortMode)?.label ?? 'Sort'}
-                </span>
-                <ChevronDown size={12} />
-              </button>
-            </Tooltip>
+            <button
+              className={styles.sortBtn}
+              onClick={() => setSortDropOpen((v) => !v)}
+              aria-label="Sort order"
+            >
+              <ArrowUpDown size={13} />
+              <span className={styles.sortLabel}>Sort</span>
+              <ChevronDown size={12} />
+            </button>
             {sortDropOpen && (
               <div className={styles.sortDrop}>
                 {SORT_OPTIONS.map((opt) => (
                   <button
                     key={opt.value}
                     className={[styles.sortOption, sortMode === opt.value ? styles.sortOptionActive : ''].join(' ')}
+                    aria-current={sortMode === opt.value ? 'true' : undefined}
                     onClick={() => { setSortMode(opt.value); setSortDropOpen(false) }}
                   >
-                    {opt.label}
+                    <span className={styles.sortOptionLabel}>{opt.label}</span>
+                    {sortMode === opt.value && <Check size={13} className={styles.optionCheck} />}
                   </button>
                 ))}
               </div>
@@ -737,18 +735,16 @@ export default function BrowseView({
           </div>
 
           <div className={styles.viewWrap} ref={viewDropRef}>
-            <Tooltip tip="View" side="bottom">
-              <button
-                type="button"
-                className={styles.viewBtn}
-                aria-label="View"
-                onClick={() => setViewDropOpen((v) => !v)}
-              >
-                {viewMode === 'grid' ? <LayoutGrid size={14} /> : <List size={14} />}
-                <span className={styles.viewLabel}>View</span>
-                <ChevronDown size={12} />
-              </button>
-            </Tooltip>
+            <button
+              type="button"
+              className={styles.viewBtn}
+              aria-label="View"
+              onClick={() => setViewDropOpen((v) => !v)}
+            >
+              {viewMode === 'grid' ? <LayoutGrid size={14} /> : <List size={14} />}
+              <span className={styles.viewLabel}>View</span>
+              <ChevronDown size={12} />
+            </button>
             {viewDropOpen && (
               <div className={styles.viewDrop}>
                 <button
@@ -760,6 +756,7 @@ export default function BrowseView({
                 >
                   <LayoutGrid size={14} />
                   <span>Grid view</span>
+                  {viewMode === 'grid' && <Check size={13} className={styles.optionCheck} />}
                 </button>
                 <button
                   type="button"
@@ -770,6 +767,7 @@ export default function BrowseView({
                 >
                   <List size={14} />
                   <span>List view</span>
+                  {viewMode === 'list' && <Check size={13} className={styles.optionCheck} />}
                 </button>
               </div>
             )}
