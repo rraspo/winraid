@@ -6,6 +6,7 @@ import { useEntryView } from './useEntryView'
 import { useBrowseMutations } from './useBrowseMutations'
 import { useBrowseOptions } from './useBrowseOptions'
 import { usePasteDrop } from './usePasteDrop'
+import { useClipboard } from './useClipboard'
 import * as toast from '../services/toast'
 
 // ---------------------------------------------------------------------------
@@ -353,6 +354,20 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   // ── Sub-hook composition: per-view browse preferences (Options popover) ────
   const browseOptionsApi = useBrowseOptions({ selectedId, selectedConn, connections, setConnections })
 
+  // ── Sub-hook composition: clipboard (cut/copy pointer + paste) ─────────────
+  // Sits below useBrowseMutations because paste shares its in-flight flag and
+  // cancellation ref, and below useSelection because cut/copy record the
+  // current selection.
+  const clipboardApi = useClipboard({
+    selectedId,
+    path,
+    selectedEntries,
+    cancelledRef,
+    fetchDir,
+    setStatus,
+    setOpInFlight,
+  })
+
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
   const busy     = opInFlight || !!dragDrop.moveInFlight
   const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
@@ -381,6 +396,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
     ...browseOptionsApi,
+    ...clipboardApi,
     // Sub-hook APIs — spread flat for backward compatibility
     ...pasteDrop,
     ...selection,

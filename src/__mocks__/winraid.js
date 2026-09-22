@@ -61,6 +61,13 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.cache,
     },
 
+    clipboard: {
+      set: vi.fn().mockResolvedValue({ ok: true }),
+      get: vi.fn().mockResolvedValue(null),
+      clear: vi.fn().mockResolvedValue({ ok: true }),
+      ...overrides.clipboard,
+    },
+
     watcher: {
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
@@ -145,6 +152,8 @@ export function createWinraidMock(overrides = {}) {
       trashRestore: vi.fn().mockResolvedValue({ ok: true, restoredPath: '', renamed: false }),
       trashPurge: vi.fn().mockResolvedValue({ ok: true, purged: 0 }),
       move: vi.fn().mockResolvedValue({ ok: true }),
+      copy: vi.fn().mockResolvedValue({ ok: true, via: 'ssh cp' }),
+      execCapable: vi.fn().mockResolvedValue({ ok: true, capable: true }),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, total: 0, confirmed: [], notFound: [] }),
       verifyDelete: vi.fn().mockResolvedValue({ ok: true, deleted: 0, errors: [] }),
       diskUsage: vi.fn().mockResolvedValue({ ok: true, total: 10 * 1024 ** 3, used: 4 * 1024 ** 3, free: 6 * 1024 ** 3 }),

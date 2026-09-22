@@ -57,6 +57,9 @@ function createChannel() {
 
 const configStore = clone(CONFIG)
 const queueJobs = clone(QUEUE_JOBS)
+// { mode, connectionId, paths } | null — the harness's stand-in for the main
+// process's single clipboard buffer (electron/clipboard.js).
+let clipboardState = null
 
 const channels = {
   watcherStatus: createChannel(),
@@ -185,6 +188,18 @@ window.winraid = {
     onOpened: () => () => {},
   },
 
+  clipboard: {
+    set: (mode, connectionId, paths) => {
+      clipboardState = { mode, connectionId, paths: [...paths] }
+      return Promise.resolve({ ok: true })
+    },
+    get: () => Promise.resolve(clone(clipboardState)),
+    clear: () => {
+      clipboardState = null
+      return Promise.resolve({ ok: true })
+    },
+  },
+
   local: {
     clearFolder: () => Promise.resolve({ ok: true }),
     exists: () => Promise.resolve(true),
@@ -209,6 +224,10 @@ window.winraid = {
     trashRestore: () => Promise.resolve({ ok: true, restoredPath: '', renamed: false }),
     trashPurge: () => Promise.resolve({ ok: true, purged: 0 }),
     move: () => Promise.resolve({ ok: true }),
+    copy: () => Promise.resolve({ ok: true, via: 'ssh cp' }),
+    // Every preview connection can run server-side commands — a restricted,
+    // no-exec connection has no fixture data of its own to browse here.
+    execCapable: () => Promise.resolve({ ok: true, capable: true }),
     mkdir: () => Promise.resolve({ ok: true }),
     verifyClean: () => Promise.resolve({ ok: true, total: 0, confirmed: [], notFound: [] }),
     verifyDelete: () => Promise.resolve({ ok: true, deleted: 0, errors: [] }),
@@ -427,6 +446,19 @@ const SCREEN_STEPS = {
   'browse-selection': [
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+  ],
+  // Cut pending — Paste lights up from clipboard contents alone, with
+  // nothing selected in the current directory.
+  'browse-clipboard-cut': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector('button[aria-label="Cut"]', 'cut the selection, enabling Paste'),
+  ],
+  // Copy pending — same Paste-enabled state, reached through Copy instead.
+  'browse-clipboard-copy': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector('button[aria-label="Copy"]', 'copy the selection, enabling Paste'),
   ],
   // Row 1's connection picker menu, open — carries the cross-connection
   // favourites list below a divider under the connection list.

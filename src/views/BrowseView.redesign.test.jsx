@@ -22,12 +22,13 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 // file-management cluster (Cut/Copy/Paste/Rename/Delete), a pipe, "Sort"
 // and "View" (icon + word + chevron each), a pipe, then the overflow ("...")
 // button — inline right after its pipe, no spacer pushing it to the edge.
-// Cut/Copy/Paste stay permanently disabled placeholders (no clipboard
-// capability exists yet); Rename enables at exactly one selection; Delete
-// and Cut/Copy/Paste-independent-of-selection Paste follow the card's
-// enablement rules. Sort and View are relocations of the old sort dropdown
-// and the old grid/list segmented pair (View now reports and lets you
-// change the mode from one button).
+// Cut and Copy enable with at least one entry selected (Copy additionally
+// requires the connection to support server-side exec — see
+// BrowseView.clipboardWiring.test.jsx); Paste enables from clipboard
+// contents, independent of selection; Rename enables at exactly one
+// selection; Delete at one or more. Sort and View are relocations of the old
+// sort dropdown and the old grid/list segmented pair (View now reports and
+// lets you change the mode from one button).
 //
 // The below-toolbar selection bar is gone entirely: the bulk actions it
 // held (Delete, Rename) now live in row 2's file-management cluster, and
@@ -137,7 +138,7 @@ describe('BrowseView redesign — two-row toolbar', () => {
     expect(within(commandRow()).getAllByTestId('toolbar-pipe')).toHaveLength(3)
   })
 
-  it('keeps Cut, Copy and Paste permanently disabled placeholders', async () => {
+  it('enables Cut and Copy on selection, and Paste independent of selection from clipboard contents', async () => {
     await mount()
     const row = commandRow()
     expect(within(row).getByRole('button', { name: 'Cut' })).toBeDisabled()
@@ -146,8 +147,10 @@ describe('BrowseView redesign — two-row toolbar', () => {
 
     const rowEl = screen.getByText('readme.txt').closest('.row')
     await userEvent.setup().click(rowEl.querySelector('.checkbox'))
-    expect(within(row).getByRole('button', { name: 'Cut' })).toBeDisabled()
-    expect(within(row).getByRole('button', { name: 'Copy' })).toBeDisabled()
+    expect(within(row).getByRole('button', { name: 'Cut' })).toBeEnabled()
+    expect(within(row).getByRole('button', { name: 'Copy' })).toBeEnabled()
+    // Paste stays disabled here — nothing has been cut or copied yet, and
+    // its enablement is the clipboard's presence, not the selection.
     expect(within(row).getByRole('button', { name: 'Paste' })).toBeDisabled()
   })
 

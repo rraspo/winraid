@@ -78,6 +78,7 @@ export default function BrowseView({
     handleDownload,
     handleDelete, handleMove,
     handleBulkDelete,
+    hasClipboard, execCapable, handleCut, handleCopy, handlePasteClipboard,
     handlePasteImage, handlePasteUrl, handleConfirmPaste, handleDiscardPaste, pendingPaste,
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
     handleItemPointer, toggleSelectAll,
@@ -641,17 +642,35 @@ export default function BrowseView({
           <span className={styles.rowPipe} data-testid="toolbar-pipe" aria-hidden="true" />
 
           <Tooltip tip="Cut" side="bottom">
-            <button type="button" className={styles.fileActionBtn} aria-label="Cut" disabled>
+            <button
+              type="button"
+              className={styles.fileActionBtn}
+              aria-label="Cut"
+              disabled={busy || selected.size === 0}
+              onClick={handleCut}
+            >
               <Scissors size={14} />
             </button>
           </Tooltip>
-          <Tooltip tip="Copy" side="bottom">
-            <button type="button" className={styles.fileActionBtn} aria-label="Copy" disabled>
+          <Tooltip tip={execCapable === false ? 'Copy (unavailable — this connection has no server-side exec)' : 'Copy'} side="bottom">
+            <button
+              type="button"
+              className={styles.fileActionBtn}
+              aria-label="Copy"
+              disabled={busy || selected.size === 0 || execCapable === false}
+              onClick={handleCopy}
+            >
               <Copy size={14} />
             </button>
           </Tooltip>
           <Tooltip tip="Paste" side="bottom">
-            <button type="button" className={styles.fileActionBtn} aria-label="Paste" disabled>
+            <button
+              type="button"
+              className={styles.fileActionBtn}
+              aria-label="Paste"
+              disabled={busy || !hasClipboard}
+              onClick={handlePasteClipboard}
+            >
               <ClipboardPaste size={14} />
             </button>
           </Tooltip>
