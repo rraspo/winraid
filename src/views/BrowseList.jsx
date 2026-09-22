@@ -16,6 +16,7 @@ const BrowseList = memo(function BrowseList({
   navigate, openQuickLook, handleItemPointer, toggleSelectAll,
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
+  requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
   visibleColumns = DEFAULT_VISIBLE_COLUMNS, thumbnailsEnabled = true, density = 'default',
 }) {
@@ -79,6 +80,14 @@ const BrowseList = memo(function BrowseList({
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
     if (!handleRubberBandStart) return
+    // EntryMenu's dropdown renders through a portal straight into
+    // document.body — physically outside this wrapper, but still a React
+    // descendant, so its clicks still bubble in here as synthetic events.
+    // A real DOM containment check is what tells the two apart: without it,
+    // clicking any dropdown item registers as an empty-space lasso click and
+    // silently wipes whatever was selected before the item's own handler
+    // ever runs.
+    if (!e.currentTarget.contains(e.target)) return
     if (e.target.closest('[data-entry-path]')) return
     if (e.target.closest('label')) return
     isLassoing.current = true
@@ -219,6 +228,7 @@ const BrowseList = memo(function BrowseList({
                 connectionId={selectedId}
                 busy={busy}
                 isSelected={selected.has(entry.name)}
+                selectedCount={selected.size}
                 isDragSource={dragSourcePaths.has(entry.entryPath)}
                 isLastVisited={entry.type === 'dir' && lastVisitedDir === entry.name}
                 isHighlighted={highlightFile === entry.name}
@@ -237,6 +247,10 @@ const BrowseList = memo(function BrowseList({
                 setMoveTarget={setMoveTarget}
                 setDeleteTarget={setDeleteTarget}
                 onProperties={onProperties}
+                requestBulkDelete={requestBulkDelete}
+                requestBulkMove={requestBulkMove}
+                requestBulkDownload={requestBulkDownload}
+                requestBulkProperties={requestBulkProperties}
                 localCandidate={localMirrorOf?.(entry.entryPath) ?? null}
                 checkLocalExists={checkLocalExists}
                 onRevealLocal={onRevealLocal}

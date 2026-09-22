@@ -19,6 +19,7 @@ import DeleteModal from '../components/modals/DeleteModal'
 import MoveModal from '../components/modals/MoveModal'
 import ConfirmModal from '../components/modals/ConfirmModal'
 import BulkDeleteModal from '../components/modals/BulkDeleteModal'
+import BulkMoveModal from '../components/modals/BulkMoveModal'
 import PasteImageModal from '../components/modals/PasteImageModal'
 import PropertiesModal from '../components/modals/PropertiesModal'
 import OptionsPopover from '../components/browse/OptionsPopover'
@@ -64,12 +65,12 @@ export default function BrowseView({
     confirmTarget, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
     dragSource, dragPos, dragSourcePaths, moveInFlight, downloadProgress,
-    selected, bulkAction,
+    selected, bulkAction, bulkMoveDest,
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
     sortMode, setSortMode,
     setViewMode, setNewFolderName, setConfirmTarget,
-    setDeleteTarget, setMoveTarget, setBulkAction,
+    setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
     setSelectedFile, setShowQuickLook, setHighlightFile,
     cfgRemotePath, localFolder, crumbs,
     fileEntries, selectedEntries, dirCount, fileCount, busy, noConfig,
@@ -77,7 +78,7 @@ export default function BrowseView({
     handleCheckout, handleConfirm,
     handleDownload,
     handleDelete, handleMove,
-    handleBulkDelete,
+    handleBulkDelete, handleBulkMove, handleBulkCheckout,
     hasClipboard, execCapable, handleCut, handleCopy, handlePasteClipboard,
     handlePasteImage, handlePasteUrl, handleConfirmPaste, handleDiscardPaste, pendingPaste,
     handleDragOverFolder, handleDragLeaveFolder, handleDrop,
@@ -117,14 +118,40 @@ export default function BrowseView({
     onOpenTab?.(selectedId, 'browse', { path: entryPath, newTab: true, background: true })
   }
 
-  // Properties reachable from a row's own "..."/right-click menu — always
-  // just that one entry, independent of any broader multi-selection.
+  // Properties for a single entry — the row's own "..." menu (always) and
+  // right-click when it targets just one entry (nothing else selected, or a
+  // one-item selection).
   const openPropertiesForRow = (entry) => {
     setPropertiesEntries([{
       name: entry.name, path: entry.path, size: entry.size, modified: entry.modified,
       type: entry.isDir ? 'dir' : 'file',
     }])
   }
+
+  // Properties for the whole current selection — reached both from the
+  // toolbar overflow menu and from right-click when the clicked entry is
+  // part of a multi-selection.
+  const openPropertiesForSelection = () => {
+    setPropertiesEntries(selectedEntries.map((e) => ({
+      name: e.name, type: e.type, size: e.size, modified: e.modified,
+      path: joinPath(path, e.name),
+    })))
+  }
+
+  // Right-click's "act on the selection" branch for Move and Delete: the
+  // bulk modals already read their targets from live selection state, so
+  // reaching them from a row is just opening them — same as the toolbar's
+  // own "Delete selected" button.
+  const requestBulkDelete = () => setBulkAction('delete')
+  const requestBulkMove = () => {
+    setBulkMoveDest(path)
+    setBulkAction('move')
+  }
+  // Download has no toolbar precedent to mirror — handleBulkCheckout (an
+  // existing, already-tested mutation) already does exactly what a bulk
+  // download needs: one folder picker, then every selected entry streamed
+  // into it, with a success/partial-failure summary toast either way.
+  const requestBulkDownload = handleBulkCheckout
 
   const localMirrorOf  = (entryPath) => localMirrorPath(browse.selectedConn, entryPath)
   // Optional-call (?.()) so a preload that predates this surface (dev restart,
@@ -492,6 +519,18 @@ export default function BrowseView({
           trashed={trashed}
           onConfirm={handleBulkDelete}
           onCancel={() => setBulkAction(null)}
+        />
+      )}
+      {bulkAction === 'move' && (
+        <BulkMoveModal
+          count={selected.size}
+          names={selectedEntries.map((e) => e.name)}
+          dest={bulkMoveDest}
+          onDestChange={setBulkMoveDest}
+          onConfirm={handleBulkMove}
+          onCancel={() => { setBulkAction(null); setBulkMoveDest('') }}
+          currentPath={path}
+          sftpCfg={sftpCfg}
         />
       )}
       {moveInFlight && (
@@ -865,13 +904,7 @@ export default function BrowseView({
                     role="menuitem"
                     className={[entryMenuStyles.menuItem, selected.size === 0 ? styles.menuItemDisabled : ''].join(' ')}
                     disabled={selected.size === 0}
-                    onClick={() => {
-                      setOverflowMenuOpen(false)
-                      setPropertiesEntries(selectedEntries.map((e) => ({
-                        name: e.name, type: e.type, size: e.size, modified: e.modified,
-                        path: joinPath(path, e.name),
-                      })))
-                    }}
+                    onClick={() => { setOverflowMenuOpen(false); openPropertiesForSelection() }}
                   >
                     Properties
                   </button>
@@ -967,6 +1000,10 @@ export default function BrowseView({
               onRevealLocal={revealLocal}
               onMiddleClickFolder={handleMiddleClickFolder}
               onProperties={openPropertiesForRow}
+              requestBulkDelete={requestBulkDelete}
+              requestBulkMove={requestBulkMove}
+              requestBulkDownload={requestBulkDownload}
+              requestBulkProperties={openPropertiesForSelection}
               visibleColumns={browse.browseOptions.columns}
               thumbnailsEnabled={browse.browseOptions.thumbnails}
               density={browse.browseOptions.density}
@@ -1013,6 +1050,10 @@ export default function BrowseView({
               onRevealLocal={revealLocal}
               onMiddleClickFolder={handleMiddleClickFolder}
               onProperties={openPropertiesForRow}
+              requestBulkDelete={requestBulkDelete}
+              requestBulkMove={requestBulkMove}
+              requestBulkDownload={requestBulkDownload}
+              requestBulkProperties={openPropertiesForSelection}
               thumbnailsEnabled={browse.browseOptions.thumbnails}
             />
           )}

@@ -97,8 +97,13 @@ const EntryMenu = forwardRef(function EntryMenu({
     }
   }, [open])
 
+  // Every action handler receives whether this invocation opened via
+  // right-click (cursor-anchored) vs the dot button — the two openers this
+  // shared menu serves are meant to behave differently: the dot button
+  // always targets the row it is bolted to, right-click respects whatever
+  // is currently selected. The caller (row/card) decides what that means.
   function act(fn) {
-    return (e) => { e.stopPropagation(); setOpen(false); fn() }
+    return (e) => { e.stopPropagation(); const viaContextMenu = cursorModeRef.current; setOpen(false); fn(viaContextMenu) }
   }
 
   return (

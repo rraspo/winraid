@@ -9,12 +9,25 @@ import styles from './GridCard.module.css'
 
 const GridCard = memo(function GridCard({
   entry, entryPath, connectionId, isDir, busy, index,
-  isSelected, isDragSource, isLastVisited, isHighlighted, isCursor,
+  isSelected, selectedCount, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onProperties, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
+  requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
 }) {
   const menuRef = useRef(null)
+
+  // EntryMenu is shared by the dot button and right-click, which must
+  // behave differently: the dot button always targets this card alone;
+  // right-click acts on the whole selection when this card is part of it,
+  // or first collapses the selection onto this card when it isn't (the
+  // resulting target is then always just this card, same as the dot button).
+  function resolveTarget(viaContextMenu) {
+    if (!viaContextMenu) return 'self'
+    if (isSelected) return selectedCount > 1 ? 'selection' : 'self'
+    onItemPointer(index)
+    return 'self'
+  }
   const icon = isDir
     ? <Folder size={40} className={styles.gridIconDir} />
     : (
@@ -113,11 +126,19 @@ const GridCard = memo(function GridCard({
             isDir={isDir}
             isEditable={!isDir && isEditableFile(entry.name)}
             busy={busy}
-            onDownload={() => onDownload(entryPath, entry.name, isDir)}
+            onDownload={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+              ? requestBulkDownload()
+              : onDownload(entryPath, entry.name, isDir)}
             onEdit={() => onEdit(entryPath)}
-            onMove={() => onMove({ name: entry.name, path: entryPath, isDir })}
-            onDelete={() => onDelete({ name: entry.name, path: entryPath, isDir })}
-            onProperties={() => onProperties({ name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified })}
+            onMove={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+              ? requestBulkMove()
+              : onMove({ name: entry.name, path: entryPath, isDir })}
+            onDelete={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+              ? requestBulkDelete()
+              : onDelete({ name: entry.name, path: entryPath, isDir })}
+            onProperties={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+              ? requestBulkProperties()
+              : onProperties({ name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified })}
             localCandidate={localCandidate}
             checkLocalExists={checkLocalExists}
             onRevealLocal={onRevealLocal}
