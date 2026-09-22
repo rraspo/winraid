@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import TrayFlyout from './TrayFlyout'
 import { createWinraidMock } from '../__mocks__/winraid'
+import { resetTooltipWarmthForTests } from '../components/ui/tooltipWarmth'
 
 // Contract under test — the flyout's icon buttons say what they do.
 //
@@ -20,6 +21,8 @@ const CONNECTIONS = [
 ]
 
 beforeEach(() => {
+  resetTooltipWarmthForTests()
+  vi.useFakeTimers()
   window.winraid = createWinraidMock({
     config: {
       get: vi.fn().mockImplementation((key) => {
@@ -37,7 +40,10 @@ beforeEach(() => {
   }
 })
 
-afterEach(() => { delete window.winraid })
+afterEach(() => {
+  delete window.winraid
+  vi.useRealTimers()
+})
 
 async function mount() {
   render(<TrayFlyout />)
@@ -48,6 +54,8 @@ function hover(label) {
   const button = screen.getByRole('button', { name: label })
   // The tooltip listens on the wrapper it puts around its child.
   fireEvent.mouseEnter(button.closest('span'))
+  // Past the cold-hover delay — see Tooltip.test.jsx for the timing contract.
+  act(() => { vi.advanceTimersByTime(600) })
 }
 
 describe('tray flyout tooltips', () => {

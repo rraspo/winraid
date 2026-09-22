@@ -5,6 +5,7 @@ import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
 import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
+import { resetTooltipWarmthForTests } from '../components/ui/tooltipWarmth'
 
 vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="play-overlay" /> }))
 
@@ -93,11 +94,18 @@ describe('Sort and View have no redundant tooltip', () => {
   })
 
   it('still names the icon-only command buttons via their own tooltips', async () => {
-    const user = userEvent.setup()
     await mount()
-    const cutBtn = within(commandRow()).getByRole('button', { name: 'Cut' })
-    await user.hover(cutBtn)
-    expect(await screen.findByText('Cut', { selector: 'div' })).toBeTruthy()
+    resetTooltipWarmthForTests()
+    vi.useFakeTimers()
+    try {
+      const cutBtn = within(commandRow()).getByRole('button', { name: 'Cut' })
+      fireEvent.mouseEnter(cutBtn.closest('.anchor'))
+      // Past the cold-hover delay — see Tooltip.test.jsx for the timing contract.
+      act(() => { vi.advanceTimersByTime(600) })
+      expect(screen.getByText('Cut', { selector: 'div' })).toBeTruthy()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
