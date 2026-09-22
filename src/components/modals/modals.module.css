@@ -291,3 +291,99 @@
 
 .fieldBrowseBtn:hover { background: var(--hover); color: var(--text); }
 .fieldBrowseBtn:disabled { opacity: 0.35; cursor: default; }
+
+/* Properties dialog — labeled sections of read-only rows. */
+.propSections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 20px 20px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.propSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.propSectionTitle {
+  font-size: 11px;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 0;
+}
+
+.propRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.propLabel {
+  flex: 0 0 120px;
+  color: var(--text2);
+}
+
+.propValue {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.propValueBtn {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.propValueBtn:hover { color: var(--accent); }
+
+.propNote {
+  font-size: 12.5px;
+  color: var(--text3);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.propScanBtn {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--stroke);
+  background: transparent;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: var(--font-weight-medium);
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.propScanBtn:hover { color: var(--accent); border-color: var(--accent); }
+
+.propError { color: var(--err); }
+
+.spinning { animation: spin 700ms linear infinite; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .propScanBtn { transition: none; }
+  .spinning { animation: none; }
+}

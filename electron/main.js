@@ -27,6 +27,7 @@ import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { initActivity, pushActivity, tailActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
 import { listCommand, parseListOutput, readdirEntries } from './remote-list.js'
+import { entryInfoCommand, readlinkCommand, parseEntryInfoOutput } from './remote-entry-info.js'
 import { validateRemotePath } from './validation.js'
 import { backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
 import { moveRemotePath } from './remote-move.js'
@@ -1187,6 +1188,22 @@ function registerIPC() {
   ipcMain.handle('local:exists', (_e, p) => {
     if (typeof p !== 'string' || !p.trim()) return false
     try { return existsSync(resolve(p)) } catch { return false }
+  })
+
+  // Stat a local path for the Properties dialog's mirror-status comparison —
+  // whether a mirrored copy exists, and its size/mtime against the remote
+  // entry's. Absent path is reported as { ok: true, exists: false }, not an
+  // error: "no local copy yet" is an expected, not exceptional, outcome.
+  ipcMain.handle('local:stat', (_e, p) => {
+    if (typeof p !== 'string' || !p.trim()) return { ok: false, exists: false, error: 'Invalid path' }
+    try {
+      const resolved = resolve(p)
+      if (!existsSync(resolved)) return { ok: true, exists: false }
+      const st = statSync(resolved)
+      return { ok: true, exists: true, size: st.size, mtime: st.mtimeMs, isDirectory: st.isDirectory() }
+    } catch (err) {
+      return { ok: false, exists: false, error: err.message }
+    }
   })
 
   // Reveal a local folder/file in the OS file manager (no-op if it's gone).
@@ -2610,6 +2627,45 @@ function registerIPC() {
     const scanState = _sizeScans.get(connectionId)
     if (scanState) scanState.cancelled = true
     return { ok: true }
+  })
+
+  // ---------------------------------------------------------------------------
+  // Remote: single-entry attributes — permission mode, owner, group, birth
+  // time where reported, and symlink target. The listing command follows
+  // symlinks and never carries this, so Properties asks for it on demand,
+  // one entry at a time (never a directory walk).
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('remote:entry-info', async (_e, connectionId, remotePath) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Entry attributes only available for SFTP connections' }
+
+      const sftp = await _poolGet(connectionId)
+      _poolTouch(connectionId)
+      const poolEntry = _sftpPool.get(connectionId)
+      if (!poolEntry || !sftp) return { ok: false, error: 'Connection unavailable' }
+
+      const { stdout } = await execWithTimeout(poolEntry.client, entryInfoCommand(remotePath), 15_000)
+      const info = parseEntryInfoOutput(stdout)
+      if (!info) return { ok: false, error: 'Could not read entry attributes' }
+
+      let symlinkTarget = null
+      if (info.isSymlink) {
+        try {
+          const link = await execWithTimeout(poolEntry.client, readlinkCommand(remotePath), 15_000)
+          symlinkTarget = link.stdout.split('\n')[0]?.trim() || null
+        } catch { /* target unreadable — still report the rest of the attributes */ }
+      }
+
+      return { ok: true, ...info, symlinkTarget }
+    } catch (err) {
+      log('error', `[entry-info] failed: ${remotePath} — ${err.message}`)
+      return { ok: false, error: err.message }
+    }
   })
 
   // ---------------------------------------------------------------------------

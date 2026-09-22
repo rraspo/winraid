@@ -4,7 +4,7 @@ import { MoreHorizontal } from 'lucide-react'
 import styles from './EntryMenu.module.css'
 
 const EntryMenu = forwardRef(function EntryMenu({
-  isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete,
+  isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete, onProperties,
   localCandidate = null, checkLocalExists, onRevealLocal,
 }, ref) {
   const [open, setOpen] = useState(false)
@@ -133,6 +133,9 @@ const EntryMenu = forwardRef(function EntryMenu({
               Reveal in Explorer
             </button>
           )}
+          <button className={styles.menuItem} onClick={act(onProperties)}>
+            Properties
+          </button>
           <div className={styles.menuDivider} />
           <button
             className={[styles.menuItem, styles.menuItemDanger].join(' ')}

@@ -20,6 +20,7 @@ import MoveModal from '../components/modals/MoveModal'
 import ConfirmModal from '../components/modals/ConfirmModal'
 import BulkDeleteModal from '../components/modals/BulkDeleteModal'
 import PasteImageModal from '../components/modals/PasteImageModal'
+import PropertiesModal from '../components/modals/PropertiesModal'
 import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
 import Tooltip from '../components/ui/Tooltip'
@@ -37,6 +38,12 @@ const MERGERFS_MSG = 'This directory is a mergerfs union mount — files cannot 
 function parentFolder(remotePath) {
   const lastSlash = remotePath.lastIndexOf('/')
   return lastSlash > 0 ? remotePath.slice(0, lastSlash) : '/'
+}
+
+// Joins a folder path and a child name the way every remote path in this
+// view is built — root ('/') never doubles its separator.
+function joinPath(base, name) {
+  return base === '/' ? `/${name}` : `${base}/${name}`
 }
 
 export default function BrowseView({
@@ -108,6 +115,15 @@ export default function BrowseView({
     onOpenTab?.(selectedId, 'browse', { path: entryPath, newTab: true, background: true })
   }
 
+  // Properties reachable from a row's own "..."/right-click menu — always
+  // just that one entry, independent of any broader multi-selection.
+  const openPropertiesForRow = (entry) => {
+    setPropertiesEntries([{
+      name: entry.name, path: entry.path, size: entry.size, modified: entry.modified,
+      type: entry.isDir ? 'dir' : 'file',
+    }])
+  }
+
   const localMirrorOf  = (entryPath) => localMirrorPath(browse.selectedConn, entryPath)
   // Optional-call (?.()) so a preload that predates this surface (dev restart,
   // version skew) degrades to "no reveal item" instead of throwing.
@@ -122,6 +138,10 @@ export default function BrowseView({
 
   const [diskUsage, setDiskUsage]             = useState(null)
   const [showPlay, setShowPlay]               = useState(false)
+  // Non-null while the Properties dialog is open: an array of one entry
+  // (single selection or a per-row "..."/right-click Properties) or several
+  // (an overflow-menu "Properties" opened over a multi-selection).
+  const [propertiesEntries, setPropertiesEntries] = useState(null)
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
   const [viewDropOpen, setViewDropOpen]       = useState(false)
@@ -292,7 +312,7 @@ export default function BrowseView({
       // Don't steal keys from the search input, modals, editors, etc.
       if (tag === 'INPUT' || tag === 'TEXTAREA' || active?.isContentEditable) return
       // Bail if any modal is open — those should own keyboard input.
-      if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste) return
+      if (showQuickLook || showPlay || confirmTarget || deleteTarget || moveTarget || bulkAction || pendingPaste || propertiesEntries) return
       if (browse.entriesWithPaths.length === 0) return
 
       typeAheadBufRef.current += normalizeForSearch(e.key)
@@ -317,7 +337,7 @@ export default function BrowseView({
       clearTimeout(bufResetTimerRef.current)
       clearTimeout(cursorClearTimerRef.current)
     }
-  }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste])
+  }, [browse.entriesWithPaths, setCursorEntry, showQuickLook, showPlay, confirmTarget, deleteTarget, moveTarget, bulkAction, pendingPaste, propertiesEntries])
 
   // `favoritesByConnection` is the map of every connection's saved folders.
   // `favorites` is the legacy single-connection array a caller can pass
@@ -451,6 +471,15 @@ export default function BrowseView({
           pending={pendingPaste}
           onConfirm={handleConfirmPaste}
           onDiscard={handleDiscardPaste}
+        />
+      )}
+      {propertiesEntries && (
+        <PropertiesModal
+          entries={propertiesEntries}
+          connectionId={selectedId}
+          connection={browse.selectedConn}
+          copyPath={copyPath}
+          onClose={() => setPropertiesEntries(null)}
         />
       )}
       {bulkAction === 'delete' && (
@@ -635,7 +664,7 @@ export default function BrowseView({
                 if (!entry) return
                 setMoveTarget({
                   name:  entry.name,
-                  path:  path === '/' ? `/${entry.name}` : `${path}/${entry.name}`,
+                  path:  joinPath(path, entry.name),
                   isDir: entry.type === 'dir',
                 })
               }}
@@ -811,10 +840,23 @@ export default function BrowseView({
 
                 <div className={entryMenuStyles.menuDivider} />
 
-                {/* Properties and Options don't exist yet — the group is
-                    reserved (empty) so a later addition doesn't need to
-                    restructure the menu. */}
-                <div data-testid="overflow-group-properties" />
+                <div data-testid="overflow-group-properties">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className={[entryMenuStyles.menuItem, selected.size === 0 ? styles.menuItemDisabled : ''].join(' ')}
+                    disabled={selected.size === 0}
+                    onClick={() => {
+                      setOverflowMenuOpen(false)
+                      setPropertiesEntries(selectedEntries.map((e) => ({
+                        name: e.name, type: e.type, size: e.size, modified: e.modified,
+                        path: joinPath(path, e.name),
+                      })))
+                    }}
+                  >
+                    Properties
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -884,6 +926,7 @@ export default function BrowseView({
               checkLocalExists={checkLocalExists}
               onRevealLocal={revealLocal}
               onMiddleClickFolder={handleMiddleClickFolder}
+              onProperties={openPropertiesForRow}
             />
           )}
           {viewMode === 'grid' && (
@@ -926,6 +969,7 @@ export default function BrowseView({
               checkLocalExists={checkLocalExists}
               onRevealLocal={revealLocal}
               onMiddleClickFolder={handleMiddleClickFolder}
+              onProperties={openPropertiesForRow}
             />
           )}
           </div>

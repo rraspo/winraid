@@ -29,4 +29,5 @@ export const SCREEN_NAMES = [
   'move-picker',
   'favorites-menu',
   'entry-context-menu',
+  'properties-dialog',
 ]

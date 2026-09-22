@@ -241,6 +241,8 @@ contextBridge.exposeInMainWorld('winraid', {
     clearFolder: (path) => ipcRenderer.invoke('local:clear-folder', path),
     /** Returns true if the given local path currently exists. */
     exists: (path) => ipcRenderer.invoke('local:exists', path),
+    /** Stat a local path. Returns { ok, exists, size?, mtime?, isDirectory? }. */
+    stat: (path) => ipcRenderer.invoke('local:stat', path),
     /** Reveal a local folder/file in the OS file manager. */
     reveal: (path) => ipcRenderer.invoke('local:reveal', path),
   },
@@ -285,6 +287,9 @@ contextBridge.exposeInMainWorld('winraid', {
     onDownloadProgress: (cb) => on('download:progress', cb),
     /** Get filesystem disk usage stats for a remote connection. Returns { ok, total, used, free } in bytes. */
     diskUsage: (connectionId) => ipcRenderer.invoke('remote:disk-usage', connectionId),
+    /** Stat a single remote entry for its own attributes (never follows a symlink).
+     *  Returns { ok, mode, owner, group, created, isSymlink, symlinkTarget } or { ok: false, error }. */
+    entryInfo: (connectionId, path) => ipcRenderer.invoke('remote:entry-info', connectionId, path),
     /** Start a recursive folder-size scan. Results stream via size:* push events. */
     sizeScan:   (connectionId) => ipcRenderer.invoke('remote:size-scan', connectionId),
     /** Cancel an in-progress size scan. */

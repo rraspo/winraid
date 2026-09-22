@@ -11,7 +11,7 @@ const GridCard = memo(function GridCard({
   entry, entryPath, connectionId, isDir, busy, index,
   isSelected, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
-  onMove, onDelete, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
+  onMove, onDelete, onProperties, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
 }) {
   const menuRef = useRef(null)
@@ -112,6 +112,7 @@ const GridCard = memo(function GridCard({
             onEdit={() => onEdit(entryPath)}
             onMove={() => onMove({ name: entry.name, path: entryPath, isDir })}
             onDelete={() => onDelete({ name: entry.name, path: entryPath, isDir })}
+            onProperties={() => onProperties({ name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified })}
             localCandidate={localCandidate}
             checkLocalExists={checkLocalExists}
             onRevealLocal={onRevealLocal}

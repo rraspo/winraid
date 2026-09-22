@@ -12,7 +12,7 @@ const BrowseListRow = memo(function BrowseListRow({
   busy, isSelected, isDragSource, isLastVisited, isHighlighted, isCursor, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
-  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
 }) {
   const isDir = entry.type === 'dir'
@@ -126,6 +126,7 @@ const BrowseListRow = memo(function BrowseListRow({
           onEdit={() => setEditingFile(entryPath)}
           onMove={() => setMoveTarget({ name: entry.name, path: entryPath, isDir })}
           onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
+          onProperties={() => onProperties({ name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified })}
           localCandidate={localCandidate}
           checkLocalExists={checkLocalExists}
           onRevealLocal={onRevealLocal}

@@ -188,6 +188,7 @@ window.winraid = {
   local: {
     clearFolder: () => Promise.resolve({ ok: true }),
     exists: () => Promise.resolve(true),
+    stat: () => Promise.resolve({ ok: true, exists: true, size: 4_200_000, mtime: Date.now() - 2 * 60_000 }),
     reveal: () => Promise.resolve({ ok: true }),
   },
 
@@ -215,7 +216,12 @@ window.winraid = {
 
     diskUsage: (connectionId) => Promise.resolve(clone(DISK_USAGE[connectionId] ?? { ok: false, error: 'Not supported' })),
 
+    entryInfo: () => Promise.resolve({
+      ok: true, mode: '644', owner: 'user', group: 'users', created: null, isSymlink: false, symlinkTarget: null,
+    }),
+
     sizeScan: () => Promise.resolve({ ok: true }),
+    sizeScanSubtree: () => Promise.resolve({ ok: true }),
     sizeCancel: () => Promise.resolve(undefined),
     onSizeProgress: (callback) => channels.sizeProgress.subscribe(callback),
     onSizeLevel: (callback) => channels.sizeLevel.subscribe(callback),
@@ -508,6 +514,14 @@ const SCREEN_STEPS = {
   'entry-context-menu': [
     clickNav('Browse'),
     openContextMenu(FIRST_IMAGE_ENTRY, 'right-click the first image entry'),
+  ],
+  // The Properties modal, opened via the per-entry "..." menu (the other
+  // reachable surface — the overflow menu's own Properties item — leads to
+  // the same dialog).
+  'properties-dialog': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
+    clickButton('Properties'),
   ],
 }
 
