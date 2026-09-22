@@ -20,7 +20,7 @@ const DIRECTORY_CACHE_OPTIONS = [
   { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
 ]
 
-export default function SettingsView({ onTrashByConnectionChanged } = {}) {
+export default function SettingsView({ onTrashByConnectionChanged, defaultConnectionId = null, onSetDefault } = {}) {
   const [watching, setWatching] = useState(false)
   const [version, setVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
@@ -38,8 +38,6 @@ export default function SettingsView({ onTrashByConnectionChanged } = {}) {
   const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
   const [systemAccentHex, setSystemAccentHex] = useState(null)
   const [connections, setConnections] = useState([])
-  // null means "last used" — see resolveActiveConnection in App.
-  const [defaultConnection, setDefaultConnection] = useState(null)
   // Per-connection trash folder: { [connId]: { folder } }. A connection with
   // no entry here deletes permanently.
   const [trashByConnection, setTrashByConnection] = useState({})
@@ -69,9 +67,6 @@ export default function SettingsView({ onTrashByConnectionChanged } = {}) {
   useEffect(() => {
     window.winraid?.config.get('connections').then((list) => {
       if (Array.isArray(list)) setConnections(list)
-    }).catch(() => {})
-    window.winraid?.config.get('defaultConnection').then((id) => {
-      setDefaultConnection(id ?? null)
     }).catch(() => {})
     window.winraid?.config.get('trashByConnection').then((map) => {
       setTrashByConnection(map ?? {})
@@ -236,13 +231,17 @@ export default function SettingsView({ onTrashByConnectionChanged } = {}) {
     })),
   ]
 
+  // The default connection is owned by App — every screen that shows it
+  // (Connections, the switcher, Browse/Backup/Size/Play headers) reads the
+  // same in-memory value, so a pin made here has to reach that copy
+  // directly rather than only landing in config for App to notice later.
   async function handleDefaultConnectionChange(value) {
-    setDefaultConnection(value)
     await window.winraid?.config.set('defaultConnection', value)
+    onSetDefault?.(value)
   }
 
   function handleDefaultConnectionKeyDown(e) {
-    const currentIndex = defaultConnectionOptions.findIndex((o) => o.value === defaultConnection)
+    const currentIndex = defaultConnectionOptions.findIndex((o) => o.value === defaultConnectionId)
     if (currentIndex < 0) return
     if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
     e.preventDefault()
@@ -405,7 +404,7 @@ export default function SettingsView({ onTrashByConnectionChanged } = {}) {
                     onKeyDown={handleDefaultConnectionKeyDown}
                   >
                     {defaultConnectionOptions.map((option) => {
-                      const isActive = option.value === defaultConnection
+                      const isActive = option.value === defaultConnectionId
                       return (
                         <button
                           key={option.value ?? 'last-used'}

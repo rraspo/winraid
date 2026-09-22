@@ -436,6 +436,18 @@ export default function App() {
     setActiveView(view)
     setActiveTabId(null)
     if (view !== 'logs') setLogNav(null)
+    refreshDefaultConnection()
+  }
+
+  // Config is the single source of truth for the pinned default connection;
+  // several screens (Settings, Connections, the tray) can write it, so
+  // rather than trusting whichever in-memory copy last got a setState, every
+  // screen switch re-reads it fresh — the same reasoning resolveActiveConnection
+  // already applies to picking which connection a tab opens on.
+  function refreshDefaultConnection() {
+    window.winraid?.config.get('defaultConnection').then((id) => {
+      setDefaultConnection(id ?? null)
+    }).catch(() => {})
   }
 
   function handleNavigateLogs({ filename, errorAt }) {
@@ -622,6 +634,7 @@ export default function App() {
   async function resolveActiveConnection() {
     const cfg   = await window.winraid?.config.get()
     const conns = cfg?.connections ?? []
+    setDefaultConnection(cfg?.defaultConnection ?? null)
     return conns.find((c) => c.id === cfg?.defaultConnection)
       ?? conns.find((c) => c.id === cfg?.activeConnectionId)
       ?? conns[0]
@@ -767,6 +780,11 @@ export default function App() {
     activeView === 'logs' ? { logNav } :
     activeView === 'settings' ? {
       onTrashByConnectionChanged: setTrashByConnection,
+      defaultConnectionId: defaultConnection,
+      // Settings persists the write itself (see handleDefaultConnectionChange),
+      // so this only needs to update the in-memory copy every other screen
+      // reads — the same shape as onTrashByConnectionChanged above.
+      onSetDefault: setDefaultConnection,
     } :
     {}
 

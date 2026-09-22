@@ -43,8 +43,8 @@ function setup({ connections = CONNECTIONS, defaultConnection = null } = {}) {
   }
 }
 
-async function mount() {
-  render(<SettingsView />)
+async function mount(props = {}) {
+  render(<SettingsView {...props} />)
   await act(async () => {})
 }
 
@@ -75,20 +75,20 @@ describe('the default connection setting', () => {
 
   it('checks "Last used" when nothing is pinned', async () => {
     setup({ defaultConnection: null })
-    await mount()
+    await mount({ defaultConnectionId: null })
     expect(option('Last used').getAttribute('aria-checked')).toBe('true')
   })
 
   it('checks the pinned connection', async () => {
     setup({ defaultConnection: 'c2' })
-    await mount()
+    await mount({ defaultConnectionId: 'c2' })
     expect(option('Vault').getAttribute('aria-checked')).toBe('true')
     expect(option('Last used').getAttribute('aria-checked')).toBe('false')
   })
 
   it('pins a connection when it is chosen', async () => {
     setup({ defaultConnection: null })
-    await mount()
+    await mount({ defaultConnectionId: null })
     fireEvent.click(option('Archive'))
     await act(async () => {})
     expect(window.winraid.config.set).toHaveBeenCalledWith('defaultConnection', 'c3')
@@ -96,10 +96,19 @@ describe('the default connection setting', () => {
 
   it('returns to "last used" when that is chosen', async () => {
     setup({ defaultConnection: 'c2' })
-    await mount()
+    await mount({ defaultConnectionId: 'c2' })
     fireEvent.click(option('Last used'))
     await act(async () => {})
     expect(window.winraid.config.set).toHaveBeenCalledWith('defaultConnection', null)
+  })
+
+  it('tells its parent about the pin so every other screen updates immediately', async () => {
+    setup({ defaultConnection: null })
+    const onSetDefault = vi.fn()
+    await mount({ defaultConnectionId: null, onSetDefault })
+    fireEvent.click(option('Archive'))
+    await act(async () => {})
+    expect(onSetDefault).toHaveBeenCalledWith('c3')
   })
 
   it('stays out of the way when there is nothing to choose between', async () => {
