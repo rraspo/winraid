@@ -25,6 +25,7 @@ import PropertiesModal from '../components/modals/PropertiesModal'
 import OptionsPopover from '../components/browse/OptionsPopover'
 import BrowseList from './BrowseList'
 import BrowseGrid from './BrowseGrid'
+import BulkSelectionBar from '../components/BulkSelectionBar'
 import Tooltip from '../components/ui/Tooltip'
 import ConnectionPicker from '../components/ConnectionPicker'
 import { useBrowse } from '../hooks/useBrowse'
@@ -65,7 +66,7 @@ export default function BrowseView({
     confirmTarget, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
     dragSource, dragPos, dragSourcePaths, moveInFlight, downloadProgress,
-    selected, bulkAction, bulkMoveDest,
+    selected, bulkAction, bulkMoveDest, bulkProgress,
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
     sortMode, setSortMode,
@@ -1057,6 +1058,13 @@ export default function BrowseView({
               thumbnailsEnabled={browse.browseOptions.thumbnails}
             />
           )}
+          <BulkSelectionBar
+            count={selected.size}
+            mutationInFlight={bulkProgress}
+            onRequestMove={requestBulkMove}
+            onRequestDelete={requestBulkDelete}
+            onClearSelection={browse.clearSelection}
+          />
           </div>
 
           {/* Footer */}

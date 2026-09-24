@@ -60,6 +60,10 @@ export function useBrowseMutations({
   const [opInFlight,      setOpInFlight]      = useState(false)
   const [downloadProgress, setDownloadProgress] = useState(null)
   // shape: null | { name, filesProcessed, totalFiles, bytesTransferred, totalBytes }
+  // Per-entry progress for the sequential bulk delete/move loops below —
+  // mirrors usePlayMutations' `inFlight` shape so the transient bulk bar can
+  // show the same "Deleting <i> of <n>" / "Moving <i> of <n>" wording.
+  const [bulkProgress, setBulkProgress] = useState(null)
 
   useEffect(() => {
     if (!window.winraid) return
@@ -260,12 +264,15 @@ export function useBrowseMutations({
     setBulkAction(null)
     setOpInFlight(true)
     const targets = selectedEntries
+    const total = targets.length
     selection.clearSelection()
     let ok = 0, fail = 0
     const deletedNames = new Set()
     try {
-      for (const entry of targets) {
+      for (let index = 0; index < targets.length; index++) {
         if (cancelledRef.current) break
+        setBulkProgress({ kind: 'delete', done: index, total })
+        const entry = targets[index]
         const entryPath = joinRemote(path, entry.name)
         const isDir = entry.type === 'dir'
         const res = await window.winraid?.remote.delete(selectedId, entryPath, isDir)
@@ -274,6 +281,7 @@ export function useBrowseMutations({
       }
     } finally {
       setOpInFlight(false)
+      setBulkProgress(null)
     }
     if (cancelledRef.current) return
     if (cacheMutRef.current === 'update') {
@@ -296,12 +304,15 @@ export function useBrowseMutations({
     setBulkMoveDest('')
     setOpInFlight(true)
     const targets = selectedEntries
+    const total = targets.length
     selection.clearSelection()
     let ok = 0, fail = 0
     const movedNames = new Set()
     try {
-      for (const entry of targets) {
+      for (let index = 0; index < targets.length; index++) {
         if (cancelledRef.current) break
+        setBulkProgress({ kind: 'move', done: index, total })
+        const entry = targets[index]
         const srcPath = joinRemote(path, entry.name)
         const dstPath = joinRemote(dest, entry.name)
         if (srcPath === dstPath) continue
@@ -311,6 +322,7 @@ export function useBrowseMutations({
       }
     } finally {
       setOpInFlight(false)
+      setBulkProgress(null)
     }
     if (cancelledRef.current) return
     if (cacheMutRef.current === 'update') {
@@ -369,6 +381,7 @@ export function useBrowseMutations({
   return {
     opInFlight, setOpInFlight,
     downloadProgress,
+    bulkProgress,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,

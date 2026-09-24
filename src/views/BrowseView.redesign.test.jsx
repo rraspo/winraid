@@ -30,10 +30,11 @@ vi.mock('../components/PlayOverlay', () => ({ default: () => <div data-testid="p
 // sort dropdown and the old grid/list segmented pair (View now reports and
 // lets you change the mode from one button).
 //
-// The below-toolbar selection bar is gone entirely: the bulk actions it
-// held (Delete, Rename) now live in row 2's file-management cluster, and
-// its Download/Move buttons are cut (Download survives via the row's own
-// "..." menu; Move has no replacement yet).
+// The below-toolbar selection bar returns as a transient bar (not the old
+// permanent chrome): row 2's file-management cluster still carries Rename
+// and single/multi Delete, and a floating "Selection" toolbar appears once
+// at least one entry is checked, carrying Move/Delete/Clear for the whole
+// selection — see BrowseView.bulkBar.test.jsx for its full contract.
 //
 // The overflow ("...") menu groups four sections behind divider rules
 // (reusing EntryMenu's own `.menuDivider` styling): jump/play, favorites,
@@ -171,12 +172,12 @@ describe('BrowseView redesign — two-row toolbar', () => {
     expect(within(row).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
   })
 
-  it('removes the selection bar entirely — no "Selection" toolbar appears while entries are checked', async () => {
+  it('shows the transient "Selection" toolbar once an entry is checked, and hides it again once cleared — see BrowseView.bulkBar.test.jsx for its full contract', async () => {
     const user = userEvent.setup()
     await mount()
     const rowEl = screen.getByText('readme.txt').closest('.row')
     await user.click(rowEl.querySelector('.checkbox'))
-    expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
+    expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeTruthy()
     await user.click(rowEl.querySelector('.checkbox'))
     expect(screen.queryByRole('toolbar', { name: 'Selection' })).toBeNull()
   })

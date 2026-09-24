@@ -305,6 +305,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const {
     opInFlight, setOpInFlight,
     downloadProgress,
+    bulkProgress,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,
@@ -375,7 +376,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   return {
     // useBrowse own state/handlers
     connections, selectedId, path, entries, loading, error,
-    opInFlight, downloadProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
+    opInFlight, downloadProgress, bulkProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
     lastVisitedDir, highlightFile,
     scrollAnchor, setScrollAnchor,

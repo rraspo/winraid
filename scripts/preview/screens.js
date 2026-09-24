@@ -11,6 +11,7 @@ export const SCREEN_NAMES = [
   'browse-forward-enabled',
   'browse-command-overflow',
   'browse-selection',
+  'browse-bulk-bar',
   'browse-clipboard-cut',
   'browse-clipboard-copy',
   'browse-connection-picker-favorites',

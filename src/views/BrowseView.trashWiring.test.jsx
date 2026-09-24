@@ -64,6 +64,13 @@ function openEntryMenu() {
   fireEvent.click(within(entryRow()).getByRole('button'))
 }
 
+// The transient bulk-selection bar also renders a "Delete selected" button
+// once a row is checked, sharing its label with the toolbar command these
+// tests target — scope to the toolbar so the query stays unambiguous.
+function commandRow() {
+  return screen.getByRole('toolbar', { name: 'Browser commands' })
+}
+
 describe('BrowseView single delete', () => {
   it('tells the dialog the connection has a trash folder', async () => {
     setup()
@@ -105,7 +112,7 @@ describe('BrowseView bulk delete', () => {
     )
     await screen.findByText('readme.txt')
     fireEvent.click(within(entryRow()).getByRole('checkbox'))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete selected' }))
+    fireEvent.click(within(commandRow()).getByRole('button', { name: 'Delete selected' }))
 
     const dialog = screen.getByRole('dialog')
     expect(dialog).toHaveTextContent(/trash/i)
@@ -117,7 +124,7 @@ describe('BrowseView bulk delete', () => {
     render(<BrowseView onHistoryPush={() => {}} trashByConnection={{}} />)
     await screen.findByText('readme.txt')
     fireEvent.click(within(entryRow()).getByRole('checkbox'))
-    fireEvent.click(screen.getByRole('button', { name: 'Delete selected' }))
+    fireEvent.click(within(commandRow()).getByRole('button', { name: 'Delete selected' }))
 
     expect(screen.getByRole('dialog')).toHaveTextContent(/permanently/i)
   })

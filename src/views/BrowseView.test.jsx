@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { render, screen, within, fireEvent, act, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
@@ -352,10 +352,14 @@ describe('BrowseView', () => {
     render(<BrowseView onHistoryPush={() => {}} />)
     await screen.findByText('Documents')
 
-    expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled()
+    // Scoped to the "Browser commands" toolbar: the transient bulk-selection
+    // bar renders its own "Delete selected" button once a row is checked,
+    // so an unscoped query would match two buttons with the same name.
+    const commandRow = screen.getByRole('toolbar', { name: 'Browser commands' })
+    expect(within(commandRow).getByRole('button', { name: 'Delete selected' })).toBeDisabled()
     await user.click(screen.getByText('Documents').closest('.row').querySelector('.checkbox'))
 
-    expect(screen.getByRole('button', { name: 'Delete selected' })).toBeEnabled()
+    expect(within(commandRow).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
   })
 
   it('multiple checkboxes accumulate selection — Delete stays enabled, Rename disables past one', async () => {
@@ -363,13 +367,15 @@ describe('BrowseView', () => {
     render(<BrowseView onHistoryPush={() => {}} />)
     await screen.findByText('Documents')
 
+    // Scoped to the "Browser commands" toolbar for the same reason as above.
+    const commandRow = screen.getByRole('toolbar', { name: 'Browser commands' })
     const rows = document.querySelectorAll('.row')
     await user.click(rows[0].querySelector('.checkbox'))
-    expect(screen.getByRole('button', { name: 'Rename' })).toBeEnabled()
+    expect(within(commandRow).getByRole('button', { name: 'Rename' })).toBeEnabled()
 
     await user.click(rows[1].querySelector('.checkbox'))
-    expect(screen.getByRole('button', { name: 'Delete selected' })).toBeEnabled()
-    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled()
+    expect(within(commandRow).getByRole('button', { name: 'Delete selected' })).toBeEnabled()
+    expect(within(commandRow).getByRole('button', { name: 'Rename' })).toBeDisabled()
   })
 
   it('grid checkbox selects card without navigating', async () => {

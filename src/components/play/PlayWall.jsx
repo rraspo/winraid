@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, List, Loader, Maximize2, Play, Shuffle, Square, CheckSquare, FolderInput, Trash2, X } from 'lucide-react'
+import { ArrowLeft, List, Loader, Maximize2, Play, Shuffle, Square, CheckSquare } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
 import ConnectionPicker from '../ConnectionPicker'
+import BulkSelectionBar from '../BulkSelectionBar'
 import WallVideo from './WallVideo'
 import { nasStreamUrl } from '../../utils/nasStream'
 import { layoutMasonry } from '../../utils/masonry'
@@ -338,51 +339,14 @@ export default function PlayWall({
         )}
         <div data-testid="play-wall-sentinel" className={styles.sentinel} ref={sentinelRef} />
       </div>
-      {(selectedPaths.size > 0 || mutationInFlight) && (
-        <div className={styles.bulkBar} role="toolbar" aria-label="Selection">
-          {mutationInFlight ? (
-            <span className={styles.bulkCount}>
-              {mutationInFlight.kind === 'delete' ? 'Deleting' : 'Moving'} {mutationInFlight.done + 1} of {mutationInFlight.total}
-            </span>
-          ) : (
-            <span className={styles.bulkCount}>{selectedPaths.size} selected</span>
-          )}
-          <div className={styles.bulkActions}>
-            <Tooltip tip="Move selected" side="top">
-              <button
-                type="button"
-                className={styles.bulkBtn}
-                aria-label="Move selected"
-                onClick={onRequestBulkMove}
-                disabled={Boolean(mutationInFlight)}
-              >
-                <FolderInput size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip tip="Delete selected" side="top">
-              <button
-                type="button"
-                className={[styles.bulkBtn, styles.bulkBtnDanger].join(' ')}
-                aria-label="Delete selected"
-                onClick={onRequestBulkDelete}
-                disabled={Boolean(mutationInFlight)}
-              >
-                <Trash2 size={14} />
-              </button>
-            </Tooltip>
-            <Tooltip tip="Clear selection" side="top">
-              <button
-                type="button"
-                className={styles.bulkBtn}
-                aria-label="Clear selection"
-                onClick={onClearSelection}
-              >
-                <X size={14} />
-              </button>
-            </Tooltip>
-          </div>
-        </div>
-      )}
+      <BulkSelectionBar
+        count={selectedPaths.size}
+        mutationInFlight={mutationInFlight}
+        onRequestMove={onRequestBulkMove}
+        onRequestDelete={onRequestBulkDelete}
+        onClearSelection={onClearSelection}
+        disableClearDuringMutation={false}
+      />
     </div>
   )
 }

@@ -405,6 +405,10 @@ const FIRST_IMAGE_ENTRY_MENU_BTN = `${FIRST_IMAGE_ENTRY} button`
 // The row's selection checkbox — a plain click on its label selects that
 // one entry, the same as the real ctrl-click shortcut it also serves.
 const FIRST_IMAGE_ENTRY_CHECKBOX = `${FIRST_IMAGE_ENTRY} label`
+// A second, distinct row's checkbox — used to reach a genuine multi-
+// selection so the bulk bar's screenshot reads as plural ("2 selected"),
+// not the single-entry count the 'browse-selection' screen already covers.
+const SECOND_SELECT_ENTRY_CHECKBOX = '[data-entry-path$=".png"] label'
 
 const SCREEN_STEPS = {
   dashboard: [],
@@ -446,6 +450,13 @@ const SCREEN_STEPS = {
   'browse-selection': [
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+  ],
+  // Two rows checked — the transient "Selection" toolbar (Move/Delete/Clear)
+  // that floats over the list once a multi-selection exists.
+  'browse-bulk-bar': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector(SECOND_SELECT_ENTRY_CHECKBOX, 'select a second entry, opening the bulk bar'),
   ],
   // Cut pending — Paste lights up from clipboard contents alone, with
   // nothing selected in the current directory.

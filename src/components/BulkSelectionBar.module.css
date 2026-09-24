@@ -1,0 +1,65 @@
+/* ── Selection bulk bar — a floating pill, matching the header controls ──
+   Shared between Browse and the Play wall: both float this over their own
+   scrollable list, anchored to the bottom, so it costs no permanent chrome
+   when nothing is selected. */
+.bulkBar {
+  position: absolute;
+  bottom: var(--space-4);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface2);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+}
+
+.bulkCount {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  color: var(--text2);
+  white-space: nowrap;
+}
+
+.bulkActions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.bulkBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.bulkBtn:hover:not(:disabled) {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.bulkBtn:disabled { opacity: 0.4; cursor: default; }
+
+.bulkBtnDanger:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--err) 18%, transparent);
+  color: var(--err);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bulkBar {
+    animation: bulkBarEnter 140ms ease both;
+  }
+}
+
+@keyframes bulkBarEnter {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
