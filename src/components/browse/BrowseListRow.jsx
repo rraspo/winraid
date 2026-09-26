@@ -153,7 +153,10 @@ const BrowseListRow = memo(function BrowseListRow({
             : setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
           onProperties={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
             ? requestBulkProperties()
-            : onProperties({ name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified })}
+            : onProperties({
+              name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified,
+              mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
+            })}
           localCandidate={localCandidate}
           checkLocalExists={checkLocalExists}
           onRevealLocal={onRevealLocal}

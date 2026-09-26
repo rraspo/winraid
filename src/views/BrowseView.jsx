@@ -126,6 +126,7 @@ export default function BrowseView({
     setPropertiesEntries([{
       name: entry.name, path: entry.path, size: entry.size, modified: entry.modified,
       type: entry.isDir ? 'dir' : 'file',
+      mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
     }])
   }
 
@@ -136,6 +137,7 @@ export default function BrowseView({
     setPropertiesEntries(selectedEntries.map((e) => ({
       name: e.name, type: e.type, size: e.size, modified: e.modified,
       path: joinPath(path, e.name),
+      mode: e.mode, owner: e.owner, group: e.group, uid: e.uid, gid: e.gid, target: e.target,
     })))
   }
 

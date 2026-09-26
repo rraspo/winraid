@@ -288,3 +288,62 @@ describe('PropertiesModal — dismissal', () => {
     expect(onClose).toHaveBeenCalled()
   })
 })
+
+// The remote listing now carries every attribute Properties used to fetch
+// in a second round trip. When the selected entry already supplies those
+// fields, opening the dialog must NOT call entryInfo — that's the whole
+// point of widening the listing. This pins the OUTCOME (no round trip,
+// attributes still rendered) without dictating the wiring.
+describe('PropertiesModal — uses attributes from the listing, no second round trip', () => {
+  const RICH_ENTRY = {
+    name: 'clip.mp4',
+    path: '/mnt/user/media/clip.mp4',
+    type: 'file',
+    size: 5242880,
+    modified: 1700000000000,
+    mode: '755',
+    owner: 'alice',
+    group: 'staff',
+    uid: 1000,
+    gid: 1000,
+    target: null,
+  }
+
+  it('does not call entryInfo when the entry already carries its remote attributes', async () => {
+    const entryInfo = vi.fn().mockResolvedValue({
+      ok: true, mode: '755', owner: 'alice', group: 'staff', created: null, isSymlink: false, symlinkTarget: null,
+    })
+    mockWinraid({ remote: { entryInfo } })
+    renderModal({ entries: [RICH_ENTRY] })
+    // Give the effect a chance to run and (under the bug) call entryInfo.
+    await screen.findByText('alice')
+    expect(entryInfo).not.toHaveBeenCalled()
+  })
+
+  it('still renders mode, owner and group from the entry it was given', async () => {
+    renderModal({ entries: [RICH_ENTRY] })
+    expect(await screen.findByText('755 (rwxr-xr-x)')).toBeTruthy()
+    expect(screen.getByText('alice')).toBeTruthy()
+    expect(screen.getByText('staff')).toBeTruthy()
+  })
+
+  it('does not show the Loading placeholder when the entry already has attributes', async () => {
+    renderModal({ entries: [RICH_ENTRY] })
+    await screen.findByText('alice')
+    // Remote attributes section is populated straight from the listing; the
+    // "Loading…" string should not appear there.
+    expect(screen.queryByText('Loading…')).toBeNull()
+  })
+
+  it('falls back to entryInfo when the entry has no remote attributes (the legacy path still works)', async () => {
+    const entryInfo = vi.fn().mockResolvedValue({
+      ok: true, mode: '644', owner: 'bob', group: 'staff', created: null, isSymlink: false, symlinkTarget: null,
+    })
+    mockWinraid({ remote: { entryInfo } })
+    const thinEntry = { name: 'thin.txt', path: '/mnt/user/media/thin.txt', type: 'file', size: 1, modified: 1 }
+    renderModal({ entries: [thinEntry] })
+    await screen.findByText('bob')
+    expect(entryInfo).toHaveBeenCalledWith('conn-1', '/mnt/user/media/thin.txt')
+    expect(screen.getByText('644 (rw-r--r--)')).toBeTruthy()
+  })
+})

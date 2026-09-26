@@ -98,12 +98,31 @@ export default function PropertiesModal({ entries, connectionId, connection, cop
   const mirrorTargetPath = single ? localMirrorPath(connection, single.path) : null
   const folderScan = useFolderSizeScan(connectionId, single?.type === 'dir' ? single.path : null)
 
-  // Remote attributes — a single non-recursive stat call, fine to fire on
-  // open (unlike the folder-size walk, which is the one thing this dialog
-  // must never do eagerly).
+  // Remote attributes — the listing now carries mode/owner/group/target for
+  // most entries (both the find and the readdir path widen it), so the
+  // common case renders straight from the entry with no round trip at all.
+  // A per-entry `stat` call remains, but only as a FALLBACK for whatever the
+  // listing could not supply — the readdir path never resolves owner/group
+  // to names, and a preload that predates this listing shape may hand back
+  // an entry with none of these fields at all.
   useEffect(() => {
     if (!single) return undefined
     let cancelled = false
+
+    const hasOwnAttrs = single.mode != null && single.owner != null && single.group != null
+    if (hasOwnAttrs) {
+      setAttrs({
+        mode: single.mode,
+        owner: single.owner,
+        group: single.group,
+        created: null,
+        isSymlink: single.target != null,
+        symlinkTarget: single.target ?? null,
+      })
+      setAttrsError(null)
+      return undefined
+    }
+
     setAttrs(null)
     setAttrsError(null)
     // Wrapped in a resolved promise (not chained directly) so a preload that
@@ -113,8 +132,18 @@ export default function PropertiesModal({ entries, connectionId, connection, cop
       .then(() => window.winraid?.remote.entryInfo?.(connectionId, single.path))
       .then((res) => {
         if (cancelled) return
-        if (res?.ok) setAttrs(res)
-        else setAttrsError(res?.error || 'Could not read entry attributes')
+        if (res?.ok) {
+          setAttrs({
+            mode: single.mode ?? res.mode,
+            owner: single.owner ?? res.owner,
+            group: single.group ?? res.group,
+            created: res.created,
+            isSymlink: single.target != null ? true : res.isSymlink,
+            symlinkTarget: single.target ?? res.symlinkTarget,
+          })
+        } else {
+          setAttrsError(res?.error || 'Could not read entry attributes')
+        }
       })
       .catch((err) => { if (!cancelled) setAttrsError(err?.message || 'Could not read entry attributes') })
     return () => { cancelled = true }
