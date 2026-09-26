@@ -54,6 +54,7 @@ import { deletesLocalAfterUpload } from './folder-mode.js'
 import { wireTrayEvents } from './tray-events.js'
 import { watchableConnections } from './watchable.js'
 import { CONFIG_SET_ALLOWLIST } from './config-allowlist.js'
+import { decideCacheAction, stampCacheMtime } from './thumb-cache-freshness.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -3564,6 +3565,31 @@ function fullCachePath(connId, remotePath) {
   return join(app.getPath('userData'), 'thumbs', connId, 'full', hash + ext)
 }
 
+// The `v` query param carries the remote file's modified time (ms since
+// epoch, matching the `modified` field from the directory listing) so the
+// disk cache can prove it still matches the file it was made from. Missing
+// or non-numeric means the caller can't state what it expects — treated as
+// "no freshness signal" by decideCacheAction, never as a pass.
+function parseRequestedModified(url) {
+  const raw = url.searchParams.get('v')
+  if (raw === null) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+// Stats a cache file for decideCacheAction's inputs. Any stat failure —
+// the file is absent, or exists but couldn't be read — collapses to
+// cachedMtime: null, which decideCacheAction always regenerates on; the
+// ENOENT/other distinction only sharpens cacheExists for readability.
+async function statCacheForFreshness(cachePath) {
+  try {
+    const { mtimeMs } = await statAsync(cachePath)
+    return { cacheExists: true, cachedMtime: mtimeMs }
+  } catch (err) {
+    return { cacheExists: err?.code !== 'ENOENT', cachedMtime: null }
+  }
+}
+
 // Thumbnail concurrency semaphore — cap simultaneous SFTP thumbnail downloads
 // so the SSH connection isn't saturated by 20+ parallel reads when a large
 // image folder is opened.
@@ -3625,6 +3651,7 @@ function registerNasStreamProtocol() {
       const mime        = mimeForPath(remotePath)
       const rangeHeader = request.headers.get('range')
       const isThumb     = url.searchParams.get('thumb') === '1'
+      const requestedModified = parseRequestedModified(url)
       const CACHE       = 'private, max-age=300'
 
       // Range request — stat first to validate bounds and build Content-Range
@@ -3665,16 +3692,22 @@ function registerNasStreamProtocol() {
       if (mime.startsWith('image/') && isThumb) {
         const cachePath = thumbCachePath(connId, remotePath)
 
-        // Cache hit — serve without touching SFTP
-        const cached = await readFileAsync(cachePath).catch(() => null)
-        if (cached) {
-          return new Response(cached, {
-            status: 200,
-            headers: {
-              'Content-Type':  'image/jpeg',
-              'Cache-Control': CACHE,
-            },
-          })
+        // Cache hit — serve without touching SFTP, but only when the cache's
+        // stamped mtime proves it still matches the requested modified time.
+        // Any uncertainty (unreadable stat, no v= on the request) falls
+        // through to regeneration rather than risking stale bytes.
+        const freshness = await statCacheForFreshness(cachePath)
+        if (decideCacheAction({ ...freshness, requestedModified }) === 'serve') {
+          const cached = await readFileAsync(cachePath).catch(() => null)
+          if (cached) {
+            return new Response(cached, {
+              status: 200,
+              headers: {
+                'Content-Type':  'image/jpeg',
+                'Cache-Control': CACHE,
+              },
+            })
+          }
         }
 
         // Cache miss — limit to 4 concurrent SFTP thumbnail downloads so the
@@ -3706,6 +3739,9 @@ function registerNasStreamProtocol() {
         const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
         await mkdirAsync(fullDir, { recursive: true })
         await writeFileAsync(fcp, buf).catch(() => {})
+        if (requestedModified !== null) {
+          try { stampCacheMtime(fcp, requestedModified) } catch { /* best effort */ }
+        }
 
         // nativeImage decode + resize runs in the next event-loop tick so IPC
         // and other work can interleave between thumbnail processing steps.
@@ -3726,6 +3762,9 @@ function registerNasStreamProtocol() {
         const cacheDir = join(app.getPath('userData'), 'thumbs', connId)
         await mkdirAsync(cacheDir, { recursive: true })
         await writeFileAsync(cachePath, jpegBuf).catch(() => {})
+        if (requestedModified !== null) {
+          try { stampCacheMtime(cachePath, requestedModified) } catch { /* best effort */ }
+        }
 
         return new Response(jpegBuf, {
           status: 200,
@@ -3746,17 +3785,23 @@ function registerNasStreamProtocol() {
       if (bustRequest) {
         await unlinkAsync(fcp).catch(() => {})
       }
-      const cached = bustRequest ? null : await readFileAsync(fcp).catch(() => null)
-      if (cached) {
-        return new Response(cached, {
-          status: 200,
-          headers: {
-            'Content-Type':   mime,
-            'Content-Length': String(cached.length),
-            'Accept-Ranges':  'bytes',
-            'Cache-Control':  CACHE,
-          },
-        })
+      // Same freshness decision as the thumbnail branch above — bust already
+      // unlinked the cache, so statting it here reports cacheExists: false
+      // and decideCacheAction regenerates without needing a separate check.
+      const fullFreshness = await statCacheForFreshness(fcp)
+      if (decideCacheAction({ ...fullFreshness, requestedModified }) === 'serve') {
+        const cached = await readFileAsync(fcp).catch(() => null)
+        if (cached) {
+          return new Response(cached, {
+            status: 200,
+            headers: {
+              'Content-Type':   mime,
+              'Content-Length': String(cached.length),
+              'Accept-Ranges':  'bytes',
+              'Cache-Control':  CACHE,
+            },
+          })
+        }
       }
 
       const readStream = sftp.createReadStream(remotePath)
@@ -3765,6 +3810,9 @@ function registerNasStreamProtocol() {
           const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
           await mkdirAsync(fullDir, { recursive: true })
           await writeFileAsync(fcp, buf).catch(() => {})
+          if (requestedModified !== null) {
+            try { stampCacheMtime(fcp, requestedModified) } catch { /* best effort */ }
+          }
 
           // Populate thumbnail cache if this is an image and the thumb is missing
           if (mime.startsWith('image/')) {
@@ -3776,6 +3824,9 @@ function registerNasStreamProtocol() {
                 const thumbDir = join(app.getPath('userData'), 'thumbs', connId)
                 await mkdirAsync(thumbDir, { recursive: true })
                 await writeFileAsync(tcp, img.resize({ width: 240 }).toJPEG(80)).catch(() => {})
+                if (requestedModified !== null) {
+                  try { stampCacheMtime(tcp, requestedModified) } catch { /* best effort */ }
+                }
               }
             }
           }
