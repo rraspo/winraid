@@ -42,6 +42,12 @@
   --err:  #FF99A4;
 
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+
+  /* Scrim — a fixed dark wash for text/UI overlaid on arbitrary media
+     (thumbnails, video frames). Stays dark in both themes on purpose: a
+     bright thumbnail is exactly what it needs to stay legible over, so it
+     doesn't invert with --text like everything else. */
+  --scrim: rgba(0, 0, 0, 0.6);
 }
 
 /* Light theme overrides — only what changes */

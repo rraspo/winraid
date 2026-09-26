@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useId } from 'react'
 import { Info, Loader } from 'lucide-react'
 import * as remoteFS from '../../services/remoteFS'
 import { localMirrorPath } from '../../utils/mirrorPath'
-import { formatSize, formatDate } from '../../utils/format'
+import { formatSize, formatDate, formatDuration, formatVideoResolution, formatDimensions } from '../../utils/format'
 import { formatMode } from '../../utils/formatMode'
 import styles from './modals.module.css'
 
@@ -259,6 +259,15 @@ export default function PropertiesModal({ entries, connectionId, connection, cop
                 )}
                 <PropRow label="Modified" value={formatDate(single.modified)} />
                 {attrs?.created && <PropRow label="Created" value={formatDate(attrs.created)} />}
+                {single.media?.kind === 'video' && (
+                  <>
+                    <PropRow label="Duration" value={formatDuration(single.media.duration)} />
+                    <PropRow label="Resolution" value={formatVideoResolution(single.media.width, single.media.height)} />
+                  </>
+                )}
+                {single.media?.kind === 'image' && (
+                  <PropRow label="Dimensions" value={formatDimensions(single.media.width, single.media.height)} />
+                )}
               </Section>
 
               <Section title="Remote attributes">

@@ -24,7 +24,7 @@ function loadSeekConfig() {
   }).catch(() => {})
 }
 
-const VideoThumb = memo(function VideoThumb({ url, onError }) {
+const VideoThumb = memo(function VideoThumb({ url, onError, onMetadata }) {
   const wrapRef  = useRef(null)
   const [active, setActive] = useState(false)
   const [ready,  setReady]  = useState(false)
@@ -48,6 +48,10 @@ const VideoThumb = memo(function VideoThumb({ url, onError }) {
     const video = e.target
     const seekTo = computeSeekTime(video.duration, _seekConfig)
     if (seekTo > 0) video.currentTime = seekTo
+    // videoWidth/videoHeight are already populated once loadedmetadata
+    // fires — the same element the thumbnail frame comes from, so this
+    // costs nothing beyond the read itself.
+    onMetadata?.({ duration: video.duration, width: video.videoWidth, height: video.videoHeight })
   }
 
   return (

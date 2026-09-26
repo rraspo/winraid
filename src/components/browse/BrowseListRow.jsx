@@ -2,7 +2,7 @@ import { memo, useRef } from 'react'
 import { Folder, File } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
-import { formatSize, formatDate } from '../../utils/format'
+import { formatSize, formatDate, formatMediaSummary } from '../../utils/format'
 import { isImageFile, isVideoFile, isEditableFile } from '../../utils/fileTypes'
 import { fileKind } from '../../utils/fileKind'
 import styles from '../../views/BrowseList.module.css'
@@ -16,6 +16,7 @@ const BrowseListRow = memo(function BrowseListRow({
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
   visibleColumns = { size: true, modified: true, kind: true }, thumbnailsEnabled = true,
+  mediaMeta, onMediaMetadata,
 }) {
   const isDir = entry.type === 'dir'
   const menuRef = useRef(null)
@@ -38,6 +39,7 @@ const BrowseListRow = memo(function BrowseListRow({
         <Thumbnail
           name={entry.name} remotePath={entryPath} connectionId={connectionId}
           size="list" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
+          onMetadata={onMediaMetadata}
         />
       )
       : <File size={14} className={styles.iconFile} />
@@ -135,6 +137,7 @@ const BrowseListRow = memo(function BrowseListRow({
       {visibleColumns.kind && <span className={styles.rowKind}>{fileKind(entry)}</span>}
       {visibleColumns.size && <span className={styles.rowSize}>{isDir ? '\u2014' : formatSize(entry.size)}</span>}
       {visibleColumns.modified && <span className={styles.rowDate}>{formatDate(entry.modified)}</span>}
+      {thumbnailsEnabled && <span className={styles.rowMedia}>{formatMediaSummary(mediaMeta)}</span>}
       <div className={styles.rowActions}>
         <EntryMenu
           ref={menuRef}
@@ -156,6 +159,7 @@ const BrowseListRow = memo(function BrowseListRow({
             : onProperties({
               name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified,
               mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
+              media: mediaMeta ?? null,
             })}
           localCandidate={localCandidate}
           checkLocalExists={checkLocalExists}

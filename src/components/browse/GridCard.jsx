@@ -14,6 +14,7 @@ const GridCard = memo(function GridCard({
   onMove, onDelete, onProperties, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
+  mediaMeta, onMediaMetadata,
 }) {
   const menuRef = useRef(null)
 
@@ -34,6 +35,7 @@ const GridCard = memo(function GridCard({
       <Thumbnail
         name={entry.name} remotePath={entryPath} connectionId={connectionId}
         size="grid" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
+        onMetadata={onMediaMetadata}
       />
     )
 
@@ -141,6 +143,7 @@ const GridCard = memo(function GridCard({
               : onProperties({
                 name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified,
                 mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
+                media: mediaMeta ?? null,
               })}
             localCandidate={localCandidate}
             checkLocalExists={checkLocalExists}

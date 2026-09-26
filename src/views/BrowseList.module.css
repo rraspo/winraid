@@ -40,6 +40,7 @@
 .colKind    { width: 110px; flex-shrink: 0; }
 .colSize    { width: 80px;  flex-shrink: 0; text-align: right; }
 .colDate    { width: 110px; flex-shrink: 0; text-align: right; }
+.colMedia   { width: 130px; flex-shrink: 0; text-align: right; }
 .colActions { width: 36px;  flex-shrink: 0; }
 
 /* Value-based column allocation, the same policy the toolbar above this
@@ -124,6 +125,18 @@
   text-align: right;
   color: var(--text3);
   font-size: var(--font-size-xs);
+}
+
+.rowMedia {
+  width: 130px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--text3);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .rowActions {

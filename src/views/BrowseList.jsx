@@ -19,6 +19,7 @@ const BrowseList = memo(function BrowseList({
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
   visibleColumns = DEFAULT_VISIBLE_COLUMNS, thumbnailsEnabled = true, density = 'default',
+  mediaMetaByPath, onThumbnailMetadata,
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
@@ -211,6 +212,7 @@ const BrowseList = memo(function BrowseList({
           {visibleColumns.kind && <span className={styles.colKind}>Kind</span>}
           {visibleColumns.size && <span className={styles.colSize}>Size</span>}
           {visibleColumns.modified && <span className={styles.colDate}>Modified</span>}
+          {thumbnailsEnabled && <span className={styles.colMedia}>Media</span>}
           <span className={styles.colActions} />
         </div>
       )}
@@ -257,6 +259,8 @@ const BrowseList = memo(function BrowseList({
                 onMiddleClickFolder={onMiddleClickFolder}
                 visibleColumns={visibleColumns}
                 thumbnailsEnabled={thumbnailsEnabled}
+                mediaMeta={mediaMetaByPath?.[entry.entryPath]}
+                onMediaMetadata={(meta) => onThumbnailMetadata?.(entry.entryPath, meta)}
               />
             )
           })}

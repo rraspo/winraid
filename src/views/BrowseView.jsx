@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronRight, ChevronDown, HardDrive,
@@ -127,6 +127,7 @@ export default function BrowseView({
       name: entry.name, path: entry.path, size: entry.size, modified: entry.modified,
       type: entry.isDir ? 'dir' : 'file',
       mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
+      media: entry.media ?? mediaMetaByPath[entry.path] ?? null,
     }])
   }
 
@@ -138,6 +139,7 @@ export default function BrowseView({
       name: e.name, type: e.type, size: e.size, modified: e.modified,
       path: joinPath(path, e.name),
       mode: e.mode, owner: e.owner, group: e.group, uid: e.uid, gid: e.gid, target: e.target,
+      media: mediaMetaByPath[joinPath(path, e.name)] ?? null,
     })))
   }
 
@@ -174,6 +176,22 @@ export default function BrowseView({
   // (single selection or a per-row "..."/right-click Properties) or several
   // (an overflow-menu "Properties" opened over a multi-selection).
   const [propertiesEntries, setPropertiesEntries] = useState(null)
+  // Media metadata (video duration/resolution, image dimensions) surfaced by
+  // a thumbnail once it renders, keyed by entry path. Lifted here — rather
+  // than kept local to each row/card — because Properties (opened from
+  // either a single row or a multi-selection built independently in
+  // openPropertiesForSelection) needs the same values the grid bar and the
+  // list Media column already show, without re-deriving them or triggering
+  // a second read of the thumbnail's own video/img element.
+  const [mediaMetaByPath, setMediaMetaByPath] = useState({})
+  const handleThumbnailMetadata = useCallback((entryPath, meta) => {
+    setMediaMetaByPath((prev) => {
+      const existing = prev[entryPath]
+      if (existing && existing.kind === meta.kind && existing.duration === meta.duration
+        && existing.width === meta.width && existing.height === meta.height) return prev
+      return { ...prev, [entryPath]: meta }
+    })
+  }, [])
   const [optionsOpen, setOptionsOpen]         = useState(false)
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
@@ -1010,6 +1028,8 @@ export default function BrowseView({
               visibleColumns={browse.browseOptions.columns}
               thumbnailsEnabled={browse.browseOptions.thumbnails}
               density={browse.browseOptions.density}
+              mediaMetaByPath={mediaMetaByPath}
+              onThumbnailMetadata={handleThumbnailMetadata}
             />
           )}
           {viewMode === 'grid' && (
@@ -1058,6 +1078,8 @@ export default function BrowseView({
               requestBulkDownload={requestBulkDownload}
               requestBulkProperties={openPropertiesForSelection}
               thumbnailsEnabled={browse.browseOptions.thumbnails}
+              mediaMetaByPath={mediaMetaByPath}
+              onThumbnailMetadata={handleThumbnailMetadata}
             />
           )}
           <BulkSelectionBar

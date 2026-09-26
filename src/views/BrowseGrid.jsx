@@ -16,6 +16,7 @@ const BrowseGrid = memo(function BrowseGrid({
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
+  mediaMetaByPath, onThumbnailMetadata,
 }) {
   const entries = entriesWithPaths
   const [gridScrollEl, setGridScrollEl] = useState(null)
@@ -244,6 +245,8 @@ const BrowseGrid = memo(function BrowseGrid({
                       requestBulkDownload={requestBulkDownload}
                       requestBulkProperties={requestBulkProperties}
                       thumbnailsEnabled={thumbnailsEnabled}
+                      mediaMeta={mediaMetaByPath?.[entryPath]}
+                      onMediaMetadata={(meta) => onThumbnailMetadata?.(entryPath, meta)}
                       localCandidate={localMirrorOf?.(entryPath) ?? null}
                       checkLocalExists={checkLocalExists}
                       onRevealLocal={onRevealLocal}
