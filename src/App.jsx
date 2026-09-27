@@ -606,6 +606,23 @@ export default function App() {
     setPlayTarget(null)
   }
 
+  // A pure array move: pulls the dragged tab out and reinserts it at the
+  // drop target's original index, clamped in range. Out-of-range indices
+  // happen legitimately (a drop past the last tab), never a reason to throw.
+  function reorderTab(fromIndex, toIndex) {
+    setOpenTabs((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length) return prev
+      let target = toIndex
+      if (target < 0) target = 0
+      if (target >= prev.length) target = prev.length - 1
+      if (fromIndex === target) return prev
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
+  }
+
   function closeTab(id) {
     if (dirtyTabs.has(id) && !window.confirm('This file has unsaved changes. Close anyway?')) return
     setTabDirty(id, false)
@@ -821,6 +838,7 @@ export default function App() {
             dirtyTabs={dirtyTabs}
             onActivate={activateTab}
             onClose={closeTab}
+            onReorder={reorderTab}
           />
           <main className={styles.content}>
             {/* Global views */}

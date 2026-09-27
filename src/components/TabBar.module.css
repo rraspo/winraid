@@ -114,6 +114,19 @@
   color: var(--text) !important;
 }
 
+.tabDragging {
+  opacity: 0.5;
+}
+
+.dropIndicator {
+  width: 2px;
+  align-self: stretch;
+  margin: 4px 1px;
+  background: var(--accent);
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .tab, .closeBtn {
     transition: none;
