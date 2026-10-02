@@ -178,22 +178,27 @@ export default function App() {
   }
 
   // --- IPC: watcher status ---------------------------------------------------
-  // Load initial state on mount
+  // Subscribe first, then ask for the current state: a push that lands before
+  // the list answers is newer than it, and a state main reached before the
+  // subscription existed is still picked up by the list. Payload is always
+  // the full map.
   useEffect(() => {
     if (!window.winraid) return
-    window.winraid.watcher.list().then((states) => {
-      if (states) setWatcherStatus(states)
-    }).catch(() => {})
-  }, [])
-
-  // Subscribe to pushed updates — payload is always the full map
-  useEffect(() => {
-    if (!window.winraid) return
-    return window.winraid.watcher.onStatus((states) => {
+    let active = true
+    let pushed = false
+    const unsubscribe = window.winraid.watcher.onStatus((states) => {
       if (states && typeof states === 'object') {
+        pushed = true
         setWatcherStatus(states)
       }
     })
+    window.winraid.watcher.list().then((states) => {
+      if (active && !pushed && states) setWatcherStatus(states)
+    }).catch(() => {})
+    return () => {
+      active = false
+      unsubscribe?.()
+    }
   }, [])
 
   // --- IPC: backup progress --------------------------------------------------
