@@ -53,6 +53,7 @@ import * as queue from './queue.js'
 import { deletesLocalAfterUpload } from './folder-mode.js'
 import { wireTrayEvents } from './tray-events.js'
 import { watchableConnections } from './watchable.js'
+import { planLaunchWatchers, withWatchIntent, describeBlockedWatcher } from './watcher-startup.js'
 import { CONFIG_SET_ALLOWLIST } from './config-allowlist.js'
 import { decideCacheAction, stampCacheMtime } from './thumb-cache-freshness.js'
 
@@ -866,6 +867,8 @@ function registerIPC() {
       makeFileDetectedCallback(connectionId),
       () => sendToRenderer('watcher:status', w.listWatcherStates()),
     )
+    const { setConfig } = await import('./config.js')
+    setConfig('stoppedWatchers', withWatchIntent(cfg.stoppedWatchers, connectionId, true))
     sendToRenderer('watcher:status', w.listWatcherStates())
     // Kick the worker for any PENDING jobs that were skipped by hasActiveJob
     const q = queue
@@ -882,6 +885,8 @@ function registerIPC() {
     }
     const w = watcher
     w.stopWatcher(connectionId)
+    const { getConfig, setConfig } = await import('./config.js')
+    setConfig('stoppedWatchers', withWatchIntent(getConfig('stoppedWatchers'), connectionId, false))
     sendToRenderer('watcher:status', w.listWatcherStates())
     return { ok: true }
   })
@@ -933,9 +938,10 @@ function registerIPC() {
         () => sendToRenderer('watcher:status', w.listWatcherStates()),
       )
     }
-    for (const entry of blocked) {
-      log('warn', `Watcher [${entry.id}] not started: ${entry.reason === 'no-folder' ? 'no watch folder configured' : 'watch folder is missing'}`)
-    }
+    for (const entry of blocked) log('warn', describeBlockedWatcher(entry))
+    const started = new Set(startable.map((conn) => conn.id))
+    const { setConfig } = await import('./config.js')
+    setConfig('stoppedWatchers', (cfg.stoppedWatchers ?? []).filter((id) => !started.has(id)))
     const { ensureWorkerRunning } = await import('./worker.js')
     ensureWorkerRunning()
     sendToRenderer('watcher:status', w.listWatcherStates())
@@ -3929,11 +3935,12 @@ app.whenReady().then(async () => {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
     const w = watcher
-    for (const conn of (cfg.connections ?? [])) {
-      if (!conn.localFolder) continue
-      try {
-        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
-      } catch { continue }
+    const { startable, blocked } = planLaunchWatchers(
+      cfg.connections,
+      cfg.stoppedWatchers,
+      (folder) => existsSync(folder) && statSync(folder).isDirectory(),
+    )
+    for (const conn of startable) {
       w.startWatcher(
         conn.id,
         conn.localFolder,
@@ -3941,9 +3948,8 @@ app.whenReady().then(async () => {
         () => sendToRenderer('watcher:status', w.listWatcherStates()),
       )
     }
-    if ((cfg.connections ?? []).some((c) => c.localFolder)) {
-      sendToRenderer('watcher:status', w.listWatcherStates())
-    }
+    for (const entry of blocked) log('warn', describeBlockedWatcher(entry))
+    sendToRenderer('watcher:status', w.listWatcherStates())
 
     // Kick the worker in case there are PENDING jobs left from a previous session.
     // onFileDetected only calls ensureWorkerRunning for newly detected files, so
