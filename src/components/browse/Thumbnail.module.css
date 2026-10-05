@@ -39,3 +39,25 @@
 /* Fallback icons when image/video fails to load or isn't yet active */
 .gridIconFile { width: 40px; height: 40px; color: var(--text-faint); opacity: 0.6; }
 .iconFile     { color: var(--text-faint); flex-shrink: 0; }
+
+/* Grid metadata bar — duration/resolution across the thumbnail's bottom
+   edge. The scrim gradient (not a flat fill) keeps a bright frame's own
+   detail visible while still guaranteeing contrast for the text sitting
+   on it, without depending on how light or dark the source frame is. */
+.metaBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-2) var(--space-1);
+  background: linear-gradient(to top, var(--scrim), transparent);
+  color: var(--onAccent);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--line-height-tight);
+  pointer-events: none;
+}

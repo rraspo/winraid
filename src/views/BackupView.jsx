@@ -34,7 +34,7 @@ const HINTS = {
 // View
 // ---------------------------------------------------------------------------
 
-export default function BackupView({ connectionId, connections, onSelectConnection, backupRun, setBackupRun }) {
+export default function BackupView({ connectionId, connections, onSelectConnection, backupRun, setBackupRun, defaultConnectionId = null, onSetDefault }) {
   const [form, setForm]           = useState(DEFAULT_FORM)
   const [loaded, setLoaded]       = useState(false)
   const [saving, setSaving]       = useState(false)
@@ -175,6 +175,8 @@ export default function BackupView({ connectionId, connections, onSelectConnecti
                 connections={connections}
                 connectionId={connectionId}
                 onSelect={onSelectConnection}
+                defaultConnectionId={defaultConnectionId}
+                onSetDefault={onSetDefault}
               />
             )}
           </div>

@@ -61,6 +61,13 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.cache,
     },
 
+    clipboard: {
+      set: vi.fn().mockResolvedValue({ ok: true }),
+      get: vi.fn().mockResolvedValue(null),
+      clear: vi.fn().mockResolvedValue({ ok: true }),
+      ...overrides.clipboard,
+    },
+
     watcher: {
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn().mockResolvedValue(undefined),
@@ -127,6 +134,7 @@ export function createWinraidMock(overrides = {}) {
     local: {
       clearFolder: vi.fn().mockResolvedValue({ ok: true }),
       exists: vi.fn().mockResolvedValue(true),
+      stat: vi.fn().mockResolvedValue({ ok: true, exists: false }),
       reveal: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.local,
     },
@@ -138,11 +146,18 @@ export function createWinraidMock(overrides = {}) {
       readFile: vi.fn().mockResolvedValue({ ok: true, content: '' }),
       writeFile: vi.fn().mockResolvedValue({ ok: true }),
       writeFileBinary: vi.fn().mockResolvedValue({ ok: true }),
-      delete: vi.fn().mockResolvedValue({ ok: true }),
+      delete: vi.fn().mockResolvedValue({ ok: true, trashed: false }),
+      trashCheck: vi.fn().mockResolvedValue({ ok: true }),
+      trashList: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
+      trashRestore: vi.fn().mockResolvedValue({ ok: true, restoredPath: '', renamed: false }),
+      trashPurge: vi.fn().mockResolvedValue({ ok: true, purged: 0 }),
       move: vi.fn().mockResolvedValue({ ok: true }),
+      copy: vi.fn().mockResolvedValue({ ok: true, via: 'ssh cp' }),
+      execCapable: vi.fn().mockResolvedValue({ ok: true, capable: true }),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, total: 0, confirmed: [], notFound: [] }),
       verifyDelete: vi.fn().mockResolvedValue({ ok: true, deleted: 0, errors: [] }),
       diskUsage: vi.fn().mockResolvedValue({ ok: true, total: 10 * 1024 ** 3, used: 4 * 1024 ** 3, free: 6 * 1024 ** 3 }),
+      entryInfo: vi.fn().mockResolvedValue({ ok: true, mode: '644', owner: 'user', group: 'users', created: null, isSymlink: false, symlinkTarget: null }),
       sizeScan:       vi.fn().mockResolvedValue({ ok: true }),
       sizeCancel:     vi.fn().mockResolvedValue(undefined),
       onSizeProgress:      vi.fn().mockReturnValue(() => {}),

@@ -2,7 +2,7 @@ import { useId } from 'react'
 import { AlertCircle } from 'lucide-react'
 import styles from './modals.module.css'
 
-export default function BulkDeleteModal({ count, names, onConfirm, onCancel }) {
+export default function BulkDeleteModal({ count, names, trashed = false, onConfirm, onCancel }) {
   const titleId = useId()
   return (
     <div className={styles.modalOverlay}>
@@ -16,7 +16,9 @@ export default function BulkDeleteModal({ count, names, onConfirm, onCancel }) {
               Delete {count} item{count !== 1 ? 's' : ''}?
             </h2>
             <p className={styles.modalSubtitle}>
-              The following will be permanently deleted. This cannot be undone.
+              {trashed
+                ? 'The following will move to the trash, where they can be restored.'
+                : 'The following will be permanently deleted. This cannot be undone.'}
             </p>
           </div>
         </div>
@@ -28,7 +30,9 @@ export default function BulkDeleteModal({ count, names, onConfirm, onCancel }) {
         <div className={styles.modalActions}>
           <button className={styles.modalCancel} onClick={onCancel}>Cancel</button>
           <button className={styles.modalConfirm} onClick={onConfirm}>
-            Delete {count} item{count !== 1 ? 's' : ''}
+            {trashed
+              ? `Move ${count} item${count !== 1 ? 's' : ''} to trash`
+              : `Delete ${count} item${count !== 1 ? 's' : ''}`}
           </button>
         </div>
       </div>

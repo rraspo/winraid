@@ -20,7 +20,7 @@ const DIRECTORY_CACHE_OPTIONS = [
   { value: 'none',  label: 'Always fetch',           desc: 'No cache — always fetch fresh directory listings.' },
 ]
 
-export default function SettingsView() {
+export default function SettingsView({ onTrashByConnectionChanged, defaultConnectionId = null, onSetDefault } = {}) {
   const [watching, setWatching] = useState(false)
   const [version, setVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
@@ -37,6 +37,16 @@ export default function SettingsView() {
   const [sortPersistence, setSortPersistence] = useState('default')
   const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
   const [systemAccentHex, setSystemAccentHex] = useState(null)
+  const [connections, setConnections] = useState([])
+  // Per-connection trash folder: { [connId]: { folder } }. A connection with
+  // no entry here deletes permanently.
+  const [trashByConnection, setTrashByConnection] = useState({})
+  // Text field values, kept separate from the saved map so typing does not
+  // write anything until Save is pressed.
+  const [trashDrafts, setTrashDrafts] = useState({})
+  const [trashCheckingId, setTrashCheckingId] = useState(null)
+  const [trashSavedId, setTrashSavedId] = useState(null)
+  const [trashErrors, setTrashErrors] = useState({})
 
   useEffect(() => {
     window.winraid?.getVersion().then(setVersion).catch(() => {})
@@ -52,6 +62,15 @@ export default function SettingsView() {
       setUpdateStatus(payload)
     })
     return () => unsub?.()
+  }, [])
+
+  useEffect(() => {
+    window.winraid?.config.get('connections').then((list) => {
+      if (Array.isArray(list)) setConnections(list)
+    }).catch(() => {})
+    window.winraid?.config.get('trashByConnection').then((map) => {
+      setTrashByConnection(map ?? {})
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -201,6 +220,88 @@ export default function SettingsView() {
     handleCacheModeChange(DIRECTORY_CACHE_OPTIONS[next].value)
   }
 
+  // "Last used" plus one row per connection. The value is the connection id,
+  // or null for "last used", which is exactly what the config field holds.
+  const defaultConnectionOptions = [
+    { value: null, label: 'Last used', desc: 'Whichever connection you were in last.' },
+    ...connections.map((conn) => ({
+      value: conn.id,
+      label: conn.name,
+      desc: (conn.type === 'sftp' ? conn.sftp?.remotePath : conn.smb?.remotePath) ?? '',
+    })),
+  ]
+
+  // The default connection is owned by App — every screen that shows it
+  // (Connections, the switcher, Browse/Backup/Size/Play headers) reads the
+  // same in-memory value, so a pin made here has to reach that copy
+  // directly rather than only landing in config for App to notice later.
+  async function handleDefaultConnectionChange(value) {
+    await window.winraid?.config.set('defaultConnection', value)
+    onSetDefault?.(value)
+  }
+
+  function handleDefaultConnectionKeyDown(e) {
+    const currentIndex = defaultConnectionOptions.findIndex((o) => o.value === defaultConnectionId)
+    if (currentIndex < 0) return
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+    e.preventDefault()
+    const direction = e.key === 'ArrowDown' ? 1 : -1
+    const next = (currentIndex + direction + defaultConnectionOptions.length) % defaultConnectionOptions.length
+    handleDefaultConnectionChange(defaultConnectionOptions[next].value)
+  }
+
+  const sftpConnections = connections.filter((conn) => conn.type === 'sftp')
+
+  function trashFolderValue(connId) {
+    return trashDrafts[connId] ?? trashByConnection[connId]?.folder ?? ''
+  }
+
+  function clearTrashFeedback(connId) {
+    setTrashSavedId((prev) => (prev === connId ? null : prev))
+    setTrashErrors((prev) => {
+      if (!(connId in prev)) return prev
+      const next = { ...prev }
+      delete next[connId]
+      return next
+    })
+  }
+
+  function handleTrashDraftChange(connId, value) {
+    setTrashDrafts((prev) => ({ ...prev, [connId]: value }))
+    clearTrashFeedback(connId)
+  }
+
+  async function handleTrashSave(connId) {
+    const folder = trashFolderValue(connId).trim()
+    clearTrashFeedback(connId)
+    setTrashCheckingId(connId)
+    const result = await window.winraid?.remote.trashCheck(connId, folder)
+    setTrashCheckingId(null)
+    if (!result?.ok) {
+      setTrashErrors((prev) => ({ ...prev, [connId]: result?.error || 'Could not save the trash folder.' }))
+      return
+    }
+    const next = { ...trashByConnection, [connId]: { folder } }
+    setTrashByConnection(next)
+    await window.winraid?.config.set('trashByConnection', next)
+    onTrashByConnectionChanged?.(next)
+    setTrashSavedId(connId)
+  }
+
+  async function handleTrashOff(connId) {
+    const next = { ...trashByConnection }
+    delete next[connId]
+    setTrashByConnection(next)
+    setTrashDrafts((prev) => {
+      const copy = { ...prev }
+      delete copy[connId]
+      return copy
+    })
+    clearTrashFeedback(connId)
+    await window.winraid?.config.set('trashByConnection', next)
+    onTrashByConnectionChanged?.(next)
+  }
+
   const status = updateStatus?.status
   const isChecking    = status === 'checking'
   const isDownloading = status === 'downloading'
@@ -289,6 +390,98 @@ export default function SettingsView() {
               </div>
             </div>
           </section>
+
+          {connections.length > 1 && (
+            <section className={styles.card} aria-label="Connections">
+              <h2 className={styles.cardTitle}>Connections</h2>
+              <div className={styles.cardBody}>
+                <div className={styles.stackedField}>
+                  <span className={styles.fieldLabel}>Default connection</span>
+                  <div
+                    className={styles.radioList}
+                    role="radiogroup"
+                    aria-label="Default connection"
+                    onKeyDown={handleDefaultConnectionKeyDown}
+                  >
+                    {defaultConnectionOptions.map((option) => {
+                      const isActive = option.value === defaultConnectionId
+                      return (
+                        <button
+                          key={option.value ?? 'last-used'}
+                          type="button"
+                          role="radio"
+                          aria-checked={isActive}
+                          aria-label={option.label}
+                          tabIndex={isActive ? 0 : -1}
+                          className={styles.radioRow}
+                          onClick={() => { if (!isActive) handleDefaultConnectionChange(option.value) }}
+                        >
+                          <span className={styles.radioDot} aria-hidden="true">
+                            {isActive && <span className={styles.radioDotFill} />}
+                          </span>
+                          <span className={styles.radioRowText}>
+                            <span className={styles.radioRowLabel}>{option.label}</span>
+                            <span className={styles.radioRowDesc}>{option.desc}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {sftpConnections.length > 0 && (
+            <section className={styles.card} aria-label="Trash">
+              <h2 className={styles.cardTitle}>Trash</h2>
+              <div className={styles.cardBody}>
+                {sftpConnections.map((conn) => {
+                  const savedFolder = trashByConnection[conn.id]?.folder ?? ''
+                  const inputId = `trash-folder-${conn.id}`
+                  const checking = trashCheckingId === conn.id
+                  const errorMsg = trashErrors[conn.id]
+                  return (
+                    <div key={conn.id} className={styles.stackedField} data-trash-connection={conn.id}>
+                      <label className={styles.fieldLabel} htmlFor={inputId}>
+                        Trash folder for {conn.name}
+                      </label>
+                      <div className={styles.trashRow}>
+                        <input
+                          id={inputId}
+                          type="text"
+                          className={styles.trashInput}
+                          value={trashFolderValue(conn.id)}
+                          onChange={(e) => handleTrashDraftChange(conn.id, e.target.value)}
+                        />
+                        {savedFolder && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            aria-label={`Turn off trash for ${conn.name}`}
+                            onClick={() => handleTrashOff(conn.id)}
+                          >
+                            Turn off
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          aria-label={`Save trash folder for ${conn.name}`}
+                          onClick={() => handleTrashSave(conn.id)}
+                          disabled={checking}
+                        >
+                          {checking ? 'Checking…' : 'Save'}
+                        </Button>
+                      </div>
+                      {!savedFolder && <p className={styles.hint}>Deletes on this connection are permanent.</p>}
+                      {trashSavedId === conn.id && <p className={styles.hint}>Saved.</p>}
+                      {errorMsg && <p role="alert" className={styles.trashError}>{errorMsg}</p>}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
 
           <section className={styles.card} aria-label="Play">
             <h2 className={styles.cardTitle}>Play</h2>

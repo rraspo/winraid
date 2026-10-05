@@ -64,6 +64,19 @@ export function useSelection({ entries, path }) {
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
+  // Complements the selected set against `entries` — the filtered+sorted
+  // list callers already pass in, not a raw unfiltered listing — so an
+  // active search filter only flips what is actually visible.
+  const invertSelection = useCallback(() => {
+    setSelected((prev) => {
+      const next = new Set()
+      for (const entry of entries) {
+        if (!prev.has(entry.name)) next.add(entry.name)
+      }
+      return next
+    })
+  }, [entries])
+
   const handleRubberBandStart = useCallback((x, y) => {
     lassoBaseRef.current = new Set(selectedRef.current)
     setRubberBand({ x, y, w: 0, h: 0 })
@@ -124,5 +137,6 @@ export function useSelection({ entries, path }) {
     handleRubberBandEnd,
     toggleSelectAll,
     clearSelection,
+    invertSelection,
   }
 }

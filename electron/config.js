@@ -63,6 +63,13 @@ const DEFAULTS = {
     format: 'jpeg',   // 'jpeg' | 'png' | 'webp'
   },
   activeConnectionId: null,
+  // Which connection the connection-driven screens (browse, backup, size,
+  // play) open on. A connection id pins them to it; null means "last used",
+  // which falls back to activeConnectionId and then to the first connection.
+  defaultConnection:  null,
+  // Ids of connections whose watcher the user explicitly stopped. Main owns
+  // it (renderer cannot write it): everything not listed auto-starts at launch.
+  stoppedWatchers:    [],
 }
 
 // ---------------------------------------------------------------------------

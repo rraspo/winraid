@@ -4,6 +4,9 @@ import BrowseListRow from '../components/browse/BrowseListRow'
 import { useListVirtualizer } from '../hooks/useVirtualizers'
 import styles from './BrowseList.module.css'
 
+const DEFAULT_VISIBLE_COLUMNS = { size: true, modified: true, kind: true }
+const ROW_HEIGHT = { compact: 32, default: 41, roomy: 52 }
+
 const BrowseList = memo(function BrowseList({
   entriesWithPaths, loading, error, newFolderName, setNewFolderName, handleCreateFolder,
   path, selectedId, busy, selected, dragSourcePaths, lastVisitedDir,
@@ -12,12 +15,15 @@ const BrowseList = memo(function BrowseList({
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, handleItemPointer, toggleSelectAll,
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd, rubberBand,
-  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
+  requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
+  visibleColumns = DEFAULT_VISIBLE_COLUMNS, thumbnailsEnabled = true, density = 'default',
+  mediaMetaByPath, onThumbnailMetadata,
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
-  const { rowVirtualizer } = useListVirtualizer(entries, listScrollEl)
+  const { rowVirtualizer } = useListVirtualizer(entries, listScrollEl, ROW_HEIGHT[density] ?? ROW_HEIGHT.default)
 
   // On unmount, snapshot the entry name at the top of the visible window
   // so a re-mount (via list/grid toggle) can restore the same scroll
@@ -75,6 +81,14 @@ const BrowseList = memo(function BrowseList({
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
     if (!handleRubberBandStart) return
+    // EntryMenu's dropdown renders through a portal straight into
+    // document.body — physically outside this wrapper, but still a React
+    // descendant, so its clicks still bubble in here as synthetic events.
+    // A real DOM containment check is what tells the two apart: without it,
+    // clicking any dropdown item registers as an empty-space lasso click and
+    // silently wipes whatever was selected before the item's own handler
+    // ever runs.
+    if (!e.currentTarget.contains(e.target)) return
     if (e.target.closest('[data-entry-path]')) return
     if (e.target.closest('label')) return
     isLassoing.current = true
@@ -195,8 +209,10 @@ const BrowseList = memo(function BrowseList({
             <span className={styles.checkmark} />
           </label>
           <span className={styles.colName}>Name</span>
-          <span className={styles.colSize}>Size</span>
-          <span className={styles.colDate}>Modified</span>
+          {visibleColumns.kind && <span className={styles.colKind}>Kind</span>}
+          {visibleColumns.size && <span className={styles.colSize}>Size</span>}
+          {visibleColumns.modified && <span className={styles.colDate}>Modified</span>}
+          {thumbnailsEnabled && <span className={styles.colMedia}>Media</span>}
           <span className={styles.colActions} />
         </div>
       )}
@@ -214,6 +230,7 @@ const BrowseList = memo(function BrowseList({
                 connectionId={selectedId}
                 busy={busy}
                 isSelected={selected.has(entry.name)}
+                selectedCount={selected.size}
                 isDragSource={dragSourcePaths.has(entry.entryPath)}
                 isLastVisited={entry.type === 'dir' && lastVisitedDir === entry.name}
                 isHighlighted={highlightFile === entry.name}
@@ -231,10 +248,19 @@ const BrowseList = memo(function BrowseList({
                 setEditingFile={setEditingFile}
                 setMoveTarget={setMoveTarget}
                 setDeleteTarget={setDeleteTarget}
+                onProperties={onProperties}
+                requestBulkDelete={requestBulkDelete}
+                requestBulkMove={requestBulkMove}
+                requestBulkDownload={requestBulkDownload}
+                requestBulkProperties={requestBulkProperties}
                 localCandidate={localMirrorOf?.(entry.entryPath) ?? null}
                 checkLocalExists={checkLocalExists}
                 onRevealLocal={onRevealLocal}
                 onMiddleClickFolder={onMiddleClickFolder}
+                visibleColumns={visibleColumns}
+                thumbnailsEnabled={thumbnailsEnabled}
+                mediaMeta={mediaMetaByPath?.[entry.entryPath]}
+                onMediaMetadata={(meta) => onThumbnailMetadata?.(entry.entryPath, meta)}
               />
             )
           })}

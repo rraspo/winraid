@@ -290,12 +290,36 @@ describe('QuickLookOverlay trim toolbar', () => {
 })
 
 describe('QuickLookOverlay trim engine gate', () => {
+  // Trim mode refuses to open without a known duration (see beginTrim) — a
+  // real video always has one by the time these flows run, so every test
+  // here gives the mocked <video> a duration the way enterTrim() does for
+  // the trim-toolbar suite.
+  function setVideoDuration(duration = 12) {
+    const video = document.querySelector('video')
+    Object.defineProperty(video, 'duration', { configurable: true, value: duration })
+  }
+
   it('checks capability on the Trim click and enters when the NAS has ffmpeg', async () => {
     renderOverlay()
+    setVideoDuration()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
     expect(window.winraid.remote.trimCapability).toHaveBeenCalledWith('c1')
     expect(screen.getByRole('slider', { name: 'Trim start' })).toBeInTheDocument()
+  })
+
+  // A zero (or not-yet-loaded) duration would put both trim handles at the
+  // same position — trimPct divides by trimDur — leaving one permanently
+  // unclickable underneath the other instead of a working range.
+  it('refuses to enter trim mode when the video has no known duration yet', async () => {
+    const show = vi.spyOn(toast, 'show')
+    renderOverlay()
+    // jsdom's <video> reports NaN for duration until something sets it —
+    // left alone here to simulate metadata that has not loaded yet.
+    fireEvent.click(screen.getByLabelText('Trim video'))
+    await act(async () => {})
+    expect(screen.queryByRole('slider', { name: 'Trim start' })).toBeNull()
+    expect(show).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }))
   })
 
   it('offers the local-trim choice when only this PC has ffmpeg, and remembers it', async () => {
@@ -303,6 +327,7 @@ describe('QuickLookOverlay trim engine gate', () => {
       remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'local' }) },
     })
     renderOverlay()
+    setVideoDuration()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
     // Dialog first, not straight into selection
@@ -338,6 +363,7 @@ describe('QuickLookOverlay trim engine gate', () => {
       remote: { trimCapability: vi.fn().mockResolvedValue({ ok: true, mode: 'none' }) },
     })
     renderOverlay()
+    setVideoDuration()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: /Download/ }))
@@ -357,6 +383,7 @@ describe('QuickLookOverlay trim engine gate', () => {
       },
     })
     renderOverlay()
+    setVideoDuration()
     fireEvent.click(screen.getByLabelText('Trim video'))
     await act(async () => {})
     fireEvent.click(screen.getByRole('button', { name: /Locate on this PC/ }))
@@ -370,6 +397,7 @@ describe('QuickLookOverlay trim engine gate', () => {
 
   it('drops the zoom cursor while trimming', async () => {
     renderOverlay()
+    setVideoDuration()
     const area = document.querySelector('[class*="previewArea"]')
     expect(area.className).toMatch(/previewAreaZoom/)
     fireEvent.click(screen.getByLabelText('Trim video'))

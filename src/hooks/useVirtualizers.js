@@ -44,13 +44,18 @@ export function useGridVirtualizer(entries, gridScrollEl) {
   return { gridVirtualizer, gridCols, gridRowH }
 }
 
-export function useListVirtualizer(entries, listScrollEl) {
+export function useListVirtualizer(entries, listScrollEl, rowHeight = 41) {
   const rowVirtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => listScrollEl,
-    estimateSize: () => 41,
+    estimateSize: () => rowHeight,
     overscan: 15,
   })
+
+  useEffect(() => {
+    rowVirtualizer.measure()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-measure only when the row height itself changes
+  }, [rowHeight])
 
   return { rowVirtualizer }
 }

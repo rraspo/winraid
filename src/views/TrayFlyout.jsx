@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Folder, FolderOpen } from 'lucide-react'
+import Tooltip from '../components/ui/Tooltip'
 import iconSrc from '../../assets/winraid_icon_32x32.png'
 import styles from './TrayFlyout.module.css'
 
@@ -100,23 +101,27 @@ export default function TrayFlyout() {
               <span className={styles.name}>{connection.name}</span>
               <span className={styles.spacer} />
               <span className={styles.today}>{todayCount(connection.id)} today</span>
-              <button
-                type="button"
-                className={styles.rowBtn}
-                aria-label={`Browse ${connection.name}`}
-                onClick={() => window.winraid?.tray?.openConnection?.(connection.id)}
-              >
-                <Folder size={14} />
-              </button>
-              {connection.localFolder && (
+              <Tooltip tip="Browse this connection in WinRaid" side="left">
                 <button
                   type="button"
                   className={styles.rowBtn}
-                  aria-label={`Open ${connection.name} folder`}
-                  onClick={() => window.winraid?.local?.reveal?.(connection.localFolder)}
+                  aria-label={`Browse ${connection.name}`}
+                  onClick={() => window.winraid?.tray?.openConnection?.(connection.id)}
                 >
-                  <FolderOpen size={14} />
+                  <Folder size={14} />
                 </button>
+              </Tooltip>
+              {connection.localFolder && (
+                <Tooltip tip="Open this connection’s watch folder on this PC" side="left">
+                  <button
+                    type="button"
+                    className={styles.rowBtn}
+                    aria-label={`Open ${connection.name} folder`}
+                    onClick={() => window.winraid?.local?.reveal?.(connection.localFolder)}
+                  >
+                    <FolderOpen size={14} />
+                  </button>
+                </Tooltip>
               )}
             </li>
           )

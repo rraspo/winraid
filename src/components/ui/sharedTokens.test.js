@@ -9,6 +9,7 @@ const SHARED_MODULES = [
   'src/components/modals/PasteImageModal.module.css',
   'src/components/browse/NewFolderPrompt.module.css',
   'src/components/browse/DragGhost.module.css',
+  'src/components/BulkSelectionBar.module.css',
   'src/components/ui/Button.module.css',
   'src/components/ui/Badge.module.css',
   'src/components/ui/ProgressBar.module.css',

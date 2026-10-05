@@ -4,7 +4,9 @@ import { useDragDrop } from './useDragDrop'
 import { useDirFetch } from './useDirFetch'
 import { useEntryView } from './useEntryView'
 import { useBrowseMutations } from './useBrowseMutations'
+import { useBrowseOptions } from './useBrowseOptions'
 import { usePasteDrop } from './usePasteDrop'
+import { useClipboard } from './useClipboard'
 import * as toast from '../services/toast'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +50,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const [bulkAction,      setBulkAction]      = useState(null)
   const [bulkMoveDest,    setBulkMoveDest]    = useState('')
   const [settingsLoaded,  setSettingsLoaded]  = useState(false)
+  // Reactive mirror of sortPersistRef — the ref stays the perf-friendly read
+  // path for useEntryView's per-navigation resolve, this is what a settings
+  // UI (the Options popover) reads and writes.
+  const [sortPersistence, setSortPersistenceState] = useState('default')
   const dirsFirstRef       = useRef(true)
   const sortPersistRef     = useRef('default')
   const cancelledRef       = useRef(false)
@@ -70,8 +76,17 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       if (browse?.cacheMode)        cacheModeRef.current   = browse.cacheMode
       if (browse?.cacheMutation)    cacheMutRef.current     = browse.cacheMutation
       if (browse?.dirsFirst != null) dirsFirstRef.current   = browse.dirsFirst
-      if (browse?.sortPersistence)  sortPersistRef.current  = browse.sortPersistence
+      if (browse?.sortPersistence)  { sortPersistRef.current = browse.sortPersistence; setSortPersistenceState(browse.sortPersistence) }
     }).catch(() => {}).finally(() => setSettingsLoaded(true))
+  }, [])
+
+  // Written by the Options popover's "Remember this sort for" control — the
+  // ref keeps useEntryView's read path free of a re-render, this state is
+  // what the popover displays as the current choice.
+  const setSortPersistence = useCallback((value) => {
+    sortPersistRef.current = value
+    setSortPersistenceState(value)
+    window.winraid?.config.set('browse.sortPersistence', value)
   }, [])
 
   // ── Persistence ────────────────────────────────────────────────────────────
@@ -124,13 +139,10 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
       setPath(browseRestore.path)
       setEntries([])
     }
-    if (browseRestore.quickLookFile) {
-      setSelectedFile(browseRestore.quickLookFile)
-      setShowQuickLook(true)
-    } else {
-      setShowQuickLook(false)
-      setSelectedFile(null)
-    }
+    // A restored position is a folder, never an open file: the viewer is
+    // not part of the trail, so arriving anywhere closes it.
+    setShowQuickLook(false)
+    setSelectedFile(null)
     if (browseRestore.highlightFile) {
       setHighlightFile(browseRestore.highlightFile)
     }
@@ -181,7 +193,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   useEffect(() => {
     if (initialPushed.current || !selectedId) return
     initialPushed.current = true
-    onHistoryPush?.({ kind: 'browse', path, quickLookFile: null, connectionId })
+    onHistoryPush?.({ kind: 'browse', path, connectionId })
   }, [selectedId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Close QuickLook on Escape ─────────────────────────────────────────────
@@ -192,7 +204,6 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
         e.preventDefault()
         setShowQuickLook(false)
         setSelectedFile(null)
-        onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: null, connectionId })
       }
     }
     window.addEventListener('keydown', onKeyDown, true)
@@ -235,7 +246,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     searchQuery, setSearchQuery,
     filteredEntries, fileEntries, entriesWithPaths,
     dirCount, fileCount,
-  } = useEntryView({ entries, path, dirsFirstRef, sortPersistRef })
+  } = useEntryView({ entries, path, dirsFirstRef, sortPersistRef, connectionId: selectedId })
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const navigate = useCallback((newPath) => {
@@ -251,7 +262,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setEntries([])
     setShowQuickLook(false)
     setSelectedFile(null)
-    onHistoryPush?.({ kind: 'browse', path: newPath, quickLookFile: null, connectionId })
+    onHistoryPush?.({ kind: 'browse', path: newPath, connectionId })
   }, [onHistoryPush])
 
   // Copy a remote path to the clipboard (used by the current-dir breadcrumb).
@@ -264,11 +275,13 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     }
   }, [])
 
+  // Opening a file is not a move, so it records nothing: back and forward
+  // walk folders, and the viewer opens and closes over whichever one you
+  // are standing in.
   const openQuickLook = useCallback((entry, entryPath) => {
     setSelectedFile({ ...entry, path: entryPath })
     setShowQuickLook(true)
-    onHistoryPush?.({ kind: 'browse', path: pathRef.current, quickLookFile: { ...entry, path: entryPath }, connectionId })
-  }, [onHistoryPush])
+  }, [])
 
   // ── Sub-hook composition ───────────────────────────────────────────────────
   const selection = useSelection({ entries: filteredEntries, path })
@@ -292,6 +305,7 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   const {
     opInFlight, setOpInFlight,
     downloadProgress,
+    bulkProgress,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,
@@ -338,6 +352,23 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     setHighlightFile,
   })
 
+  // ── Sub-hook composition: per-view browse preferences (Options popover) ────
+  const browseOptionsApi = useBrowseOptions({ selectedId, selectedConn, connections, setConnections })
+
+  // ── Sub-hook composition: clipboard (cut/copy pointer + paste) ─────────────
+  // Sits below useBrowseMutations because paste shares its in-flight flag and
+  // cancellation ref, and below useSelection because cut/copy record the
+  // current selection.
+  const clipboardApi = useClipboard({
+    selectedId,
+    path,
+    selectedEntries,
+    cancelledRef,
+    fetchDir,
+    setStatus,
+    setOpInFlight,
+  })
+
   // ── Derived values (depend on sub-hooks) ───────────────────────────────────
   const busy     = opInFlight || !!dragDrop.moveInFlight
   const noConfig = !selectedId || (!selectedConn?.sftp?.host && !browseRestore?.connectionId)
@@ -345,13 +376,14 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
   return {
     // useBrowse own state/handlers
     connections, selectedId, path, entries, loading, error,
-    opInFlight, downloadProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
+    opInFlight, downloadProgress, bulkProgress, confirmTarget, editingFile, deleteTarget, moveTarget,
     newFolderName, viewMode, selectedFile, showQuickLook,
     lastVisitedDir, highlightFile,
     scrollAnchor, setScrollAnchor,
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
     sortMode, setSortMode,
+    sortPersistence, setSortPersistence,
     bulkAction, bulkMoveDest,
     setEditingFile, setViewMode, setNewFolderName, setConfirmTarget,
     setDeleteTarget, setMoveTarget, setBulkAction, setBulkMoveDest,
@@ -364,6 +396,8 @@ export function useBrowse({ onHistoryPush, browseRestore, onBrowseRestoreConsume
     handleDownload,
     handleDelete, handleMove, handleCreateFolder,
     handleBulkDelete, handleBulkMove, handleBulkCheckout,
+    ...browseOptionsApi,
+    ...clipboardApi,
     // Sub-hook APIs — spread flat for backward compatibility
     ...pasteDrop,
     ...selection,

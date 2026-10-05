@@ -4,7 +4,7 @@ import { MoreHorizontal } from 'lucide-react'
 import styles from './EntryMenu.module.css'
 
 const EntryMenu = forwardRef(function EntryMenu({
-  isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete,
+  isDir, isEditable, busy, onDownload, onEdit, onMove, onDelete, onProperties,
   localCandidate = null, checkLocalExists, onRevealLocal,
 }, ref) {
   const [open, setOpen] = useState(false)
@@ -97,8 +97,13 @@ const EntryMenu = forwardRef(function EntryMenu({
     }
   }, [open])
 
+  // Every action handler receives whether this invocation opened via
+  // right-click (cursor-anchored) vs the dot button — the two openers this
+  // shared menu serves are meant to behave differently: the dot button
+  // always targets the row it is bolted to, right-click respects whatever
+  // is currently selected. The caller (row/card) decides what that means.
   function act(fn) {
-    return (e) => { e.stopPropagation(); setOpen(false); fn() }
+    return (e) => { e.stopPropagation(); const viaContextMenu = cursorModeRef.current; setOpen(false); fn(viaContextMenu) }
   }
 
   return (
@@ -133,6 +138,9 @@ const EntryMenu = forwardRef(function EntryMenu({
               Reveal in Explorer
             </button>
           )}
+          <button className={styles.menuItem} onClick={act(onProperties)}>
+            Properties
+          </button>
           <div className={styles.menuDivider} />
           <button
             className={[styles.menuItem, styles.menuItemDanger].join(' ')}

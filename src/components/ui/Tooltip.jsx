@@ -1,7 +1,10 @@
-import { useState, useRef, useCallback, useLayoutEffect } from 'react'
+import { useState, useRef, useCallback, useLayoutEffect, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { resolveTooltipPlacement } from './tooltipPlacement'
+import { isTooltipWarm, markTooltipWarm } from './tooltipWarmth'
 import styles from './Tooltip.module.css'
+
+const COLD_DELAY_MS = 600
 
 /**
  * Hover tooltip rendered via portal — immune to overflow:hidden clipping.
@@ -22,6 +25,20 @@ export default function Tooltip({ tip, side = 'right', followMouse = false, only
   const [anchorRect, setAnchorRect] = useState(null)
   // Anchored placement, computed after the bubble mounts and is measured.
   const [placement, setPlacement] = useState(null) // null | { side, style }
+  const coldTimerRef = useRef(null)
+  // Tracks whether this hover actually reached "visible" — only a hover that
+  // showed should hand off warmth when it closes, not one that left mid-delay.
+  const shownRef = useRef(false)
+
+  const clearColdTimer = useCallback(() => {
+    if (coldTimerRef.current !== null) {
+      clearTimeout(coldTimerRef.current)
+      coldTimerRef.current = null
+    }
+  }, [])
+
+  // No leaked timer on unmount, including mid-delay.
+  useEffect(() => clearColdTimer, [clearColdTimer])
 
   // Resolve placement once the bubble is in the DOM so we can measure it.
   // Runs before paint, so the move from the hidden first pass is not visible.
@@ -48,14 +65,32 @@ export default function Tooltip({ tip, side = 'right', followMouse = false, only
       setPlacement(null) // remeasure for the new anchor position
       setAnchorRect(anchorRef.current?.getBoundingClientRect() ?? null)
     }
-    setVisible(true)
-  }, [followMouse, onlyWhenTruncated])
+
+    clearColdTimer()
+    if (isTooltipWarm()) {
+      shownRef.current = true
+      setVisible(true)
+    } else {
+      coldTimerRef.current = setTimeout(() => {
+        coldTimerRef.current = null
+        shownRef.current = true
+        setVisible(true)
+      }, COLD_DELAY_MS)
+    }
+  }, [followMouse, onlyWhenTruncated, clearColdTimer])
 
   const handleMove = useCallback((e) => {
     if (followMouse) setMouse({ x: e.clientX, y: e.clientY })
   }, [followMouse])
 
-  const handleLeave = useCallback(() => setVisible(false), [])
+  const handleLeave = useCallback(() => {
+    clearColdTimer()
+    setVisible(false)
+    if (shownRef.current) {
+      markTooltipWarm()
+      shownRef.current = false
+    }
+  }, [clearColdTimer])
 
   if (!tip) return children
 

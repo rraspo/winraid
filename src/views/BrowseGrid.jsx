@@ -13,8 +13,10 @@ const BrowseGrid = memo(function BrowseGrid({
   navigate, openQuickLook, handleItemPointer, toggleSelectAll,
   handleRubberBandStart, handleRubberBandMove, handleRubberBandEnd,
   rubberBand,
-  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
-  localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
+  requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
+  localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
+  mediaMetaByPath, onThumbnailMetadata,
 }) {
   const entries = entriesWithPaths
   const [gridScrollEl, setGridScrollEl] = useState(null)
@@ -75,6 +77,14 @@ const BrowseGrid = memo(function BrowseGrid({
 
   const handleMouseDown = useCallback((e) => {
     if (e.button !== 0) return
+    // EntryMenu's dropdown renders through a portal straight into
+    // document.body — physically outside this wrapper, but still a React
+    // descendant, so its clicks still bubble in here as synthetic events.
+    // A real DOM containment check is what tells the two apart: without it,
+    // clicking any dropdown item registers as an empty-space lasso click and
+    // silently wipes whatever was selected before the item's own handler
+    // ever runs.
+    if (!e.currentTarget.contains(e.target)) return
     if (e.target.closest('[data-entry-path]')) return
     if (e.target.closest('label')) return
     isLassoing.current = true
@@ -216,6 +226,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       busy={busy}
                       index={entryIndex}
                       isSelected={selected.has(entry.name)}
+                      selectedCount={selected.size}
                       isDragSource={dragSourcePaths.has(entryPath)}
                       isLastVisited={isDir && lastVisitedDir === entry.name}
                       isHighlighted={highlightFile === entry.name}
@@ -228,6 +239,14 @@ const BrowseGrid = memo(function BrowseGrid({
                       onEdit={setEditingFile}
                       onMove={setMoveTarget}
                       onDelete={setDeleteTarget}
+                      onProperties={onProperties}
+                      requestBulkDelete={requestBulkDelete}
+                      requestBulkMove={requestBulkMove}
+                      requestBulkDownload={requestBulkDownload}
+                      requestBulkProperties={requestBulkProperties}
+                      thumbnailsEnabled={thumbnailsEnabled}
+                      mediaMeta={mediaMetaByPath?.[entryPath]}
+                      onMediaMetadata={(meta) => onThumbnailMetadata?.(entryPath, meta)}
                       localCandidate={localMirrorOf?.(entryPath) ?? null}
                       checkLocalExists={checkLocalExists}
                       onRevealLocal={onRevealLocal}

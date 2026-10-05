@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Pin, Star } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
+import { favName } from '../utils/favorites'
 import styles from './ConnectionPicker.module.css'
 
 // Remote root shown under the connection's name — the SFTP path when the
@@ -13,7 +14,13 @@ function remoteRootOf(connection) {
 // showing and, with more than one connection configured, lets the screen
 // switch without leaving it. `onSelect(connectionId)` re-targets the caller;
 // the picker never navigates on its own.
-export default function ConnectionPicker({ connections = [], connectionId, onSelect }) {
+export default function ConnectionPicker({
+  connections = [], connectionId, onSelect, defaultConnectionId = null, onSetDefault,
+  // Cross-connection favourites, pre-ordered by the caller (open connection
+  // first) — this component only renders what it's given and looks up each
+  // entry's connection name for display; it doesn't decide ordering.
+  favorites = [], onSelectFavorite,
+}) {
   const [open, setOpen] = useState(false)
   const wrapRef = useRef(null)
 
@@ -55,25 +62,71 @@ export default function ConnectionPicker({ connections = [], connectionId, onSel
       </button>
       {open && (
         <div className={styles.menu} role="menu">
-          {connections.map((connection) => (
-            <button
-              key={connection.id}
-              type="button"
-              role="menuitem"
-              className={[styles.item, connection.id === connectionId ? styles.itemActive : ''].join(' ')}
-              aria-current={connection.id === connectionId ? 'true' : undefined}
-              onClick={() => {
-                setOpen(false)
-                if (connection.id !== connectionId) onSelect?.(connection.id)
-              }}
-            >
-              <ConnectionIcon icon={connection.icon ?? null} size={13} />
-              <span className={styles.itemLabel}>
-                <span className={styles.itemName}>{connection.name}</span>{' '}
-                <span className={styles.itemRoot}>{remoteRootOf(connection)}</span>
-              </span>
-            </button>
-          ))}
+          {connections.map((connection) => {
+            const isDefault = connection.id === defaultConnectionId
+            return (
+              // Switching and pinning are separate controls: choosing a
+              // connection must not silently change which one these screens
+              // open on, and pinning one must not drag you onto it.
+              <div key={connection.id} className={styles.itemRow} role="none">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={[styles.item, connection.id === connectionId ? styles.itemActive : ''].join(' ')}
+                  aria-current={connection.id === connectionId ? 'true' : undefined}
+                  onClick={() => {
+                    setOpen(false)
+                    if (connection.id !== connectionId) onSelect?.(connection.id)
+                  }}
+                >
+                  <ConnectionIcon icon={connection.icon ?? null} size={13} />
+                  <span className={styles.itemLabel}>
+                    <span className={styles.itemName}>{connection.name}</span>{' '}
+                    <span className={styles.itemRoot}>{remoteRootOf(connection)}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={isDefault}
+                  className={[styles.pin, isDefault ? styles.pinOn : ''].join(' ')}
+                  aria-label={isDefault
+                    ? `Stop ${connection.name} being the default connection`
+                    : `Make ${connection.name} the default connection`}
+                  onClick={() => onSetDefault?.(isDefault ? null : connection.id)}
+                >
+                  <Pin size={12} fill={isDefault ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+            )
+          })}
+          {favorites.length > 0 && (
+            <>
+              <div className={styles.divider} />
+              <div className={styles.favSection}>
+                {favorites.map(({ connectionId: favConnId, path: favPath }) => (
+                  <button
+                    key={`${favConnId}:${favPath}`}
+                    type="button"
+                    role="menuitem"
+                    className={styles.favItem}
+                    onClick={() => {
+                      setOpen(false)
+                      onSelectFavorite?.(favConnId, favPath)
+                    }}
+                  >
+                    <Star size={13} className={styles.favItemStar} fill="currentColor" />
+                    <span className={styles.favItemLabel}>
+                      <span className={styles.favItemName}>{favName(favPath)}</span>{' '}
+                      <span className={styles.favItemConn}>
+                        {connections.find((c) => c.id === favConnId)?.name ?? favConnId}
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

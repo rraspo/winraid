@@ -21,14 +21,22 @@ import { join, basename, relative, dirname, resolve, sep, extname } from 'path'
 import { pathToFileURL } from 'url'
 import { readFileSync, existsSync, mkdirSync, rmSync, statSync, utimesSync } from 'fs'
 import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeFile as writeFileAsync, readFile as readFileAsync, access as accessAsync, rm as rmAsync, unlink as unlinkAsync } from 'fs/promises'
-import { createHash } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { homedir, userInfo, tmpdir } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { initActivity, pushActivity, tailActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
-import { listCommand, parseListOutput } from './remote-list.js'
+import { listCommand, parseListOutput, readdirEntries } from './remote-list.js'
+import { entryInfoCommand, readlinkCommand, parseEntryInfoOutput } from './remote-entry-info.js'
 import { validateRemotePath } from './validation.js'
-import { sftpRmRf, backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
+import { backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js'
+import { moveRemotePath } from './remote-move.js'
+import { copyRemotePath } from './remote-copy.js'
+import { createClipboardStore, shouldClearClipboardForConnectionsChange } from './clipboard.js'
+import { listTrash, restoreFromTrash, purgeTrash } from './remote-trash.js'
+import { deleteRemote } from './remote-delete.js'
+import { checkTrashFolder } from './trash-folder-check.js'
+import { resolveTrashFolder, trashContextFor } from './trash-context.js'
 import { execWithTimeout } from './exec-helpers.js'
 import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
 import { shQuote } from './shell-quote.js'
@@ -43,6 +51,11 @@ import { init as initIpcBridge, sendToRenderer as sendToMainWindow, notify } fro
 import * as watcher from './watcher.js'
 import * as queue from './queue.js'
 import { deletesLocalAfterUpload } from './folder-mode.js'
+import { wireTrayEvents } from './tray-events.js'
+import { watchableConnections } from './watchable.js'
+import { planLaunchWatchers, withWatchIntent, describeBlockedWatcher } from './watcher-startup.js'
+import { CONFIG_SET_ALLOWLIST } from './config-allowlist.js'
+import { decideCacheAction, stampCacheMtime } from './thumb-cache-freshness.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -95,10 +108,6 @@ let tray        = null
 let isQuitting  = false  // set before app.quit() so the close handler lets the window close instead of hiding to tray
 let _backupCurrentToken = null  // per-run cancellation token for backup:run
 let _backupCurrentConn  = null  // active SSH Client during backup:run — used to interrupt fastGet
-
-// Set of connectionIds that were watching before a pause-all operation,
-// used by resume-all to restart only those connections.
-let _watchingBeforePause = new Set()
 
 // The tray flyout window, created lazily on first open — see
 // createTrayFlyoutWindow() below.
@@ -674,10 +683,10 @@ function createTray() {
 
   tray = new Tray(icon)
   tray.setToolTip('WinRaid')
-  // Left click opens the flyout (replaces the old right-click context menu);
-  // double-click still shows the main window.
-  tray.on('click', () => { showTrayFlyout() })
-  tray.on('double-click', () => { mainWindow.show(); mainWindow.focus() })
+  wireTrayEvents(tray, {
+    showFlyout: () => { showTrayFlyout() },
+    showMain:   () => { mainWindow.show(); mainWindow.focus() },
+  })
 }
 
 // ---------------------------------------------------------------------------
@@ -791,19 +800,24 @@ function registerIPC() {
     return { ok: true }
   })
 
-  const CONFIG_SET_ALLOWLIST = [
-    'localFolder', 'operation', 'folderMode', 'extensions', 'ignoredExtensions',
-    'backup', 'connections', 'backupByConnection',
-    'browse', 'playDefaults', 'snapshot', 'thumbSeek', 'activeConnectionId',
-    'favoritesByConnection', 'appearance',
-  ]
-
   ipcMain.handle('config:set', async (_e, key, value) => {
     const topKey = String(key).split('.')[0]
     if (!CONFIG_SET_ALLOWLIST.includes(topKey)) {
+      // Logged rather than dropped in silence: the return value has no
+      // caller, so a setting whose key was never allowlisted looks like it
+      // saved and is simply gone on restart.
+      log('warn', `Refused config write to "${key}" — not in the allowlist`)
       return { error: 'forbidden key' }
     }
-    const { setConfig } = await import('./config.js')
+    const { setConfig, getConfig } = await import('./config.js')
+    if (topKey === 'connections') {
+      // A cut/copy pointer only means anything while the connection it
+      // targets still resolves to the same host/user/root — an edit or a
+      // deletion here can invalidate it.
+      if (shouldClearClipboardForConnectionsChange(clipboardStore.get(), getConfig().connections, value)) {
+        clipboardStore.clear()
+      }
+    }
     return setConfig(key, value)
   })
 
@@ -853,6 +867,8 @@ function registerIPC() {
       makeFileDetectedCallback(connectionId),
       () => sendToRenderer('watcher:status', w.listWatcherStates()),
     )
+    const { setConfig } = await import('./config.js')
+    setConfig('stoppedWatchers', withWatchIntent(cfg.stoppedWatchers, connectionId, true))
     sendToRenderer('watcher:status', w.listWatcherStates())
     // Kick the worker for any PENDING jobs that were skipped by hasActiveJob
     const q = queue
@@ -869,6 +885,8 @@ function registerIPC() {
     }
     const w = watcher
     w.stopWatcher(connectionId)
+    const { getConfig, setConfig } = await import('./config.js')
+    setConfig('stoppedWatchers', withWatchIntent(getConfig('stoppedWatchers'), connectionId, false))
     sendToRenderer('watcher:status', w.listWatcherStates())
     return { ok: true }
   })
@@ -893,12 +911,6 @@ function registerIPC() {
 
   ipcMain.handle('watcher:pause-all', async () => {
     const w = watcher
-    // Capture which connections were watching so resume-all can restart them
-    _watchingBeforePause = new Set(
-      Object.entries(w.listWatcherStates())
-        .filter(([, s]) => s.watching)
-        .map(([id]) => id)
-    )
     w.stopAllWatchers()
     const { stopWorker } = await import('./worker.js')
     stopWorker()
@@ -906,28 +918,34 @@ function registerIPC() {
     return { ok: true }
   })
 
+  // Starts every connection that can be watched, rather than only the ones
+  // running when pause-all was last pressed — a connection stopped at that
+  // moment was never in that set, so nothing could bring it back. Connections
+  // that cannot be watched come back with a reason so the caller can say so.
   ipcMain.handle('watcher:resume-all', async () => {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
     const w = watcher
-    for (const connectionId of _watchingBeforePause) {
-      const conn = (cfg.connections ?? []).find((c) => c.id === connectionId)
-      if (!conn?.localFolder) continue
-      try {
-        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
-      } catch { continue }
+    const { startable, blocked } = watchableConnections(
+      cfg.connections,
+      (folder) => existsSync(folder) && statSync(folder).isDirectory(),
+    )
+    for (const conn of startable) {
       w.startWatcher(
-        connectionId,
+        conn.id,
         conn.localFolder,
-        makeFileDetectedCallback(connectionId),
+        makeFileDetectedCallback(conn.id),
         () => sendToRenderer('watcher:status', w.listWatcherStates()),
       )
     }
-    _watchingBeforePause.clear()
+    for (const entry of blocked) log('warn', describeBlockedWatcher(entry))
+    const started = new Set(startable.map((conn) => conn.id))
+    const { setConfig } = await import('./config.js')
+    setConfig('stoppedWatchers', (cfg.stoppedWatchers ?? []).filter((id) => !started.has(id)))
     const { ensureWorkerRunning } = await import('./worker.js')
     ensureWorkerRunning()
     sendToRenderer('watcher:status', w.listWatcherStates())
-    return { ok: true }
+    return { ok: true, started: startable.map((c) => c.id), blocked }
   })
 
   // -- Tray flyout -----------------------------------------------------------
@@ -1189,6 +1207,22 @@ function registerIPC() {
     try { return existsSync(resolve(p)) } catch { return false }
   })
 
+  // Stat a local path for the Properties dialog's mirror-status comparison —
+  // whether a mirrored copy exists, and its size/mtime against the remote
+  // entry's. Absent path is reported as { ok: true, exists: false }, not an
+  // error: "no local copy yet" is an expected, not exceptional, outcome.
+  ipcMain.handle('local:stat', (_e, p) => {
+    if (typeof p !== 'string' || !p.trim()) return { ok: false, exists: false, error: 'Invalid path' }
+    try {
+      const resolved = resolve(p)
+      if (!existsSync(resolved)) return { ok: true, exists: false }
+      const st = statSync(resolved)
+      return { ok: true, exists: true, size: st.size, mtime: st.mtimeMs, isDirectory: st.isDirectory() }
+    } catch (err) {
+      return { ok: false, exists: false, error: err.message }
+    }
+  })
+
   // Reveal a local folder/file in the OS file manager (no-op if it's gone).
   ipcMain.handle('local:reveal', (_e, p) => {
     if (typeof p !== 'string' || !p.trim()) return { ok: false }
@@ -1383,6 +1417,11 @@ function registerIPC() {
         const t0 = Date.now()
         try {
           const { code, stdout } = await execWithTimeout(client, listCommand(remotePath), 60_000)
+          // The exec channel itself opened and ran — this connection can run
+          // server-side commands (cp included), whatever this particular
+          // command's exit code was. Cached on the pool entry so the
+          // clipboard's Copy button can reflect it without a fresh probe.
+          poolEntry.execCapable = true
           if (code === 0 && stdout.trim()) {
             const entries = sortEntries(parseListOutput(stdout))
             log('info', `[perf] list via find: ${entries.length} entries in ${Date.now() - t0}ms — ${remotePath}`)
@@ -1390,6 +1429,10 @@ function registerIPC() {
           }
           log('warn', `[perf] list find unusable (exit ${code}) after ${Date.now() - t0}ms, falling back to readdir — ${remotePath}`)
         } catch (e) {
+          // The exec channel itself was refused (a restricted / internal-sftp
+          // shell) rather than a command failing inside it — this connection
+          // cannot run cp either.
+          poolEntry.execCapable = false
           log('warn', `[perf] list find errored after ${Date.now() - t0}ms (${e.message}), falling back to readdir — ${remotePath}`)
         }
       }
@@ -1399,12 +1442,7 @@ function registerIPC() {
       return new Promise((resolve) => {
         sftp.readdir(remotePath, (err, list) => {
           if (err) return resolve({ ok: false, error: err.message })
-          const entries = sortEntries(list.map((e) => ({
-            name:     e.filename,
-            type:     ((e.attrs.mode ?? 0) & 0o170000) === 0o040000 ? 'dir' : 'file',
-            size:     e.attrs.size ?? 0,
-            modified: (e.attrs.mtime ?? 0) * 1000,
-          })))
+          const entries = sortEntries(readdirEntries(list))
           log('info', `[perf] list via readdir: ${entries.length} entries in ${Date.now() - tReaddir}ms — ${remotePath}`)
           resolve({ ok: true, entries })
         })
@@ -1438,7 +1476,10 @@ function registerIPC() {
       let stdout, code
       try {
         ;({ code, stdout } = await execWithTimeout(client, pipeline, 60_000))
+        // Same exec-capability signal remote:list caches — the channel ran.
+        poolEntry.execCapable = true
       } catch (err) {
+        poolEntry.execCapable = false
         return { ok: false, error: err.message }
       }
 
@@ -1578,28 +1619,44 @@ function registerIPC() {
   })
 
   // -- Remote browser: delete file or directory tree ------------------------
+  // A delete moves the item into the connection's own trash folder when one
+  // is configured; without one it is unlinked (or rm -rf'd) for good.
   ipcMain.handle('remote:delete', async (_e, connectionId, remotePath, isDir) => {
     if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     try {
-      const sftp = await _poolGet(connectionId)
-      if (!sftp) return { ok: false, error: 'Connection unavailable' }
-      _poolTouch(connectionId)
-      if (isDir) {
-        await sftpRmRf(sftp, remotePath)
+      const { error, deps } = await _connWriteDeps(connectionId)
+      if (error) return { ok: false, error }
+      const trashFolder = await _configuredTrashFolder(connectionId)
+      const result = await deleteRemote(deps, { trashFolder, path: remotePath, isDir })
+      const label = await _connLabel(connectionId)
+      if (result.trashed) {
+        log('info', `Remote ${isDir ? 'directory' : 'file'} moved to trash [${label}]: ${remotePath} -> ${result.trashPath}`)
       } else {
-        await new Promise((res, rej) =>
-          sftp.unlink(remotePath, (e) => e ? rej(e) : res())
-        )
+        log('info', `Remote ${isDir ? 'directory' : 'file'} deleted [${label}]: ${remotePath}`)
       }
-      log('info', `Remote ${isDir ? 'directory' : 'file'} deleted [${await _connLabel(connectionId)}]: ${remotePath}`)
       emitActivity({
         type: 'delete', connectionId,
         payload: { name: remotePath.split('/').pop(), parentDir: remotePath.slice(0, remotePath.lastIndexOf('/')) || '/' },
       })
-      return { ok: true }
+      return result
     } catch (err) {
       log('error', `Remote delete failed [${await _connLabel(connectionId)}]: ${remotePath} — ${err.message}`)
       emitActivity({ type: 'delete', connectionId, level: 'error', error: err.message })
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote browser: check a candidate trash folder before it is saved -----
+  ipcMain.handle('remote:trashCheck', async (_e, connectionId, folder) => {
+    try {
+      const { error, deps } = await _connWriteDeps(connectionId)
+      if (error) return { ok: false, error }
+      const conn = await _getConnConfig(connectionId)
+      const root = conn?.sftp?.remotePath
+      if (!validateRemotePath(root)) return { ok: false, error: 'This connection has no remote folder to check against.' }
+      return await checkTrashFolder(deps, { root, folder })
+    } catch (err) {
+      log('error', `Trash folder check failed [${await _connLabel(connectionId)}]: ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -1610,51 +1667,10 @@ function registerIPC() {
     try {
       const sftp = await _poolGet(connectionId)
       if (!sftp) return { ok: false, error: 'Connection unavailable' }
-      _poolTouch(connectionId)
-      const poolEntry = _sftpPool.get(connectionId)
-      const client = poolEntry?.client
-
-      // Prefer SSH exec mv — handles cross-device moves (mergerfs EXDEV) that
-      // sftp.rename() cannot; fall back to sftp.rename() for restricted shells.
       const label = await _connLabel(connectionId)
-      let result
-      let usedFallback = false
-      if (client) {
-        result = await new Promise((resolve) => {
-          client.exec(`mv -- ${shQuote(srcPath)} ${shQuote(dstPath)}`, (err, stream) => {
-            if (err) {
-              log('warn', `Remote move [${label}]: SSH exec error (${err.message}), falling back to SFTP rename`)
-              return resolve(null)
-            }
-            stream.resume()  // drain stdout so the SSH window doesn't stall
-            const stderrChunks = []
-            stream.stderr.on('data', (chunk) => stderrChunks.push(chunk))
-            stream.on('error', (streamErr) => {
-              log('warn', `Remote move [${label}]: SSH stream error (${streamErr.message}), falling back to SFTP rename`)
-              resolve(null)
-            })
-            stream.on('close', (code) => {
-              if (code === 0) return resolve({ ok: true })
-              const stderr = stderrChunks.join('').trim()
-              log('warn', `Remote move [${label}]: mv exited ${code}${stderr ? ` — ${stderr}` : ''}, falling back to SFTP rename`)
-              resolve(null)
-            })
-          })
-        })
-      } else {
-        log('warn', `Remote move [${label}]: no SSH client in pool, using SFTP rename`)
-      }
-      if (!result) {
-        usedFallback = true
-        result = await new Promise((resolve) => {
-          sftp.rename(srcPath, dstPath, (err) => {
-            if (err) return resolve({ ok: false, error: err.message })
-            resolve({ ok: true })
-          })
-        })
-      }
+      const result = await remoteMove(connectionId, srcPath, dstPath)
       if (result.ok) {
-        log('info', `Remote move [${label}] (${usedFallback ? 'sftp rename' : 'ssh mv'}): ${srcPath} -> ${dstPath}`)
+        log('info', `Remote move [${label}] (${result.via}): ${srcPath} -> ${dstPath}`)
         const name   = dstPath.split('/').pop()
         const dstDir = dstPath.slice(0, dstPath.lastIndexOf('/')) || '/'
         const srcDir = srcPath.slice(0, srcPath.lastIndexOf('/')) || '/'
@@ -1670,12 +1686,127 @@ function registerIPC() {
         log('error', `Remote move failed [${label}]   to: ${dstPath} — ${result.error}`)
         emitActivity({ type: 'move', connectionId, level: 'error', error: result.error })
       }
-      return result
+      return result.ok ? { ok: true } : { ok: false, error: result.error }
     } catch (err) {
       const label = await _connLabel(connectionId)
       log('error', `Remote move/rename failed [${label}] from: ${srcPath}`)
       log('error', `Remote move/rename failed [${label}]   to: ${dstPath} — ${err.message}`)
       emitActivity({ type: 'move', connectionId, level: 'error', error: err.message })
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // -- Remote browser: copy (server-side `cp -r`, no SFTP fallback exists) --
+  ipcMain.handle('remote:copy', async (_e, connectionId, srcPath, dstPath) => {
+    if (!validateRemotePath(srcPath) || !validateRemotePath(dstPath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      const sftp = await _poolGet(connectionId)
+      if (!sftp) return { ok: false, error: 'Connection unavailable' }
+      _poolTouch(connectionId)
+      const client = _sftpPool.get(connectionId)?.client
+      const label = await _connLabel(connectionId)
+      const warn = (message) => log('warn', `Remote copy [${label}]: ${message}`)
+      const result = await copyRemotePath({ client, warn }, srcPath, dstPath)
+      if (result.ok) {
+        log('info', `Remote copy [${label}] (${result.via}): ${srcPath} -> ${dstPath}`)
+        const name   = dstPath.split('/').pop()
+        const dstDir = dstPath.slice(0, dstPath.lastIndexOf('/')) || '/'
+        emitActivity({ type: 'copy', connectionId, payload: { name, dstDir } })
+      } else {
+        log('error', `Remote copy failed [${label}] from: ${srcPath}`)
+        log('error', `Remote copy failed [${label}]   to: ${dstPath} — ${result.error}`)
+        emitActivity({ type: 'copy', connectionId, level: 'error', error: result.error })
+      }
+      return result
+    } catch (err) {
+      log('error', `Remote copy failed [${await _connLabel(connectionId)}]: ${err.message}`)
+      emitActivity({ type: 'copy', connectionId, level: 'error', error: err.message })
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Whether this connection has server-side exec at all — a byproduct of the
+  // exec probe remote:list and remote:tree already run, cached on the pool
+  // entry. `capable: null` means not yet known (no listing has happened on
+  // this connection this session); the caller treats that as "don't know
+  // yet" rather than as a hard no.
+  ipcMain.handle('remote:exec-capable', (_e, connectionId) => {
+    const poolEntry = _sftpPool.get(connectionId)
+    return { ok: true, capable: poolEntry?.execCapable ?? null }
+  })
+
+  // -- Clipboard: cut/copy pointer + paste ----------------------------------
+  // The clipboard itself holds only { mode, connectionId, paths }, set by the
+  // toolbar's Cut/Copy buttons — see clipboard.js. Paste is a per-file
+  // client-side loop (window.winraid.remote.move / .copy) so it reports
+  // partial failure per file, the same shape the bulk delete/move operations
+  // already use; there is no separate clipboard:paste IPC call.
+  ipcMain.handle('clipboard:set', (_e, mode, connectionId, paths) => {
+    if (mode !== 'cut' && mode !== 'copy') return { ok: false, error: 'Invalid clipboard mode' }
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
+    if (!Array.isArray(paths) || paths.length === 0 || !paths.every((p) => validateRemotePath(p))) {
+      return { ok: false, error: 'Invalid clipboard paths' }
+    }
+    clipboardStore.set(mode, connectionId, paths)
+    return { ok: true }
+  })
+
+  ipcMain.handle('clipboard:get', () => clipboardStore.get())
+
+  ipcMain.handle('clipboard:clear', () => {
+    clipboardStore.clear()
+    return { ok: true }
+  })
+
+  // -- Remote trash: list, restore, purge ------------------------------------
+  // Returns { ok, entries: [{ id, originalPath, name, deletedAt, size, isDir, restorable }] }.
+  // An entry whose record is unreadable lists with restorable: false and a null
+  // originalPath; it can still be purged.
+  ipcMain.handle('remote:trashList', async (_e, connectionId) => {
+    try {
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      if (trash.noFolder) return { ok: true, entries: [] }
+      return { ok: true, entries: await listTrash(trash.deps, trash.root) }
+    } catch (err) {
+      log('error', `Trash list failed [${await _connLabel(connectionId)}]: ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Returns { ok, restoredPath, renamed } — renamed is true when the original
+  // name was taken and the entry landed beside it instead of overwriting it.
+  ipcMain.handle('remote:trashRestore', async (_e, connectionId, entryId) => {
+    try {
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      if (trash.noFolder) return { ok: false, error: 'This connection has no trash folder configured.' }
+      const { restoredPath, renamed } = await restoreFromTrash(trash.deps, trash.root, entryId)
+      log('info', `Restored from trash [${await _connLabel(connectionId)}]: ${restoredPath}${renamed ? ' (renamed, original name was taken)' : ''}`)
+      return { ok: true, restoredPath, renamed }
+    } catch (err) {
+      log('error', `Trash restore failed [${await _connLabel(connectionId)}]: ${entryId} — ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // Permanently deletes one entry, or the whole trash when entryId is omitted.
+  // Returns { ok, purged } plus an error when any entry could not be removed.
+  ipcMain.handle('remote:trashPurge', async (_e, connectionId, entryId) => {
+    try {
+      const trash = await _trashContext(connectionId)
+      if (trash.error) return { ok: false, error: trash.error }
+      if (trash.noFolder) return { ok: false, error: 'This connection has no trash folder configured.' }
+      const { purged, errors } = await purgeTrash(trash.deps, trash.root, entryId)
+      const label = await _connLabel(connectionId)
+      log('info', `Trash purged [${label}]: ${entryId ?? 'all entries'} (${purged} removed)`)
+      if (errors.length) {
+        for (const failure of errors) log('error', `Trash purge failed [${label}]: ${failure.id} — ${failure.error}`)
+        return { ok: false, purged, error: `${errors.length} item${errors.length === 1 ? '' : 's'} could not be deleted: ${errors[0].error}` }
+      }
+      return { ok: true, purged }
+    } catch (err) {
+      log('error', `Trash purge failed [${await _connLabel(connectionId)}]: ${entryId ?? 'all entries'} — ${err.message}`)
       return { ok: false, error: err.message }
     }
   })
@@ -2590,6 +2721,45 @@ function registerIPC() {
   })
 
   // ---------------------------------------------------------------------------
+  // Remote: single-entry attributes — permission mode, owner, group, birth
+  // time where reported, and symlink target. The listing command follows
+  // symlinks and never carries this, so Properties asks for it on demand,
+  // one entry at a time (never a directory walk).
+  // ---------------------------------------------------------------------------
+
+  ipcMain.handle('remote:entry-info', async (_e, connectionId, remotePath) => {
+    if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (!conn) return { ok: false, error: 'Connection not found' }
+      if (conn.type !== 'sftp') return { ok: false, error: 'Entry attributes only available for SFTP connections' }
+
+      const sftp = await _poolGet(connectionId)
+      _poolTouch(connectionId)
+      const poolEntry = _sftpPool.get(connectionId)
+      if (!poolEntry || !sftp) return { ok: false, error: 'Connection unavailable' }
+
+      const { stdout } = await execWithTimeout(poolEntry.client, entryInfoCommand(remotePath), 15_000)
+      const info = parseEntryInfoOutput(stdout)
+      if (!info) return { ok: false, error: 'Could not read entry attributes' }
+
+      let symlinkTarget = null
+      if (info.isSymlink) {
+        try {
+          const link = await execWithTimeout(poolEntry.client, readlinkCommand(remotePath), 15_000)
+          symlinkTarget = link.stdout.split('\n')[0]?.trim() || null
+        } catch { /* target unreadable — still report the rest of the attributes */ }
+      }
+
+      return { ok: true, ...info, symlinkTarget }
+    } catch (err) {
+      log('error', `[entry-info] failed: ${remotePath} — ${err.message}`)
+      return { ok: false, error: err.message }
+    }
+  })
+
+  // ---------------------------------------------------------------------------
   // Remote: media scan — BFS walk emitting image/video paths
   // ---------------------------------------------------------------------------
 
@@ -3148,6 +3318,10 @@ const _sftpPool = new Map()
 const _sftpPoolPending = new Map()  // concurrency guard: connId → Promise
 const SFTP_POOL_TTL = 30_000  // 30 s idle before closing
 
+// The single cut/copy clipboard, shared across every tab and connection —
+// see clipboard.js for the pointer-not-bytes design.
+const clipboardStore = createClipboardStore()
+
 function _poolTouch(connId) {
   const entry = _sftpPool.get(connId)
   if (!entry) return
@@ -3238,6 +3412,61 @@ async function _poolConnect(connId) {
 async function _getConnConfig(connId) {
   const { getConfig } = await import('./config.js')
   return (getConfig().connections ?? []).find((c) => c.id === connId) ?? null
+}
+
+// The app's single remote move over a pooled connection: SSH `mv` with an SFTP
+// rename fallback. Resolves { ok, via } or { ok: false, error }; callers own
+// logging the outcome and emitting activity.
+async function remoteMove(connectionId, srcPath, dstPath) {
+  const sftp = await _poolGet(connectionId)
+  if (!sftp) return { ok: false, error: 'Connection unavailable' }
+  _poolTouch(connectionId)
+  const client = _sftpPool.get(connectionId)?.client
+  const label = await _connLabel(connectionId)
+  const warn = (message) => log('warn', `Remote move [${label}]: ${message}`)
+  return moveRemotePath({ client, sftp, warn }, srcPath, dstPath)
+}
+
+// Resolves the pooled primitives any remote write against a connection
+// needs — permanent delete included, which never touches the trash folder
+// at all — or { error } to hand back to the renderer.
+async function _connWriteDeps(connectionId) {
+  if (typeof connectionId !== 'string' || !connectionId.trim()) return { error: 'Invalid connectionId' }
+  const conn = await _getConnConfig(connectionId)
+  if (!conn) return { error: 'Connection not found' }
+  if (conn.type !== 'sftp') return { error: 'This operation is only available for SFTP connections' }
+  const sftp = await _poolGet(connectionId)
+  if (!sftp) return { error: 'Connection unavailable' }
+  _poolTouch(connectionId)
+  const client = _sftpPool.get(connectionId)?.client
+  return {
+    deps: {
+      sftp,
+      // Sizing a large folder must not hold a delete hostage; a timeout records 0.
+      exec: client ? (command) => execWithTimeout(client, command, 30_000) : null,
+      move: (src, dst) => remoteMove(connectionId, src, dst),
+      newId: randomUUID,
+      now: Date.now,
+      warn: (message) => log('warn', `Trash [${connectionId}]: ${message}`),
+    },
+  }
+}
+
+// A connection's own trash folder, chosen by the user in Settings — blank or
+// unset means deletes on that connection stay permanent.
+async function _configuredTrashFolder(connectionId) {
+  const { getConfig } = await import('./config.js')
+  return resolveTrashFolder(getConfig('trashByConnection')?.[connectionId]?.folder)
+}
+
+// Resolves what a trash operation (list/restore/purge) needs for a
+// connection — the configured folder and the pooled primitives — or
+// { error } for an invalid connection, or { noFolder: true } for a valid SFTP
+// connection with no trash folder configured yet.
+async function _trashContext(connectionId) {
+  const base = await _connWriteDeps(connectionId)
+  const folder = base.error ? null : await _configuredTrashFolder(connectionId)
+  return trashContextFor(base, folder)
 }
 
 async function _connLabel(connId) {
@@ -3342,6 +3571,31 @@ function fullCachePath(connId, remotePath) {
   return join(app.getPath('userData'), 'thumbs', connId, 'full', hash + ext)
 }
 
+// The `v` query param carries the remote file's modified time (ms since
+// epoch, matching the `modified` field from the directory listing) so the
+// disk cache can prove it still matches the file it was made from. Missing
+// or non-numeric means the caller can't state what it expects — treated as
+// "no freshness signal" by decideCacheAction, never as a pass.
+function parseRequestedModified(url) {
+  const raw = url.searchParams.get('v')
+  if (raw === null) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+// Stats a cache file for decideCacheAction's inputs. Any stat failure —
+// the file is absent, or exists but couldn't be read — collapses to
+// cachedMtime: null, which decideCacheAction always regenerates on; the
+// ENOENT/other distinction only sharpens cacheExists for readability.
+async function statCacheForFreshness(cachePath) {
+  try {
+    const { mtimeMs } = await statAsync(cachePath)
+    return { cacheExists: true, cachedMtime: mtimeMs }
+  } catch (err) {
+    return { cacheExists: err?.code !== 'ENOENT', cachedMtime: null }
+  }
+}
+
 // Thumbnail concurrency semaphore — cap simultaneous SFTP thumbnail downloads
 // so the SSH connection isn't saturated by 20+ parallel reads when a large
 // image folder is opened.
@@ -3403,6 +3657,7 @@ function registerNasStreamProtocol() {
       const mime        = mimeForPath(remotePath)
       const rangeHeader = request.headers.get('range')
       const isThumb     = url.searchParams.get('thumb') === '1'
+      const requestedModified = parseRequestedModified(url)
       const CACHE       = 'private, max-age=300'
 
       // Range request — stat first to validate bounds and build Content-Range
@@ -3443,16 +3698,22 @@ function registerNasStreamProtocol() {
       if (mime.startsWith('image/') && isThumb) {
         const cachePath = thumbCachePath(connId, remotePath)
 
-        // Cache hit — serve without touching SFTP
-        const cached = await readFileAsync(cachePath).catch(() => null)
-        if (cached) {
-          return new Response(cached, {
-            status: 200,
-            headers: {
-              'Content-Type':  'image/jpeg',
-              'Cache-Control': CACHE,
-            },
-          })
+        // Cache hit — serve without touching SFTP, but only when the cache's
+        // stamped mtime proves it still matches the requested modified time.
+        // Any uncertainty (unreadable stat, no v= on the request) falls
+        // through to regeneration rather than risking stale bytes.
+        const freshness = await statCacheForFreshness(cachePath)
+        if (decideCacheAction({ ...freshness, requestedModified }) === 'serve') {
+          const cached = await readFileAsync(cachePath).catch(() => null)
+          if (cached) {
+            return new Response(cached, {
+              status: 200,
+              headers: {
+                'Content-Type':  'image/jpeg',
+                'Cache-Control': CACHE,
+              },
+            })
+          }
         }
 
         // Cache miss — limit to 4 concurrent SFTP thumbnail downloads so the
@@ -3484,6 +3745,9 @@ function registerNasStreamProtocol() {
         const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
         await mkdirAsync(fullDir, { recursive: true })
         await writeFileAsync(fcp, buf).catch(() => {})
+        if (requestedModified !== null) {
+          try { stampCacheMtime(fcp, requestedModified) } catch { /* best effort */ }
+        }
 
         // nativeImage decode + resize runs in the next event-loop tick so IPC
         // and other work can interleave between thumbnail processing steps.
@@ -3504,6 +3768,9 @@ function registerNasStreamProtocol() {
         const cacheDir = join(app.getPath('userData'), 'thumbs', connId)
         await mkdirAsync(cacheDir, { recursive: true })
         await writeFileAsync(cachePath, jpegBuf).catch(() => {})
+        if (requestedModified !== null) {
+          try { stampCacheMtime(cachePath, requestedModified) } catch { /* best effort */ }
+        }
 
         return new Response(jpegBuf, {
           status: 200,
@@ -3524,17 +3791,23 @@ function registerNasStreamProtocol() {
       if (bustRequest) {
         await unlinkAsync(fcp).catch(() => {})
       }
-      const cached = bustRequest ? null : await readFileAsync(fcp).catch(() => null)
-      if (cached) {
-        return new Response(cached, {
-          status: 200,
-          headers: {
-            'Content-Type':   mime,
-            'Content-Length': String(cached.length),
-            'Accept-Ranges':  'bytes',
-            'Cache-Control':  CACHE,
-          },
-        })
+      // Same freshness decision as the thumbnail branch above — bust already
+      // unlinked the cache, so statting it here reports cacheExists: false
+      // and decideCacheAction regenerates without needing a separate check.
+      const fullFreshness = await statCacheForFreshness(fcp)
+      if (decideCacheAction({ ...fullFreshness, requestedModified }) === 'serve') {
+        const cached = await readFileAsync(fcp).catch(() => null)
+        if (cached) {
+          return new Response(cached, {
+            status: 200,
+            headers: {
+              'Content-Type':   mime,
+              'Content-Length': String(cached.length),
+              'Accept-Ranges':  'bytes',
+              'Cache-Control':  CACHE,
+            },
+          })
+        }
       }
 
       const readStream = sftp.createReadStream(remotePath)
@@ -3543,6 +3816,9 @@ function registerNasStreamProtocol() {
           const fullDir = join(app.getPath('userData'), 'thumbs', connId, 'full')
           await mkdirAsync(fullDir, { recursive: true })
           await writeFileAsync(fcp, buf).catch(() => {})
+          if (requestedModified !== null) {
+            try { stampCacheMtime(fcp, requestedModified) } catch { /* best effort */ }
+          }
 
           // Populate thumbnail cache if this is an image and the thumb is missing
           if (mime.startsWith('image/')) {
@@ -3554,6 +3830,9 @@ function registerNasStreamProtocol() {
                 const thumbDir = join(app.getPath('userData'), 'thumbs', connId)
                 await mkdirAsync(thumbDir, { recursive: true })
                 await writeFileAsync(tcp, img.resize({ width: 240 }).toJPEG(80)).catch(() => {})
+                if (requestedModified !== null) {
+                  try { stampCacheMtime(tcp, requestedModified) } catch { /* best effort */ }
+                }
               }
             }
           }
@@ -3656,11 +3935,12 @@ app.whenReady().then(async () => {
     const { getConfig } = await import('./config.js')
     const cfg = getConfig()
     const w = watcher
-    for (const conn of (cfg.connections ?? [])) {
-      if (!conn.localFolder) continue
-      try {
-        if (!existsSync(conn.localFolder) || !statSync(conn.localFolder).isDirectory()) continue
-      } catch { continue }
+    const { startable, blocked } = planLaunchWatchers(
+      cfg.connections,
+      cfg.stoppedWatchers,
+      (folder) => existsSync(folder) && statSync(folder).isDirectory(),
+    )
+    for (const conn of startable) {
       w.startWatcher(
         conn.id,
         conn.localFolder,
@@ -3668,9 +3948,8 @@ app.whenReady().then(async () => {
         () => sendToRenderer('watcher:status', w.listWatcherStates()),
       )
     }
-    if ((cfg.connections ?? []).some((c) => c.localFolder)) {
-      sendToRenderer('watcher:status', w.listWatcherStates())
-    }
+    for (const entry of blocked) log('warn', describeBlockedWatcher(entry))
+    sendToRenderer('watcher:status', w.listWatcherStates())
 
     // Kick the worker in case there are PENDING jobs left from a previous session.
     // onFileDetected only calls ensureWorkerRunning for newly detected files, so

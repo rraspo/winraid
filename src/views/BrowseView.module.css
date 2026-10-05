@@ -9,18 +9,40 @@
 }
 
 /* ── Toolbar ──────────────────────────────────────────────────────────────── */
+/* Two 40px rows, Explorer-style: row 1 is navigation (back/forward/up,
+   refresh, the connection + breadcrumb trail, search); row 2 is the
+   command bar (new folder, the file-management cluster, sort/view, the
+   overflow menu). Each row carries its own bottom rule; only the second
+   one also closes off the toolbar as a whole. */
 .toolbar {
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
+}
+
+.toolbarRow {
+  display: flex;
   align-items: center;
   gap: 6px;
-  height: 48px;
+  height: 40px;
   padding: 0 16px;
-  border-bottom: 1px solid var(--strokeSoft);
   position: relative;
 }
 
+.toolbarRow + .toolbarRow { border-top: 1px solid var(--strokeSoft); }
+.toolbar .toolbarRow:last-child { border-bottom: 1px solid var(--strokeSoft); }
+
 .toolbarSpacer { flex: 1; min-width: 8px; }
+
+/* Row 2's group dividers — drawn only at a group change (New Folder |
+   file management | Sort/View | overflow), never inside a group. */
+.rowPipe {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--stroke);
+  flex-shrink: 0;
+}
 
 /* ── Shared icon button ───────────────────────────────────────────────────── */
 .iconBtn {
@@ -37,8 +59,41 @@
 .iconBtn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
 .iconBtn:disabled              { opacity: 0.35; cursor: default; }
 
-.favBtnActive { color: var(--accent); }
-.favBtnActive:hover:not(:disabled) { color: var(--accent); }
+/* ── New Folder (row 2) ───────────────────────────────────────────────────── */
+.newFolderBtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--text2);
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color var(--transition), background-color var(--transition), opacity var(--transition);
+}
+
+.newFolderBtn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.newFolderBtn:disabled              { opacity: 0.35; cursor: default; }
+
+/* ── File-management cluster (row 2, icon-only) ──────────────────────────── */
+/* A stricter disabled dimming than the plain icon button: this cluster's
+   "nothing selected" state is the resting state of a fresh folder view,
+   not an occasional edge case, so it reads as clearly inactive. */
+.fileActionBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--text2);
+  transition: color var(--transition), background-color var(--transition), opacity var(--transition);
+}
+
+.fileActionBtn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.fileActionBtn:disabled              { opacity: 0.32; cursor: default; }
 
 /* ── Breadcrumb ───────────────────────────────────────────────────────────── */
 /* The trail is the toolbar's flexible element: it absorbs whatever width is
@@ -53,18 +108,35 @@
    only the last folder survived and by 900 the trail was gone entirely,
    leaving no way to walk back up. The floor holds a few crumbs no matter
    how narrow the window gets, and the filter box beside it gives up its
-   width several times faster to pay for them. */
-.breadcrumb {
+   width several times faster to pay for them.
+
+   The hidden-folders marker used to sit inside this scrolling track,
+   pinned over whatever had scrolled underneath it — which meant the crumb
+   sitting exactly at the scroll boundary was only ever partly covered, and
+   the sliver poking out past the marker still hit-tested to it instead of
+   to itself. The marker is a plain sibling of the scrolling track instead:
+   it keeps its own space in the row, the track starts after it, and a
+   crumb can never land underneath it. */
+.breadcrumbWrap {
   display: flex;
   align-items: center;
   gap: 2px;
   min-width: 140px;
   flex: 1 1 auto;
+  margin-left: 2px;
+  overflow: hidden;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1 1 auto;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
   font-size: 13px;
-  margin-left: 2px;
 }
 
 .breadcrumb::-webkit-scrollbar { display: none; }
@@ -78,15 +150,49 @@
 
 .crumbSep { color: var(--text3); flex-shrink: 0; }
 
+/* Choosing it lists the folders it is hiding — the way back up while the
+   trail is scrolled to the folder you are in. */
 .crumbEllipsis {
-  position: sticky;
-  left: 0;
-  z-index: 1;
-  padding: 2px 4px 2px 0;
-  color: var(--text3);
   flex-shrink: 0;
-  background: var(--bg);
+  padding: 2px 4px;
+  border-radius: 4px;
+  color: var(--text3);
+  transition: color var(--transition), background-color var(--transition);
 }
+
+.crumbEllipsis:hover { color: var(--text); background: var(--hover); }
+
+/* Drawn at the document level: the trail clips its own overflow, so a menu
+   nested inside it is invisible however it is positioned. */
+.crumbMenu {
+  position: fixed;
+  z-index: 200;
+  min-width: 180px;
+  max-width: 300px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+}
+
+.crumbMenuItem {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color var(--transition);
+}
+
+.crumbMenuItem:hover { background: var(--hover); }
 
 .crumb {
   display: flex;
@@ -108,80 +214,6 @@
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent) !important;
 }
-
-/* ── Favorites menu ───────────────────────────────────────────────────────── */
-.favWrap { position: relative; flex-shrink: 0; }
-
-.favDrop {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 60;
-  width: 260px;
-  background: var(--card);
-  border: 1px solid var(--stroke);
-  border-radius: 8px;
-  box-shadow: var(--shadow);
-  padding: 5px;
-}
-
-.favSectionLabel {
-  font-size: 11px;
-  color: var(--text3);
-  font-weight: 600;
-  letter-spacing: 0.4px;
-  padding: 7px 10px 4px;
-}
-
-.favEmpty {
-  font-size: 12px;
-  color: var(--text3);
-  padding: 4px 10px 8px;
-}
-
-.favItem {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 5px;
-  font-size: 12.5px;
-  color: var(--text);
-  text-align: left;
-  transition: background-color var(--transition);
-}
-
-.favItem:hover { background: var(--hover); }
-
-.favItemStar { color: var(--warn); flex-shrink: 0; }
-
-.favItemLabel { display: flex; flex-direction: column; min-width: 0; }
-
-.favItemName {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.favItemConn { font-size: 11px; color: var(--text3); }
-
-.favPinItem {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 9px 10px;
-  border-radius: 5px;
-  font-size: 12.5px;
-  color: var(--accentHi);
-  border-top: 1px solid var(--strokeSoft);
-  margin-top: 4px;
-  text-align: left;
-  transition: background-color var(--transition);
-}
-
-.favPinItem:hover { background: var(--hover); }
 
 /* ── Sort dropdown ────────────────────────────────────────────────────────── */
 .sortWrap {
@@ -210,15 +242,15 @@
    its tooltip alone, so its word is the cheapest width in the row to give
    back to the trail. */
 @media (max-width: 1200px) {
-  .sortLabel { display: none; }
-  .sortBtn   { padding: 0 8px; }
+  .sortLabel, .viewLabel { display: none; }
+  .sortBtn, .viewBtn     { padding: 0 8px; }
 }
 
 /* At the narrowest window the app allows, the row closes up its own spacing
    rather than taking the last of the trail's width: the gaps and the side
    padding are the only slack left once every control is at its minimum. */
 @media (max-width: 960px) {
-  .toolbar { gap: 4px; padding: 0 10px; }
+  .toolbarRow { gap: 4px; padding: 0 10px; }
 }
 
 .sortDrop {
@@ -239,6 +271,7 @@
 .sortOption {
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 8px 11px;
   border-radius: 5px;
   font-size: 12.5px;
@@ -256,6 +289,16 @@
 .sortOptionActive {
   color: var(--accent);
   font-weight: 500;
+}
+
+.sortOptionLabel { flex: 1; }
+
+/* Selection is never color-only — the check-mark is the non-color signal
+   the active row in either dropdown carries alongside its accent color. */
+.optionCheck {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--accent);
 }
 
 /* ── Search input (toolbar) ──────────────────────────────────────────────── */
@@ -318,33 +361,90 @@
   background: var(--hover);
 }
 
-/* ── View toggle (segmented control) ─────────────────────────────────────── */
-.viewToggleGroup {
-  display: flex;
+/* ── View dropdown (row 2) ────────────────────────────────────────────────── */
+/* Relocation of the old grid/list segmented pair into one button — it
+   reports the active mode (icon swaps grid/list) and its dropdown is the
+   same click-to-choose shape as the Sort dropdown beside it. */
+.viewWrap {
+  position: relative;
   flex-shrink: 0;
-  border: 1px solid var(--stroke);
-  border-radius: 6px;
-  overflow: hidden;
 }
 
-.viewToggleBtn {
-  position: relative;
+.viewBtn {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 32px;
+  gap: 6px;
   height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke);
+  border-radius: 6px;
   color: var(--text2);
+  font-size: 12px;
   transition: color var(--transition), background-color var(--transition);
 }
 
-.viewToggleBtn + .viewToggleBtn { border-left: 1px solid var(--stroke); }
+.viewBtn:hover { color: var(--text); background-color: var(--hover); }
 
-.viewToggleBtn:hover { color: var(--text); }
+.viewDrop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  width: 150px;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+}
 
-.viewToggleBtnActive {
-  background: var(--active);
-  color: var(--text);
+.viewOption {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-radius: 5px;
+  font-size: 12.5px;
+  color: var(--text2);
+  white-space: nowrap;
+  text-align: left;
+  transition: background-color var(--transition), color var(--transition);
+}
+
+.viewOption:hover { background: var(--hover); color: var(--text); }
+
+.viewOptionActive {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* ── Overflow menu (row 2 "..." button) ───────────────────────────────────── */
+.overflowWrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.overflowDrop {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 60;
+  min-width: 210px;
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 5px;
+}
+
+/* A disabled item inside the reused EntryMenu .menuItem style — that style
+   has no disabled state of its own since none of EntryMenu's own items are
+   ever disabled. */
+.menuItemDisabled {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 /* ── Empty state (no connections / no host) ───────────────────────────────── */
@@ -369,44 +469,6 @@
   display: flex;
   flex-direction: column;
 }
-
-/* ── Selection toolbar (pill at the bottom) ──────────────────────────────── */
-.bulkBar {
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 8px 16px;
-  background: var(--surface2);
-  border-top: 1px solid var(--strokeSoft);
-}
-
-.bulkCount {
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--accent);
-}
-
-.bulkActions { display: flex; gap: 6px; margin-left: auto; }
-
-.bulkBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 12px;
-  border: 1px solid var(--stroke);
-  border-radius: 6px;
-  color: var(--text2);
-  font-size: 12.5px;
-  transition: background-color var(--transition), color var(--transition), border-color var(--transition);
-}
-
-.bulkBtn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
-.bulkBtn:disabled              { opacity: 0.4; cursor: default; }
-
-.bulkBtnDanger              { color: var(--err); border-color: var(--err); }
-.bulkBtnDanger:hover:not(:disabled) { background: color-mix(in srgb, var(--err) 12%, transparent); color: var(--err); }
 
 /* ── Footer ───────────────────────────────────────────────────────────────── */
 .footer {
@@ -554,8 +616,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .iconBtn, .crumb, .sortBtn, .sortOption, .viewToggleBtn,
-  .bulkBtn, .footerCheckout, .favItem, .favPinItem, .searchWrap {
+  .iconBtn, .crumb, .sortBtn, .sortOption, .newFolderBtn, .fileActionBtn,
+  .viewBtn, .viewOption, .footerCheckout, .searchWrap {
     transition: none;
   }
   .spinning { animation: none; }

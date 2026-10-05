@@ -15,6 +15,7 @@ const baseProps = {
   onEdit: noop,
   onMove: noop,
   onDelete: noop,
+  onProperties: noop,
 }
 
 describe('EntryMenu — imperative openAt (right-click)', () => {
@@ -99,5 +100,32 @@ describe('EntryMenu — Reveal in Explorer (local mirror)', () => {
     fireEvent.click(screen.getByRole('button'))
     fireEvent.click(await screen.findByText('Reveal in Explorer'))
     expect(onRevealLocal).toHaveBeenCalledWith('Z:\\winraid\\media\\photos')
+  })
+})
+
+describe('EntryMenu — Properties', () => {
+  it('places Properties after Reveal in Explorer and before the danger divider', async () => {
+    render(
+      <EntryMenu
+        {...baseProps}
+        isDir
+        isEditable
+        localCandidate={'Z:\\winraid\\media\\photos'}
+        checkLocalExists={vi.fn().mockResolvedValue(true)}
+        onRevealLocal={noop}
+      />
+    )
+    fireEvent.click(screen.getByRole('button'))
+    await screen.findByText('Reveal in Explorer')
+    const labels = screen.getAllByRole('button').map((b) => b.textContent.trim()).filter(Boolean)
+    expect(labels).toEqual(['Download', 'Edit', 'Move / Rename', 'Reveal in Explorer', 'Properties', 'Delete'])
+  })
+
+  it('calls onProperties when clicked', () => {
+    const onProperties = vi.fn()
+    render(<EntryMenu {...baseProps} onProperties={onProperties} />)
+    fireEvent.click(screen.getByRole('button'))
+    fireEvent.click(screen.getByText('Properties'))
+    expect(onProperties).toHaveBeenCalled()
   })
 })

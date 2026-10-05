@@ -21,6 +21,7 @@ import {
   SIZE_TREES, SIZE_META, MEDIA_FILES, SYSTEM_ACCENT_COLOR,
 } from './fixtures.js'
 import { SCREEN_NAMES } from './screens.js'
+import { CONFIG_SET_ALLOWLIST } from '../../electron/config-allowlist.js'
 
 function clone(value) {
   return value === undefined ? value : JSON.parse(JSON.stringify(value))
@@ -56,6 +57,9 @@ function createChannel() {
 
 const configStore = clone(CONFIG)
 const queueJobs = clone(QUEUE_JOBS)
+// { mode, connectionId, paths } | null — the harness's stand-in for the main
+// process's single clipboard buffer (electron/clipboard.js).
+let clipboardState = null
 
 const channels = {
   watcherStatus: createChannel(),
@@ -95,7 +99,16 @@ window.winraid = {
 
   config: {
     get: (key) => Promise.resolve(key == null ? clone(configStore) : clone(getByPath(configStore, key))),
+    // The real main process refuses a write to a key that is not allowlisted.
+    // The harness has to refuse it too, or it verifies a setting the built
+    // app cannot save — which is exactly how the default-connection setting
+    // passed here and failed on Windows.
     set: (key, value) => {
+      const topKey = String(key).split('.')[0]
+      if (!CONFIG_SET_ALLOWLIST.includes(topKey)) {
+        console.error(`[preview] refused config write to "${key}" — not in electron/config-allowlist.js`)
+        return Promise.resolve({ error: 'forbidden key' })
+      }
       setByPath(configStore, key, value)
       return Promise.resolve(undefined)
     },
@@ -175,9 +188,22 @@ window.winraid = {
     onOpened: () => () => {},
   },
 
+  clipboard: {
+    set: (mode, connectionId, paths) => {
+      clipboardState = { mode, connectionId, paths: [...paths] }
+      return Promise.resolve({ ok: true })
+    },
+    get: () => Promise.resolve(clone(clipboardState)),
+    clear: () => {
+      clipboardState = null
+      return Promise.resolve({ ok: true })
+    },
+  },
+
   local: {
     clearFolder: () => Promise.resolve({ ok: true }),
     exists: () => Promise.resolve(true),
+    stat: () => Promise.resolve({ ok: true, exists: true, size: 4_200_000, mtime: Date.now() - 2 * 60_000 }),
     reveal: () => Promise.resolve({ ok: true }),
   },
 
@@ -192,8 +218,16 @@ window.winraid = {
     readFile: () => Promise.resolve({ ok: true, content: '' }),
     writeFile: () => Promise.resolve({ ok: true }),
     writeFileBinary: () => Promise.resolve({ ok: true }),
-    delete: () => Promise.resolve({ ok: true }),
+    delete: () => Promise.resolve({ ok: true, trashed: false }),
+    trashCheck: () => Promise.resolve({ ok: true }),
+    trashList: () => Promise.resolve({ ok: true, entries: [] }),
+    trashRestore: () => Promise.resolve({ ok: true, restoredPath: '', renamed: false }),
+    trashPurge: () => Promise.resolve({ ok: true, purged: 0 }),
     move: () => Promise.resolve({ ok: true }),
+    copy: () => Promise.resolve({ ok: true, via: 'ssh cp' }),
+    // Every preview connection can run server-side commands — a restricted,
+    // no-exec connection has no fixture data of its own to browse here.
+    execCapable: () => Promise.resolve({ ok: true, capable: true }),
     mkdir: () => Promise.resolve({ ok: true }),
     verifyClean: () => Promise.resolve({ ok: true, total: 0, confirmed: [], notFound: [] }),
     verifyDelete: () => Promise.resolve({ ok: true, deleted: 0, errors: [] }),
@@ -201,7 +235,12 @@ window.winraid = {
 
     diskUsage: (connectionId) => Promise.resolve(clone(DISK_USAGE[connectionId] ?? { ok: false, error: 'Not supported' })),
 
+    entryInfo: () => Promise.resolve({
+      ok: true, mode: '644', owner: 'user', group: 'users', created: null, isSymlink: false, symlinkTarget: null,
+    }),
+
     sizeScan: () => Promise.resolve({ ok: true }),
+    sizeScanSubtree: () => Promise.resolve({ ok: true }),
     sizeCancel: () => Promise.resolve(undefined),
     onSizeProgress: (callback) => channels.sizeProgress.subscribe(callback),
     onSizeLevel: (callback) => channels.sizeLevel.subscribe(callback),
@@ -232,7 +271,10 @@ window.winraid = {
     trimVideo: () => Promise.resolve({ ok: true, outPath: '' }),
     rotateVideo: () => Promise.resolve({ ok: true, outPath: '' }),
     cropVideo: () => Promise.resolve({ ok: true, outPath: '' }),
-    trimCapability: () => Promise.resolve({ ok: true, mode: 'none' }),
+    // 'nas' (server-side ffmpeg, no local-trim consent needed) rather than
+    // 'none' — so the quick-look-trim preview screen reaches the actual trim
+    // timeline instead of stalling on the "no engine available" setup card.
+    trimCapability: () => Promise.resolve({ ok: true, mode: 'nas' }),
     downloadFfmpeg: () => Promise.resolve({ ok: true, path: '' }),
     cancelFfmpegDownload: () => Promise.resolve({ ok: true }),
     onFfmpegDownloadProgress: (callback) => channels.ffmpegDownloadProgress.subscribe(callback),
@@ -330,12 +372,43 @@ function clickButton(name) {
   }
 }
 
+// Right-clicks an element, the way EntryMenu's cursor-anchored context menu
+// actually opens — distinct from clicking its own "..." button, which
+// anchors to the button instead. Fires a real `contextmenu` event at the
+// element's own on-screen position rather than a synthesized click.
+function openContextMenu(selector, description) {
+  return {
+    description: description ?? `right-click ${selector}`,
+    find: () => findFirst(selector),
+    act: (el) => {
+      const rect = el.getBoundingClientRect()
+      el.dispatchEvent(new MouseEvent('contextmenu', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + rect.width / 2,
+        clientY: rect.top + rect.height / 2,
+      }))
+    },
+  }
+}
+
 // Every screen is reached through the nav rail (Browse, Size map and
 // Backup open the active connection's tab); overlays and tabs are then
 // opened from inside the Browse screen.
 const FIRST_IMAGE_ENTRY = '[data-entry-path$=".jpg"]'
+const FIRST_VIDEO_ENTRY = '[data-entry-path$=".mp4"]'
 const FIRST_TEXT_ENTRY = '[data-entry-path$=".md"], [data-entry-path$=".txt"]'
-const VIEW_TOGGLE_BUTTON = '[class*="viewToggleBtn"]'
+const VIEW_BUTTON = 'button[aria-label="View"]'
+// EntryMenu's own "..." button — the only <button> inside a file row (a
+// folder row also has its name button, so this only targets files).
+const FIRST_IMAGE_ENTRY_MENU_BTN = `${FIRST_IMAGE_ENTRY} button`
+// The row's selection checkbox — a plain click on its label selects that
+// one entry, the same as the real ctrl-click shortcut it also serves.
+const FIRST_IMAGE_ENTRY_CHECKBOX = `${FIRST_IMAGE_ENTRY} label`
+// A second, distinct row's checkbox — used to reach a genuine multi-
+// selection so the bulk bar's screenshot reads as plural ("2 selected"),
+// not the single-entry count the 'browse-selection' screen already covers.
+const SECOND_SELECT_ENTRY_CHECKBOX = '[data-entry-path$=".png"] label'
 
 const SCREEN_STEPS = {
   dashboard: [],
@@ -351,14 +424,72 @@ const SCREEN_STEPS = {
   ],
   browse: [
     clickNav('Browse'),
-    clickSelector(VIEW_TOGGLE_BUTTON, 'switch Browse to grid view'),
+    clickSelector(VIEW_BUTTON, 'open the View dropdown'),
+    clickButton('Grid view'),
   ],
   'browse-list': [
     clickNav('Browse'),
   ],
+  // Row 1's Forward button, live: walk into a folder then Back out of it,
+  // leaving a forward entry to step into. Up one level needs no screen of
+  // its own — it is enabled on every other 'browse' screen already, since
+  // none of them sit at the filesystem root.
+  'browse-forward-enabled': [
+    clickNav('Browse'),
+    clickSelector('[data-entry-path$="/photos"]', 'open the photos folder'),
+    clickSelector('button[aria-label="Back"]', 'go back to the media root, leaving Forward enabled'),
+  ],
+  // Row 2's "..." overflow menu, open — the two-row toolbar's command bar
+  // with its grouped, divider-separated menu on screen.
+  'browse-command-overflow': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+  ],
+  // A row checked — row 2's file-management cluster goes from its resting
+  // disabled state (nothing selected) to Rename/Delete enabled.
+  'browse-selection': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+  ],
+  // Two rows checked — the transient "Selection" toolbar (Move/Delete/Clear)
+  // that floats over the list once a multi-selection exists.
+  'browse-bulk-bar': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector(SECOND_SELECT_ENTRY_CHECKBOX, 'select a second entry, opening the bulk bar'),
+  ],
+  // Cut pending — Paste lights up from clipboard contents alone, with
+  // nothing selected in the current directory.
+  'browse-clipboard-cut': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector('button[aria-label="Cut"]', 'cut the selection, enabling Paste'),
+  ],
+  // Copy pending — same Paste-enabled state, reached through Copy instead.
+  'browse-clipboard-copy': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector('button[aria-label="Copy"]', 'copy the selection, enabling Paste'),
+  ],
+  // Row 1's connection picker menu, open — carries the cross-connection
+  // favourites list below a divider under the connection list.
+  'browse-connection-picker-favorites': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label^="Connection:"]', 'open the connection picker menu'),
+  ],
   'quick-look': [
     clickNav('Browse'),
     clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),
+  ],
+  'quick-look-crop': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY, 'open the first image entry in Quick Look'),
+    clickButton('Crop'),
+  ],
+  'quick-look-trim': [
+    clickNav('Browse'),
+    clickSelector(FIRST_VIDEO_ENTRY, 'open the first video entry in Quick Look'),
+    clickButton('Trim'),
   ],
   editor: [
     clickNav('Browse'),
@@ -366,6 +497,18 @@ const SCREEN_STEPS = {
   ],
   play: [
     clickNav('Play wall'),
+  ],
+  // Opened from the Play button inside the browser toolbar rather than the
+  // nav rail — the covering mode that draws over the browser instead of
+  // taking a nav destination of its own.
+  'play-covering': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+    clickButton('Play slideshow'),
+  ],
+  'play-fullscreen': [
+    clickNav('Play wall'),
+    clickButton('Fullscreen'),
   ],
   size: [
     clickNav('Size map'),
@@ -383,6 +526,52 @@ const SCREEN_STEPS = {
   // #tray hash route (see src/main.jsx), switched to below before main.jsx
   // mounts. No further driving is needed once that route is loaded.
   tray: [],
+  'delete-dialog': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
+    clickButton('Delete'),
+  ],
+  'bulk-delete-dialog': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_CHECKBOX, 'select the first image entry'),
+    clickSelector('button[aria-label="Delete selected"]', 'open the toolbar bulk-delete dialog'),
+  ],
+  // The folder picker opened from Move / Rename's Browse button.
+  'move-picker': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
+    clickButton('Move / Rename'),
+    clickButton('Browse'),
+  ],
+  // The standalone Favorites button and its cross-connection browsing
+  // dropdown are gone from the toolbar — the add/remove toggle that
+  // survives now lives in the row 2 overflow menu, so this screen opens
+  // that instead.
+  'favorites-menu': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+  ],
+  // The real trigger is a right-click, not the "..." button — a
+  // cursor-anchored menu clamps to the viewport differently than a
+  // button-anchored one.
+  'entry-context-menu': [
+    clickNav('Browse'),
+    openContextMenu(FIRST_IMAGE_ENTRY, 'right-click the first image entry'),
+  ],
+  // The Properties modal, opened via the per-entry "..." menu (the other
+  // reachable surface — the overflow menu's own Properties item — leads to
+  // the same dialog).
+  'properties-dialog': [
+    clickNav('Browse'),
+    clickSelector(FIRST_IMAGE_ENTRY_MENU_BTN, "open the first image entry's menu"),
+    clickButton('Properties'),
+  ],
+  // The Options popover, anchored to row 2's overflow button.
+  'browse-options-popover': [
+    clickNav('Browse'),
+    clickSelector('button[aria-label="More options"]', 'open the row 2 overflow menu'),
+    clickButton('Options'),
+  ],
 }
 
 // A screen whose steps could not all run never becomes "ready": the shoot

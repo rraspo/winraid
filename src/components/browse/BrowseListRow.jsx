@@ -2,24 +2,46 @@ import { memo, useRef } from 'react'
 import { Folder, File } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
-import { formatSize, formatDate } from '../../utils/format'
+import { formatSize, formatDate, formatMediaSummary } from '../../utils/format'
 import { isImageFile, isVideoFile, isEditableFile } from '../../utils/fileTypes'
+import { fileKind } from '../../utils/fileKind'
 import styles from '../../views/BrowseList.module.css'
 
 const BrowseListRow = memo(function BrowseListRow({
   entry, entryPath, virtualRow, connectionId, index,
-  busy, isSelected, isDragSource, isLastVisited, isHighlighted, isCursor, highlightRef,
+  busy, isSelected, selectedCount, isDragSource, isLastVisited, isHighlighted, isCursor, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
-  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget,
+  handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
+  requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
+  visibleColumns = { size: true, modified: true, kind: true }, thumbnailsEnabled = true,
+  mediaMeta, onMediaMetadata,
 }) {
   const isDir = entry.type === 'dir'
   const menuRef = useRef(null)
+
+  // EntryMenu is shared by the dot button and right-click, which must
+  // behave differently: the dot button always targets this row alone;
+  // right-click acts on the whole selection when this row is part of it,
+  // or first collapses the selection onto this row when it isn't (the
+  // resulting target is then always just this row, same as the dot button).
+  function resolveTarget(viaContextMenu) {
+    if (!viaContextMenu) return 'self'
+    if (isSelected) return selectedCount > 1 ? 'selection' : 'self'
+    onItemPointer(index)
+    return 'self'
+  }
   const icon = isDir
     ? <Folder size={14} className={styles.iconDir} />
     : (isImageFile(entry.name) || isVideoFile(entry.name))
-      ? <Thumbnail name={entry.name} remotePath={entryPath} connectionId={connectionId} size="list" modified={entry.modified} />
+      ? (
+        <Thumbnail
+          name={entry.name} remotePath={entryPath} connectionId={connectionId}
+          size="list" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
+          onMetadata={onMediaMetadata}
+        />
+      )
       : <File size={14} className={styles.iconFile} />
 
   function handleRowClick(e) {
@@ -112,18 +134,33 @@ const BrowseListRow = memo(function BrowseListRow({
           <span className={styles.nameText}>{entry.name}</span>
         )}
       </div>
-      <span className={styles.rowSize}>{isDir ? '\u2014' : formatSize(entry.size)}</span>
-      <span className={styles.rowDate}>{formatDate(entry.modified)}</span>
+      {visibleColumns.kind && <span className={styles.rowKind}>{fileKind(entry)}</span>}
+      {visibleColumns.size && <span className={styles.rowSize}>{isDir ? '\u2014' : formatSize(entry.size)}</span>}
+      {visibleColumns.modified && <span className={styles.rowDate}>{formatDate(entry.modified)}</span>}
+      {thumbnailsEnabled && <span className={styles.rowMedia}>{formatMediaSummary(mediaMeta)}</span>}
       <div className={styles.rowActions}>
         <EntryMenu
           ref={menuRef}
           isDir={isDir}
           isEditable={!isDir && isEditableFile(entry.name)}
           busy={busy}
-          onDownload={() => handleDownload(entryPath, entry.name, isDir)}
+          onDownload={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+            ? requestBulkDownload()
+            : handleDownload(entryPath, entry.name, isDir)}
           onEdit={() => setEditingFile(entryPath)}
-          onMove={() => setMoveTarget({ name: entry.name, path: entryPath, isDir })}
-          onDelete={() => setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
+          onMove={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+            ? requestBulkMove()
+            : setMoveTarget({ name: entry.name, path: entryPath, isDir })}
+          onDelete={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+            ? requestBulkDelete()
+            : setDeleteTarget({ name: entry.name, path: entryPath, isDir })}
+          onProperties={(viaContextMenu) => resolveTarget(viaContextMenu) === 'selection'
+            ? requestBulkProperties()
+            : onProperties({
+              name: entry.name, path: entryPath, isDir, size: entry.size, modified: entry.modified,
+              mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
+              media: mediaMeta ?? null,
+            })}
           localCandidate={localCandidate}
           checkLocalExists={checkLocalExists}
           onRevealLocal={onRevealLocal}

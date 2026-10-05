@@ -5,7 +5,7 @@ import { log } from './logger.js'
 import { pushActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
 import { shouldPruneEmptyDirs, deletesLocalAfterUpload } from './folder-mode.js'
-import { unlink } from 'fs/promises'
+import { deleteLocalFile } from './local-delete.js'
 
 // Remote directory a job's file lands in (for the upload activity's nav target).
 function uploadDestDir(conn, job) {
@@ -163,9 +163,14 @@ async function processJob(job) {
     // NOTE: mirror_clean NEVER touches remote files — it only cleans the local side.
     const shouldDeleteLocal = !result?.skipped && deletesLocalAfterUpload(conn)
     if (shouldDeleteLocal) {
-      await unlink(job.srcPath).catch((err) =>
-        log('warn', `Could not delete local source after transfer: ${err.message}`)
-      )
+      const deleteResult = await deleteLocalFile(job.srcPath)
+      if (!deleteResult.ok) {
+        log('warn', `Could not delete local source after transfer: ${deleteResult.error}`)
+      } else if (deleteResult.recycled) {
+        log('info', `Recycled local source: ${job.filename}`)
+      } else {
+        log('warn', `Deleted local source outright (recycle bin refused: ${deleteResult.reason}): ${job.filename}`)
+      }
     }
 
     // mirror_clean: also prune empty ancestor directories on the local watch

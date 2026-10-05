@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronUp, Folder, FolderPlus, X as XIcon } from 'lucide-react'
+import { ChevronUp, Folder, FolderPlus, Search, X as XIcon } from 'lucide-react'
 import Button from './ui/Button'
 import Tooltip from './ui/Tooltip'
+import { normalizeForSearch } from '../utils/normalizeForSearch'
 import styles from './RemotePathBrowser.module.css'
 
 /**
@@ -25,12 +26,16 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, multiSelect = 
   const [newFolder,  setNewFolder]  = useState(null)  // null = hidden, '' = open/empty
   const [mkdirError, setMkdirError] = useState(null)
   const [mkdirBusy,  setMkdirBusy]  = useState(false)
+  const [filter,     setFilter]     = useState('')
   const newFolderRef = useRef(null)
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadDir(currentPath) }, [])
 
   async function loadDir(path) {
+    // The filter described the folder you were in, so arriving somewhere new
+    // starts clean rather than hiding the new list behind an old query.
+    setFilter('')
     setLoading(true); setError(null); setEntries(null)
     try {
       const result = await window.winraid?.ssh.listDir({ ...sftpCfg, remotePath: path })
@@ -103,6 +108,13 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, multiSelect = 
     onClose()
   }
 
+  // Filters the folder in front of you, not the whole tree — case- and
+  // accent-insensitively, so "musica" finds "Música".
+  const needle = normalizeForSearch(filter.trim())
+  const visibleEntries = needle
+    ? (entries ?? []).filter((e) => normalizeForSearch(e.name).includes(needle))
+    : entries
+
   return (
     <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className={styles.dialog}>
@@ -123,6 +135,27 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, multiSelect = 
               <FolderPlus size={14} />
             </button>
           </Tooltip>
+        </div>
+        <div className={styles.filterRow}>
+          <Search size={13} className={styles.filterIcon} />
+          <input
+            className={styles.filterInput}
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filter folders"
+            aria-label="Filter folders"
+            disabled={loading}
+          />
+          {filter && (
+            <button
+              type="button"
+              className={styles.filterClear}
+              aria-label="Clear folder filter"
+              onClick={() => setFilter('')}
+            >
+              <XIcon size={12} />
+            </button>
+          )}
         </div>
         <div className={styles.dialogBody}>
           {newFolder !== null && (
@@ -152,8 +185,10 @@ export default function RemotePathBrowser({ sftpCfg, initialPath, multiSelect = 
             <span className={styles.error}>{error}</span>
           ) : entries?.length === 0 ? (
             <span className={styles.muted}>No subdirectories here.</span>
+          ) : visibleEntries?.length === 0 ? (
+            <span className={styles.muted}>No folders match “{filter.trim()}”.</span>
           ) : (
-            entries?.map((e, i) => {
+            visibleEntries?.map((e, i) => {
               const fullPath = currentPath === '/' ? `/${e.name}` : `${currentPath}/${e.name}`
               const isChecked = checked.has(fullPath)
               return (

@@ -90,7 +90,7 @@ contextBridge.exposeInMainWorld('winraid', {
     list:      ()             => ipcRenderer.invoke('watcher:list'),
     /** Stop all watchers and pause the worker (global kill switch). */
     pauseAll:  ()             => ipcRenderer.invoke('watcher:pause-all'),
-    /** Restart watchers that were running before pauseAll and resume the worker. */
+    /** Start every connection that can be watched and resume the worker. */
     resumeAll: ()             => ipcRenderer.invoke('watcher:resume-all'),
 
     /**
@@ -235,12 +235,24 @@ contextBridge.exposeInMainWorld('winraid', {
     onOpenConnection: (cb) => on('tray:open-connection', cb),
   },
 
+  // -- Remote browser clipboard (cut/copy pointer, not the bytes) ----------
+  clipboard: {
+    /** Records a cut or copy pointer, replacing whatever was there. */
+    set: (mode, connectionId, paths) => ipcRenderer.invoke('clipboard:set', mode, connectionId, paths),
+    /** The current entry — { mode, connectionId, paths } — or null when empty. */
+    get: () => ipcRenderer.invoke('clipboard:get'),
+    /** Empties the clipboard. */
+    clear: () => ipcRenderer.invoke('clipboard:clear'),
+  },
+
   // -- Local filesystem ----------------------------------------------------
   local: {
     /** Wipes all contents of a folder then recreates it empty. */
     clearFolder: (path) => ipcRenderer.invoke('local:clear-folder', path),
     /** Returns true if the given local path currently exists. */
     exists: (path) => ipcRenderer.invoke('local:exists', path),
+    /** Stat a local path. Returns { ok, exists, size?, mtime?, isDirectory? }. */
+    stat: (path) => ipcRenderer.invoke('local:stat', path),
     /** Reveal a local folder/file in the OS file manager. */
     reveal: (path) => ipcRenderer.invoke('local:reveal', path),
   },
@@ -263,10 +275,22 @@ contextBridge.exposeInMainWorld('winraid', {
     writeFile: (connectionId, path, content) => ipcRenderer.invoke('remote:write-file', connectionId, path, content),
     /** Write binary content (ArrayBuffer/Uint8Array/Buffer) to a remote file. opts.atomic uses tmp+rename for overwrite safety. */
     writeFileBinary: (connectionId, path, data, opts) => ipcRenderer.invoke('remote:write-file-binary', connectionId, path, data, opts),
-    /** Delete a remote file or directory tree. */
+    /** Move a remote file or directory tree into the connection's trash, or delete it for good when none is configured. */
     delete: (connectionId, path, isDir) => ipcRenderer.invoke('remote:delete', connectionId, path, isDir),
-    /** Move / rename a remote path via SFTP rename. */
+    /** Check a candidate trash folder before it is saved. Returns { ok } or { ok: false, error }. */
+    trashCheck: (connectionId, folder) => ipcRenderer.invoke('remote:trashCheck', connectionId, folder),
+    /** List the connection's trash. Returns { ok, entries: [{ id, originalPath, name, deletedAt, size, isDir, restorable }] }. */
+    trashList: (connectionId) => ipcRenderer.invoke('remote:trashList', connectionId),
+    /** Restore a trash entry. Returns { ok, restoredPath, renamed } — renamed when the original name was taken. */
+    trashRestore: (connectionId, entryId) => ipcRenderer.invoke('remote:trashRestore', connectionId, entryId),
+    /** Permanently delete one trash entry, or all of them when entryId is omitted. Returns { ok, purged }. */
+    trashPurge: (connectionId, entryId) => ipcRenderer.invoke('remote:trashPurge', connectionId, entryId),
+    /** Move / rename a remote path (SSH mv, SFTP rename fallback). */
     move: (connectionId, src, dst) => ipcRenderer.invoke('remote:move', connectionId, src, dst),
+    /** Copy a remote path server-side (SSH `cp -r`). No SFTP fallback exists — fails when the connection cannot exec. */
+    copy: (connectionId, src, dst) => ipcRenderer.invoke('remote:copy', connectionId, src, dst),
+    /** Whether this connection can run server-side commands at all. Returns { ok, capable: true | false | null }, null meaning not yet probed. */
+    execCapable: (connectionId) => ipcRenderer.invoke('remote:exec-capable', connectionId),
     /** Create a remote directory. */
     mkdir: (connectionId, path) => ipcRenderer.invoke('remote:mkdir', connectionId, path),
     /** Walk localFolder, stat each file against remote. No deletion — check only. */
@@ -277,6 +301,9 @@ contextBridge.exposeInMainWorld('winraid', {
     onDownloadProgress: (cb) => on('download:progress', cb),
     /** Get filesystem disk usage stats for a remote connection. Returns { ok, total, used, free } in bytes. */
     diskUsage: (connectionId) => ipcRenderer.invoke('remote:disk-usage', connectionId),
+    /** Stat a single remote entry for its own attributes (never follows a symlink).
+     *  Returns { ok, mode, owner, group, created, isSymlink, symlinkTarget } or { ok: false, error }. */
+    entryInfo: (connectionId, path) => ipcRenderer.invoke('remote:entry-info', connectionId, path),
     /** Start a recursive folder-size scan. Results stream via size:* push events. */
     sizeScan:   (connectionId) => ipcRenderer.invoke('remote:size-scan', connectionId),
     /** Cancel an in-progress size scan. */

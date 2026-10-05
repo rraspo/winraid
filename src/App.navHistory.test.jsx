@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { useEffect, useRef } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import App from './App'
@@ -96,6 +96,10 @@ describe('App navigation history — jumps that bypass navigate()', () => {
     // Open the browse tab: it lands on the connection's configured root.
     fireEvent.click(screen.getByTestId('open-browse'))
     await screen.findByTestId('restore-path')
+    // The tab opens after an awaited config read, so it commits outside act
+    // and its mount-time history push can still be pending here. Flush it, or
+    // a loaded runner records the favorite jump ahead of the initial entry.
+    await act(async () => {})
 
     // Jump to a favorite folder, then click into a folder inside it.
     fireEvent.click(screen.getByTestId('fav'))

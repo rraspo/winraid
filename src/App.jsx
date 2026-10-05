@@ -16,6 +16,7 @@ import EditorView from './components/EditorView'
 import PlayOverlay from './components/PlayOverlay'
 import ToastHost from './components/ui/ToastHost'
 import { useNavHistory } from './hooks/useNavHistory'
+import * as toast from './services/toast'
 import { normalizeAppearance, resolveTheme, resolveAccentHex, onAccentTextColor } from './utils/accent'
 import styles from './App.module.css'
 
@@ -177,22 +178,27 @@ export default function App() {
   }
 
   // --- IPC: watcher status ---------------------------------------------------
-  // Load initial state on mount
+  // Subscribe first, then ask for the current state: a push that lands before
+  // the list answers is newer than it, and a state main reached before the
+  // subscription existed is still picked up by the list. Payload is always
+  // the full map.
   useEffect(() => {
     if (!window.winraid) return
-    window.winraid.watcher.list().then((states) => {
-      if (states) setWatcherStatus(states)
-    }).catch(() => {})
-  }, [])
-
-  // Subscribe to pushed updates — payload is always the full map
-  useEffect(() => {
-    if (!window.winraid) return
-    return window.winraid.watcher.onStatus((states) => {
+    let active = true
+    let pushed = false
+    const unsubscribe = window.winraid.watcher.onStatus((states) => {
       if (states && typeof states === 'object') {
+        pushed = true
         setWatcherStatus(states)
       }
     })
+    window.winraid.watcher.list().then((states) => {
+      if (active && !pushed && states) setWatcherStatus(states)
+    }).catch(() => {})
+    return () => {
+      active = false
+      unsubscribe?.()
+    }
   }, [])
 
   // --- IPC: backup progress --------------------------------------------------
@@ -356,6 +362,9 @@ export default function App() {
   const [connections, setConnections] = useState([])
   // Per-connection favorite directory paths: { [connId]: string[] }
   const [favorites,   setFavorites]   = useState({})
+  // Per-connection trash folder, set in Settings: { [connId]: { folder } }.
+  // A connection with no entry deletes permanently.
+  const [trashByConnection, setTrashByConnection] = useState({})
 
   // --- Tab state ------------------------------------------------------------
   const [openTabs,    setOpenTabs]    = useState([])   // [{ id, connId, type, label? }]
@@ -363,6 +372,8 @@ export default function App() {
   const activeTabIdRef = useRef(null)
   useEffect(() => { activeTabIdRef.current = activeTabId }, [activeTabId])
   const [queuePaused, setQueuePaused] = useState(false)
+  // null means "last used" — see resolveActiveConnection.
+  const [defaultConnection, setDefaultConnection] = useState(null)
 
   // The Play wall, a screen in the content column like any other — opening
   // it leaves whichever view or tab was showing untouched underneath, so
@@ -376,6 +387,8 @@ export default function App() {
       if (!cfg) return
       setConnections(cfg.connections ?? [])
       setFavorites(cfg.favoritesByConnection ?? {})
+      setDefaultConnection(cfg.defaultConnection ?? null)
+      setTrashByConnection(cfg.trashByConnection ?? {})
     })
   }, [])
 
@@ -428,6 +441,18 @@ export default function App() {
     setActiveView(view)
     setActiveTabId(null)
     if (view !== 'logs') setLogNav(null)
+    refreshDefaultConnection()
+  }
+
+  // Config is the single source of truth for the pinned default connection;
+  // several screens (Settings, Connections, the tray) can write it, so
+  // rather than trusting whichever in-memory copy last got a setState, every
+  // screen switch re-reads it fresh — the same reasoning resolveActiveConnection
+  // already applies to picking which connection a tab opens on.
+  function refreshDefaultConnection() {
+    window.winraid?.config.get('defaultConnection').then((id) => {
+      setDefaultConnection(id ?? null)
+    }).catch(() => {})
   }
 
   function handleNavigateLogs({ filename, errorAt }) {
@@ -448,7 +473,7 @@ export default function App() {
       return [...prev, { id: tabId, connId: entry.connectionId, type: 'browse' }]
     })
     setActiveTabId(tabId)
-    setTabBrowseRestore(tabId, { path: entry.path, quickLookFile: entry.quickLookFile, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
+    setTabBrowseRestore(tabId, { path: entry.path, connectionId: entry.connectionId, highlightFile: entry.highlightFile ?? null, token: Date.now() })
   }
 
   // The scope the mouse side buttons act on: whichever tab or view is
@@ -559,7 +584,7 @@ export default function App() {
       setPlayTarget(null)
     }
     if (type === 'browse' && path) {
-      setTabBrowseRestore(id, { path, quickLookFile: null, connectionId: connId, highlightFile: null, token: Date.now() })
+      setTabBrowseRestore(id, { path, connectionId: connId, highlightFile: null, token: Date.now() })
     }
     return id
   }
@@ -573,8 +598,8 @@ export default function App() {
   // together, directly into that tab's own browse scope.
   function navigateBrowseJump(connId, path, highlightFile = null) {
     const tabId = openTab(connId, 'browse')
-    push(`browse:${tabId}`, { kind: 'browse', path, connectionId: connId, quickLookFile: null, highlightFile })
-    setTabBrowseRestore(tabId, { path, quickLookFile: null, connectionId: connId, highlightFile, token: Date.now() })
+    push(`browse:${tabId}`, { kind: 'browse', path, connectionId: connId, highlightFile })
+    setTabBrowseRestore(tabId, { path, connectionId: connId, highlightFile, token: Date.now() })
   }
 
   function activateTab(id) {
@@ -584,6 +609,23 @@ export default function App() {
     setActiveTabId(id)
     setActiveView(null)
     setPlayTarget(null)
+  }
+
+  // A pure array move: pulls the dragged tab out and reinserts it at the
+  // drop target's original index, clamped in range. Out-of-range indices
+  // happen legitimately (a drop past the last tab), never a reason to throw.
+  function reorderTab(fromIndex, toIndex) {
+    setOpenTabs((prev) => {
+      if (fromIndex < 0 || fromIndex >= prev.length) return prev
+      let target = toIndex
+      if (target < 0) target = 0
+      if (target >= prev.length) target = prev.length - 1
+      if (fromIndex === target) return prev
+      const next = [...prev]
+      const [moved] = next.splice(fromIndex, 1)
+      next.splice(target, 0, moved)
+      return next
+    })
   }
 
   function closeTab(id) {
@@ -606,10 +648,19 @@ export default function App() {
   // Reads config fresh rather than off React state — the nav rail can be
   // clicked before the initial connections load settles, and a config read
   // is cheap and always current.
+  //
+  // Three answers in order of how deliberate they are: the connection pinned
+  // in Settings, then the one last used, then whatever is first in the list.
+  // A pinned connection that has since been deleted falls through to the
+  // next answer rather than leaving these screens with nothing to open.
   async function resolveActiveConnection() {
     const cfg   = await window.winraid?.config.get()
     const conns = cfg?.connections ?? []
-    return conns.find((c) => c.id === cfg?.activeConnectionId) ?? conns[0] ?? null
+    setDefaultConnection(cfg?.defaultConnection ?? null)
+    return conns.find((c) => c.id === cfg?.defaultConnection)
+      ?? conns.find((c) => c.id === cfg?.activeConnectionId)
+      ?? conns[0]
+      ?? null
   }
 
   // Records `connectionId` as the switcher's default so the next per-
@@ -687,6 +738,29 @@ export default function App() {
   }, [openTabs]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Global watcher + queue toggle ----------------------------------------
+  // Which connection the connection-driven screens open on. Settings, the
+  // Connections screen and the switcher all write the same field, so the
+  // choice is held here and handed down rather than read in three places.
+  async function handleSetDefaultConnection(connectionId) {
+    setDefaultConnection(connectionId)
+    await window.winraid?.config.set('defaultConnection', connectionId)
+  }
+
+  // Starting a watcher can fail for reasons the user can act on — the watch
+  // folder has been renamed or is on a drive that is not mounted — so a
+  // failure says so rather than leaving the card looking untouched.
+  async function handleStartWatching(connectionId) {
+    const result = await window.winraid?.watcher.start(connectionId)
+    if (result && result.ok === false) {
+      const name = connections.find((c) => c.id === connectionId)?.name ?? 'connection'
+      toast.show({ type: 'error', msg: `Could not start watching ${name}: ${result.error ?? 'the watch folder is unavailable'}` })
+    }
+  }
+
+  async function handleStopWatching(connectionId) {
+    await window.winraid?.watcher.stop(connectionId)
+  }
+
   async function handleGlobalToggle() {
     if (queuePaused) {
       await window.winraid?.watcher.resumeAll()
@@ -715,6 +789,8 @@ export default function App() {
     activeView === 'connections' ? {
       connections, watcherStatuses: watcherStatus,
       onEditConnection: openConnEdit, onOpenTab: openConnectionTabExplicit,
+      onStartWatching: handleStartWatching, onStopWatching: handleStopWatching,
+      defaultConnectionId: defaultConnection, onSetDefault: handleSetDefaultConnection,
     } :
     activeView === 'queue' ? {
       connections, onNavigate: navigate,
@@ -724,6 +800,14 @@ export default function App() {
       },
     } :
     activeView === 'logs' ? { logNav } :
+    activeView === 'settings' ? {
+      onTrashByConnectionChanged: setTrashByConnection,
+      defaultConnectionId: defaultConnection,
+      // Settings persists the write itself (see handleDefaultConnectionChange),
+      // so this only needs to update the in-memory copy every other screen
+      // reads — the same shape as onTrashByConnectionChanged above.
+      onSetDefault: setDefaultConnection,
+    } :
     {}
 
   // The active tab's type stands in for the global view when a tab (rather
@@ -759,6 +843,7 @@ export default function App() {
             dirtyTabs={dirtyTabs}
             onActivate={activateTab}
             onClose={closeTab}
+            onReorder={reorderTab}
           />
           <main className={styles.content}>
             {/* Global views */}
@@ -774,6 +859,7 @@ export default function App() {
                 connectionId={playTarget.connectionId}
                 path={playTarget.path}
                 connections={connections}
+                trashByConnection={trashByConnection}
                 onSelectConnection={(connId) => {
                   const conn = connections.find((c) => c.id === connId)
                   if (!conn) return
@@ -782,6 +868,8 @@ export default function App() {
                 }}
                 onClose={() => setPlayTarget(null)}
                 onOpenFolder={handlePlayOpenFolder}
+                defaultConnectionId={defaultConnection}
+                onSetDefault={handleSetDefaultConnection}
               />
             ) : activeTabId === null && activeView !== null && (
               <ActiveView {...activeViewProps} />
@@ -794,6 +882,7 @@ export default function App() {
                 <BrowseView
                   key={tab.id}
                   style={{ display: activeTabId === tab.id && connEdit === null ? '' : 'none' }}
+                  active={activeTabId === tab.id && connEdit === null && playTarget === null}
                   browseRestore={browseRestoreByTab[tab.id] ?? null}
                   onBrowseRestoreConsumed={() => clearTabBrowseRestore(tab.id)}
                   onHistoryPush={(entry) => {
@@ -801,7 +890,14 @@ export default function App() {
                     if (entry.kind === 'browse' && entry.path) {
                       const conn = connections.find((c) => c.id === tab.connId)
                       const atRoot = entry.path === remoteRootOf(conn)
-                      setTabLabel(tab.id, atRoot ? null : lastPathSegment(entry.path))
+                      // A path with no last segment ("/", which is what a tab
+                      // reports in the moment before its connection resolves)
+                      // has no folder to name it after. Clearing the label
+                      // rather than setting an empty one lets the tab fall
+                      // back to the connection's name, which is what it did
+                      // before it was labelled at all.
+                      const folder = lastPathSegment(entry.path)
+                      setTabLabel(tab.id, atRoot || !folder ? null : folder)
                     }
                   }}
                   onBack={() => { const entry = back(scopeKey); if (entry) applyBrowseHistoryEntry(entry, tab.id) }}
@@ -811,12 +907,15 @@ export default function App() {
                   connections={connections}
                   connectionId={tab.connId}
                   favoritesByConnection={favorites}
+                  trashByConnection={trashByConnection}
                   onToggleFavorite={(path) => toggleFavoriteDir(tab.connId, path)}
                   onOpenEditor={(filePath) => openEditorTab(tab.connId, filePath)}
                   onNavigateFavorite={navigateFavorite}
                   onNavigate={navigate}
                   onOpenTab={openTab}
                   onSelectConnection={(connId) => { rememberActiveConnection(connId); openTab(connId, 'browse') }}
+                  defaultConnectionId={defaultConnection}
+                  onSetDefault={handleSetDefaultConnection}
                 />
               )
             })}
@@ -843,6 +942,8 @@ export default function App() {
                   connectionId={tab.connId}
                   connections={connections}
                   onSelectConnection={(connId) => { rememberActiveConnection(connId); openTab(connId, 'backup') }}
+                  defaultConnectionId={defaultConnection}
+                  onSetDefault={handleSetDefaultConnection}
                   backupRun={backupRun}
                   setBackupRun={setBackupRun}
                 />
@@ -862,6 +963,8 @@ export default function App() {
                     connection={conn}
                     connections={connections}
                     onSelectConnection={(connId) => { rememberActiveConnection(connId); openTab(connId, 'size') }}
+                    defaultConnectionId={defaultConnection}
+                    onSetDefault={handleSetDefaultConnection}
                     onBrowsePath={(remotePath) => {
                       navigateBrowseJump(tab.connId, remotePath)
                     }}

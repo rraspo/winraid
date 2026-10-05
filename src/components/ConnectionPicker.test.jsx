@@ -18,6 +18,11 @@ import ConnectionPicker from './ConnectionPicker'
 //     onSelect
 //   - with a single connection there is no menu: the name renders as plain
 //     text, not a button
+//
+// The menu also carries the cross-connection favourites list below a
+// divider — the picker takes a pre-ordered `favorites` array and renders it
+// as-is; ordering (open connection first) is the caller's job, not this
+// component's.
 
 const CONNECTIONS = [
   { id: 'c1', name: 'Atlas', type: 'sftp', sftp: { remotePath: '/mnt/user/media' } },
@@ -81,5 +86,43 @@ describe('ConnectionPicker', () => {
   it('says so when the connection is unknown', () => {
     mount({ connectionId: null })
     expect(screen.getByRole('button', { name: 'Connection: none' })).toBeTruthy()
+  })
+})
+
+describe('ConnectionPicker — cross-connection favourites', () => {
+  const FAVORITES = [
+    { connectionId: 'c1', path: '/mnt/user/media/photos' },
+    { connectionId: 'c2', path: '/mnt/user/docs/Invoices' },
+  ]
+
+  it('has no divider or favourites section when there are none', () => {
+    mount()
+    fireEvent.click(trigger())
+    const menu = screen.getByRole('menu')
+    expect(menu.querySelector('.divider')).toBeNull()
+    expect(within(menu).getAllByRole('menuitem')).toHaveLength(3)
+  })
+
+  it('shows a divider below the connection list, followed by the favourites, each as folder name + connection name', () => {
+    mount({ favorites: FAVORITES })
+    fireEvent.click(trigger())
+    const menu = screen.getByRole('menu')
+    expect(menu.querySelector('.divider')).toBeTruthy()
+    const items = within(menu).getAllByRole('menuitem')
+    expect(items).toHaveLength(5)
+    const favItems = items.slice(3)
+    expect(favItems.map((item) => item.textContent.replace(/\s+/g, ' ').trim())).toEqual([
+      'photos Atlas',
+      'Invoices Vault',
+    ])
+  })
+
+  it('picking a favourite calls onSelectFavorite with its connection and path, and closes the menu', () => {
+    const onSelectFavorite = vi.fn()
+    mount({ favorites: FAVORITES, onSelectFavorite })
+    fireEvent.click(trigger())
+    fireEvent.click(screen.getByRole('menuitem', { name: /Invoices/ }))
+    expect(onSelectFavorite).toHaveBeenCalledWith('c2', '/mnt/user/docs/Invoices')
+    expect(screen.queryByRole('menu')).toBeNull()
   })
 })

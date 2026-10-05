@@ -14,7 +14,7 @@ function joinRemote(base, name) {
 // dirsFirstRef and sortPersistRef are the composing hook's settings refs — the
 // browse settings are loaded once there, so this module never opens a second
 // config read.
-export function useEntryView({ entries, path, dirsFirstRef, sortPersistRef }) {
+export function useEntryView({ entries, path, dirsFirstRef, sortPersistRef, connectionId = null }) {
   // Live name-substring filter scoped to the current directory's loaded
   // entries (no IPC — entries are already in memory). Cleared on
   // navigation so it doesn't carry into the next folder.
@@ -26,10 +26,10 @@ export function useEntryView({ entries, path, dirsFirstRef, sortPersistRef }) {
   useEffect(() => {
     if (prevPath.current !== path) {
       setSearchQuery('')
-      setSortModeRaw(resolveSortMode(path, sortPersistRef.current))
+      setSortModeRaw(resolveSortMode(path, sortPersistRef.current, connectionId))
     }
     prevPath.current = path
-  }, [path]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [path, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps -- sortPersistRef is a ref
 
   // Apply the search filter as a single source for downstream derivations,
   // including selection bookkeeping — the views pass row indexes into the
@@ -45,8 +45,8 @@ export function useEntryView({ entries, path, dirsFirstRef, sortPersistRef }) {
 
   const setSortMode = useCallback((mode) => {
     setSortModeRaw(mode)
-    saveSortMode(path, mode, sortPersistRef.current)
-  }, [path]) // eslint-disable-line react-hooks/exhaustive-deps -- sortPersistRef is a ref
+    saveSortMode(path, mode, sortPersistRef.current, connectionId)
+  }, [path, connectionId]) // eslint-disable-line react-hooks/exhaustive-deps -- sortPersistRef is a ref
 
   const fileEntries = useMemo(
     () => filteredEntries
