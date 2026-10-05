@@ -54,7 +54,9 @@ describe('the readdir fallback', () => {
   const file = (filename) => ({ filename, attrs: { mode: 0o100644, size: 12, mtime: 1_700_000_000 } })
 
   it('leaves the trash out of the entries it maps', () => {
-    expect(readdirEntries([dir(TRASH_DIR), dir('photos'), file('notes.txt')])).toEqual([
+    // Subset match: entries also carry the attrs Properties reads, which this
+    // test does not own.
+    expect(readdirEntries([dir(TRASH_DIR), dir('photos'), file('notes.txt')])).toMatchObject([
       { name: 'photos', type: 'dir', size: 4096, modified: 1_700_000_000_000 },
       { name: 'notes.txt', type: 'file', size: 12, modified: 1_700_000_000_000 },
     ])
