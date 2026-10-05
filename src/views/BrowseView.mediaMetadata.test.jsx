@@ -194,15 +194,22 @@ function card(name) {
 
 // Fire all observers, then yield so React can commit. The `<video>`
 // element only mounts after the observer callback fires; this is what
-// brings it into the DOM so we can drive its metadata.
+// brings it into the DOM so we can drive its metadata. Observers are
+// re-fired on every attempt: on a loaded runner a row can start observing
+// after a single early fire, and its thumbnail would then never mount.
 async function mountThumbnailsFor(names) {
-  await act(async () => { fireIntersections() })
+  const missingThumbnail = () => names.find((name) => {
+    const r = row(name) || card(name)
+    return !(r && r.querySelector('video, img'))
+  })
+  for (let attempt = 0; attempt < 100; attempt++) {
+    await act(async () => { fireIntersections() })
+    if (!missingThumbnail()) break
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)))
+  }
   await waitFor(() => {
-    for (const name of names) {
-      const r = row(name) || card(name)
-      const hasThumb = r ? (r.querySelector('video, img')) : false
-      if (!hasThumb) throw new Error(`thumbnail not yet mounted for ${name}`)
-    }
+    const missing = missingThumbnail()
+    if (missing) throw new Error(`thumbnail not yet mounted for ${missing}`)
   })
 }
 
