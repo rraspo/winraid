@@ -499,8 +499,18 @@ export default function App() {
     // window listener on every one.
   }, [activeScopeKey, back, forward]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The editor saves the whole connection, so it has to start from what
+  // config holds. Browse writes per-connection state (view options, the sync
+  // root) straight to config, and an editor seeded from this in-memory list
+  // would put the older values back on Save.
   async function openConnEdit(conn) {
-    setConnEdit({ conn: conn ?? null })
+    if (!conn) {
+      setConnEdit({ conn: null })
+      return
+    }
+    const fresh = await window.winraid?.config.get('connections') ?? []
+    setConnections(fresh)
+    setConnEdit({ conn: fresh.find((c) => c.id === conn.id) ?? conn })
   }
 
   async function handleConnSave() {
