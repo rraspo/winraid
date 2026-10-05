@@ -154,6 +154,7 @@ export const REMOTE_ENTRIES = {
     { name: 'sunrise.jpg', type: 'file', size: 4_200_000, modified: NOW - 2 * MINUTES },
     { name: 'poster.png', type: 'file', size: 1_800_000, modified: NOW - 6 * HOURS },
     { name: 'family-trip.mp4', type: 'file', size: 250_000_000, modified: NOW - 90 * 1000 },
+    { name: 'morning-mix.mp3', type: 'file', size: 8_600_000, modified: NOW - 2 * HOURS },
     { name: 'loop.gif', type: 'file', size: 3_400_000, modified: NOW - 1 * DAYS },
     { name: 'manual.pdf', type: 'file', size: 912_000, modified: NOW - 3 * DAYS },
     { name: 'notes.txt', type: 'file', size: 2_100, modified: NOW - 4 * DAYS },

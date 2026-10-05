@@ -313,17 +313,19 @@ function VideoPreview({ src, loop, zoom, pan, mediaRef, trimming, trimBar, rotat
   )
 }
 
-function AudioPreview({ file, src }) {
+function AudioPreview({ file, src, mediaRef, trimming, trimBar }) {
   return (
-    <div className={styles.audioWrap}>
+    <div className={[styles.audioWrap, trimming ? styles.audioWrapTrimming : ''].filter(Boolean).join(' ')}>
       <Music size={48} className={styles.audioIcon} />
       <span className={styles.audioName}>{file.name}</span>
       <audio
+        ref={mediaRef}
         className={styles.previewAudio}
         src={src}
-        controls
+        controls={!trimming}
         autoPlay
       />
+      {trimBar}
     </div>
   )
 }
@@ -534,7 +536,7 @@ export default function QuickLookOverlay({
       }
       if (e.key === 'ArrowLeft')  { e.preventDefault(); handlePrev(); return }
       if (e.key === 'ArrowRight') { e.preventDefault(); handleNext(); return }
-      if (e.key === ' ' && mediaRef.current?.tagName === 'VIDEO') {
+      if (e.key === ' ' && (mediaRef.current?.tagName === 'VIDEO' || mediaRef.current?.tagName === 'AUDIO')) {
         e.preventDefault()
         const v = mediaRef.current
         v.paused ? v.play() : v.pause()
@@ -650,7 +652,7 @@ export default function QuickLookOverlay({
     // render at 0% and the later one in DOM order eats every click on the
     // other. Wait for real metadata instead of opening a degenerate range.
     if (!Number.isFinite(dur) || dur <= 0) {
-      toast.show({ msg: "Video duration isn't available yet — try again in a moment.", type: 'error' })
+      toast.show({ msg: `${type === 'audio' ? 'Audio' : 'Video'} duration isn't available yet — try again in a moment.`, type: 'error' })
       return
     }
     v?.pause?.()
@@ -907,10 +909,13 @@ export default function QuickLookOverlay({
       const refreshed = await remoteFS.list(connectionId, destDir).catch(() => null)
 
       // res.exact === false means ffmpeg could not cut on the chosen frame and
-      // fell back to the nearest keyframe — say so rather than imply precision.
-      const saved = overwrite ? 'Video trimmed' : 'Trimmed clip saved'
+      // fell back to a plain stream copy (the nearest keyframe for video, the
+      // nearest audio frame for audio) — say so rather than imply precision.
+      const isAudio = fileType(trimFile.name) === 'audio'
+      const saved = overwrite ? (isAudio ? 'Audio trimmed' : 'Video trimmed') : 'Trimmed clip saved'
+      const snapped = isAudio ? 'the nearest audio frame' : 'the nearest keyframe'
       toast.show({
-        msg: res.exact === false ? `${saved} — cut moved to the nearest keyframe` : saved,
+        msg: res.exact === false ? `${saved} — cut moved to ${snapped}` : saved,
         type: 'success',
       })
 
@@ -1481,7 +1486,8 @@ export default function QuickLookOverlay({
       </div>
       <div className={styles.trimCardFooter}>
         <span className={styles.trimSummary}>
-          Lossless trim · {trimKeptSeconds.toFixed(1)} s kept · happens on the server
+          {/* An .ogg may hold Vorbis, the one audio codec the cut re-encodes. */}
+          {getExt(trimFile?.name ?? '') === 'ogg' ? 'Trim' : 'Lossless trim'} · {trimKeptSeconds.toFixed(1)} s kept · happens on the server
         </span>
         <span className={styles.trimCardSpacer} />
         <button type="button" className={styles.trimCardCancel} onClick={exitTrimMode} disabled={trimSaving}>
@@ -1526,7 +1532,7 @@ export default function QuickLookOverlay({
     switch (type) {
       case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} onContextMenu={handleImageContextMenu} />
       case 'video': return <VideoPreview src={src} loop={loop && !trimming} zoom={zoom} pan={pan} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} rotatePreviewDegrees={rotating ? ROTATE_PREVIEW_DEGREES[rotateDirection] : null} />
-      case 'audio': return <AudioPreview file={file} src={src} />
+      case 'audio': return <AudioPreview file={file} src={src} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} />
       case 'pdf':   return <PdfPreview src={src} />
       case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
       default:      return <UnknownPreview file={file} />
@@ -1603,12 +1609,12 @@ export default function QuickLookOverlay({
           </div>
         </div>
         <span className={styles.topBarSpacer} />
-        {type === 'video' && canServerEdit && !trimming && !videoCropping && (
+        {(type === 'video' || type === 'audio') && canServerEdit && !trimming && !videoCropping && (
           <Tooltip tip="Trim" side="bottom">
             <button
               className={styles.toolBtn}
               onClick={enterTrimMode}
-              aria-label="Trim video"
+              aria-label={`Trim ${type}`}
             >
               <Scissors size={14} />
               <span>Trim</span>
@@ -1819,7 +1825,7 @@ export default function QuickLookOverlay({
           </div>
           <p className={styles.ffCardBody}>
             The cut can still happen on this PC: WinRaid downloads the
-            video, trims it locally, and uploads the result.{' '}
+            file, trims it locally, and uploads the result.{' '}
             {trimSetup.canLocalTrim
               ? 'An ffmpeg is already available on this PC.'
               : 'That needs an ffmpeg on this PC — download the official build once (~35 MB), or point WinRaid at an ffmpeg.exe you already have here.'}

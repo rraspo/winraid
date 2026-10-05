@@ -777,6 +777,16 @@
   padding: var(--space-8);
 }
 
+/* Trimming: widen the column so the timeline has room to be dragged with
+   precision, and let the player follow its width. */
+.audioWrapTrimming {
+  width: min(640px, 100%);
+}
+
+.audioWrapTrimming .previewAudio {
+  width: 100%;
+}
+
 .audioIcon {
   color: var(--accent);
   opacity: 0.7;
