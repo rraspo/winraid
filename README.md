@@ -52,7 +52,7 @@ External users are welcome. Issues and pull requests get triaged, and releases s
 - **Verify** — walk the local watch folder against the NAS, then enqueue what is missing or delete confirmed local copies
 - **SSH config wizard** — auto-fill a connection from `~/.ssh/config`, including WSL distros
 - **Host key pinning** — SSH host keys are trusted on first use and checked on every connection after that
-- **Pause and resume** — stop all watchers from the tray or the app; queued transfers still finish
+- **Pause and resume** — stop all watchers or a single one from the tray or the app; queued transfers still finish, and a watcher you stopped stays stopped after a restart
 
 ### Transfer queue
 
@@ -63,12 +63,17 @@ External users are welcome. Issues and pull requests get triaged, and releases s
 ### Remote browser
 
 - **Grid and list views** with thumbnails for images and videos, and PDF preview
-- **Favorite folders** per connection, pinned in the sidebar
-- **Navigation** — breadcrumbs, back/forward history, jump to the sync root
+- **Two-row command bar** — navigation on one row, file commands on the other
+- **Favorite folders** — every connection's favorites in one list in the connection picker
+- **Navigation** — breadcrumbs with an overflow menu, back/forward history per tab (mouse side buttons included), up one level, jump to the sync root
 - **Sort** by name, newest, or oldest; folders on top; sort remembered globally, per folder, or per sibling group
 - **Search** — filter the current folder as you type, or just start typing a name to jump to it
 - **File actions** — right-click or dot menu for download, edit, move, delete, and reveal in Explorer; rename keeps the extension in its own field
-- **Bulk select** with download, move, and delete
+- **Cut, copy, and paste** between folders on the NAS
+- **Properties** — size, dates, and attributes for one entry or a whole selection
+- **Media details** — video duration and resolution and image dimensions on thumbnails and in the list, plus a Kind column
+- **Bulk select** with a selection bar — select all, none, or invert, then download, move, or delete
+- **Safe deletes** — local deletes go to the Recycle Bin, and each connection can opt in to a trash folder on the NAS instead of deleting outright
 - **Drag and drop** — move between folders, or drop files from Windows Explorer to upload
 - **Paste** — an image from the clipboard or a URL lands in the current folder
 - **Check out** the current folder structure to the local mirror
@@ -91,6 +96,7 @@ External users are welcome. Issues and pull requests get triaged, and releases s
 - Masonry media wall of a folder; videos autoplay as they scroll into view, GIFs animate
 - Shuffle, recursive scan, fullscreen
 - Open any tile into Quick Look and keep browsing from there
+- Select tiles to move or delete them in place
 
 ### Size map
 
@@ -105,10 +111,13 @@ External users are welcome. Issues and pull requests get triaged, and releases s
 
 ### App
 
-- **System tray** — runs silently in the background; show or quit from the taskbar
+- **Redesigned shell** — title bar, nav rail, and status bar around every screen
+- **Tabs** — browse folders and edit files in tabs, drag them into any order
+- **Default connection** — pin the connection the connection-driven screens open on
+- **System tray** — runs silently in the background with a quick-access flyout
 - **Auto-updater** — checks GitHub Releases on startup, install from Settings
 - **What's New** screen after an update
-- **Dark and light themes**
+- **Dark and light themes** with a choice of accent color
 - **Live logs** — dated log files with in-app tail, clear, and reveal in Explorer
 - **Encrypted credentials** — passwords encrypted on disk via Windows DPAPI (Electron safeStorage)
 

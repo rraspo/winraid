@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
-  ArrowUpDown, Search, Filter, PencilLine, MousePointerClick,
-  Film, PieChart,
+  Palette, PanelsTopLeft, ClipboardPaste, Info, Trash2, Pin, Eye, Clapperboard,
 } from 'lucide-react'
 import iconSrc from '../../assets/winraid_icon_32x32.png'
 import Button from '../components/ui/Button'
@@ -11,39 +10,44 @@ import styles from './WhatsNew.module.css'
 // one line each, written for a person, not a changelog.
 const HIGHLIGHTS = [
   {
-    icon: ArrowUpDown,
-    title: 'Sort your files, your way',
-    body: 'Sort by name, newest, or oldest from the toolbar. Folders can stay on top, and each folder can remember its own order.',
+    icon: Palette,
+    title: 'A whole new look',
+    body: 'Every screen is redesigned around a new title bar, nav rail and status bar. Pick your accent color in Settings.',
   },
   {
-    icon: Search,
-    title: 'Search and jump',
-    body: 'Filter the current folder as you type, or just start typing a name to jump straight to it.',
+    icon: PanelsTopLeft,
+    title: 'Tabs that behave',
+    body: 'Open folders and files in tabs, drag them into any order, and step back and forward through each one with the mouse side buttons.',
   },
   {
-    icon: Filter,
-    title: 'Ignored extensions',
-    body: 'Tell a connection which file types to skip, alongside the existing allow-list. Both are now properly enforced.',
+    icon: ClipboardPaste,
+    title: 'Cut, copy and paste',
+    body: 'Move and copy files between folders on your NAS from the new two-row command bar, right where you would expect them.',
   },
   {
-    icon: PencilLine,
-    title: 'Smarter rename',
-    body: 'Renaming keeps the extension in its own field, so you will never accidentally drop the “.jpg”.',
+    icon: Info,
+    title: 'Properties at a glance',
+    body: 'See size, dates and attributes for anything you select, a Kind column in the list, and video length and resolution right on the thumbnail.',
   },
   {
-    icon: MousePointerClick,
-    title: 'Right-click menus',
-    body: 'Right-click any file or folder — in list or grid view — to open its actions instantly.',
+    icon: Trash2,
+    title: 'Deletes you can undo',
+    body: 'Local deletes go to the Recycle Bin, and each connection can keep its own trash on the NAS instead of deleting for good.',
   },
   {
-    icon: Film,
-    title: 'Better video thumbnails',
-    body: 'Pick the moment used for video previews, in seconds or a percentage, so you skip past black intros.',
+    icon: Pin,
+    title: 'A default connection',
+    body: 'Pin the connection Browse, Play and the other screens open on, and keep every favorite folder in one list.',
   },
   {
-    icon: PieChart,
-    title: 'Faster size scans',
-    body: 'Folder-size scans run in parallel and let you drill deeper on demand, with a clearer breakdown.',
+    icon: Eye,
+    title: 'Watchers remember',
+    body: 'A watcher you stopped stays stopped after a restart, and a connection that cannot be watched now tells you why.',
+  },
+  {
+    icon: Clapperboard,
+    title: 'Play wall and Quick Look',
+    body: 'Select tiles on the play wall to move or delete them, and open any of them straight into Quick Look.',
   },
 ]
 
