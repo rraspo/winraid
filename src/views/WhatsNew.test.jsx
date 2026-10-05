@@ -22,11 +22,11 @@ describe('WhatsNew window', () => {
 
   it('lists the headline features', async () => {
     render(<WhatsNew />)
-    // Representative highlight titles from the 2.7.0 notes
-    expect(await screen.findByText(/Sort your files/i)).toBeInTheDocument()
-    expect(screen.getByText(/Search and jump/i)).toBeInTheDocument()
-    expect(screen.getByText(/Ignored extensions/i)).toBeInTheDocument()
-    expect(screen.getByText(/Smarter rename/i)).toBeInTheDocument()
+    // Representative highlight titles from the 3.0.0 notes
+    expect(await screen.findByText(/A whole new look/i)).toBeInTheDocument()
+    expect(screen.getByText(/Tabs that behave/i)).toBeInTheDocument()
+    expect(screen.getByText(/Deletes you can undo/i)).toBeInTheDocument()
+    expect(screen.getByText(/Watchers remember/i)).toBeInTheDocument()
   })
 
   it('closes the window when "Close" is clicked', async () => {
