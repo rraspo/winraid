@@ -6,11 +6,13 @@ export function formatSize(bytes) {
   return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
+// One formatter for the whole app: toLocaleDateString builds a new one per
+// call, and every visible Browse row formats a date on each render.
+const DATE_FORMAT = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+
 export function formatDate(ts) {
   if (!ts) return '\u2014'
-  return new Date(ts).toLocaleDateString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-  })
+  return DATE_FORMAT.format(ts)
 }
 
 // mm:ss (or h:mm:ss past an hour) \u2014 the shape a video's seek bar already

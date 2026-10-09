@@ -226,7 +226,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       busy={busy}
                       index={entryIndex}
                       isSelected={selected.has(entry.name)}
-                      selectedCount={selected.size}
+                      inMultiSelection={selected.size > 1 && selected.has(entry.name)}
                       isDragSource={dragSourcePaths.has(entryPath)}
                       isLastVisited={isDir && lastVisitedDir === entry.name}
                       isHighlighted={highlightFile === entry.name}
@@ -246,7 +246,7 @@ const BrowseGrid = memo(function BrowseGrid({
                       requestBulkProperties={requestBulkProperties}
                       thumbnailsEnabled={thumbnailsEnabled}
                       mediaMeta={mediaMetaByPath?.[entryPath]}
-                      onMediaMetadata={(meta) => onThumbnailMetadata?.(entryPath, meta)}
+                      onThumbnailMetadata={onThumbnailMetadata}
                       localCandidate={localMirrorOf?.(entryPath) ?? null}
                       checkLocalExists={checkLocalExists}
                       onRevealLocal={onRevealLocal}

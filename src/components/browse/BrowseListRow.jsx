@@ -1,4 +1,4 @@
-import { memo, useRef } from 'react'
+import { memo, useRef, useCallback } from 'react'
 import { Folder, File } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
@@ -7,19 +7,23 @@ import { isImageFile, isVideoFile, isEditableFile } from '../../utils/fileTypes'
 import { fileKind } from '../../utils/fileKind'
 import styles from '../../views/BrowseList.module.css'
 
+// Every prop is a primitive or keeps its identity while the entry is
+// unchanged: memo is what stops a scroll from re-rendering every mounted row,
+// so position arrives as plain numbers, not the virtualizer's per-frame item.
 const BrowseListRow = memo(function BrowseListRow({
-  entry, entryPath, virtualRow, connectionId, index,
-  busy, isSelected, selectedCount, isDragSource, isLastVisited, isHighlighted, isCursor, highlightRef,
+  entry, entryPath, top, height, connectionId, index,
+  busy, isSelected, inMultiSelection, isDragSource, isLastVisited, isHighlighted, isCursor, highlightRef,
   handleDragStart, handleDragEnd, handleDragOverFolder, handleDragLeaveFolder, handleDrop,
   navigate, openQuickLook, onItemPointer,
   handleDownload, setEditingFile, setMoveTarget, setDeleteTarget, onProperties,
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder,
   visibleColumns = { size: true, modified: true, kind: true }, thumbnailsEnabled = true,
-  mediaMeta, onMediaMetadata,
+  mediaMeta, onThumbnailMetadata,
 }) {
   const isDir = entry.type === 'dir'
   const menuRef = useRef(null)
+  const handleMediaMetadata = useCallback((meta) => onThumbnailMetadata?.(entryPath, meta), [onThumbnailMetadata, entryPath])
 
   // EntryMenu is shared by the dot button and right-click, which must
   // behave differently: the dot button always targets this row alone;
@@ -28,7 +32,7 @@ const BrowseListRow = memo(function BrowseListRow({
   // resulting target is then always just this row, same as the dot button).
   function resolveTarget(viaContextMenu) {
     if (!viaContextMenu) return 'self'
-    if (isSelected) return selectedCount > 1 ? 'selection' : 'self'
+    if (isSelected) return inMultiSelection ? 'selection' : 'self'
     onItemPointer(index)
     return 'self'
   }
@@ -39,7 +43,7 @@ const BrowseListRow = memo(function BrowseListRow({
         <Thumbnail
           name={entry.name} remotePath={entryPath} connectionId={connectionId}
           size="list" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
-          onMetadata={onMediaMetadata}
+          onMetadata={handleMediaMetadata}
         />
       )
       : <File size={14} className={styles.iconFile} />
@@ -95,8 +99,8 @@ const BrowseListRow = memo(function BrowseListRow({
       style={{
         position: 'absolute',
         top: 0, left: 0, width: '100%',
-        height: virtualRow.size,
-        transform: `translateY(${virtualRow.start}px)`,
+        height,
+        transform: `translateY(${top}px)`,
         cursor: !isDir ? 'pointer' : undefined,
       }}
       draggable={!busy}
