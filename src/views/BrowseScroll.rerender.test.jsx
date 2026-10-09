@@ -46,6 +46,7 @@ vi.mock('../components/browse/EntryMenu', () => ({
 
 vi.mock('../components/browse/Thumbnail', () => ({ default: () => null }))
 
+const { createMediaMetaStore } = await import('../utils/mediaMetaStore')
 const { default: BrowseList } = await import('./BrowseList')
 const { default: BrowseGrid } = await import('./BrowseGrid')
 
@@ -73,7 +74,7 @@ const PROPS = {
   handleDownload: noop, setEditingFile: noop, setMoveTarget: noop, setDeleteTarget: noop, onProperties: noop,
   requestBulkDelete: noop, requestBulkMove: noop, requestBulkDownload: noop, requestBulkProperties: noop,
   localMirrorOf: () => null, checkLocalExists: noop, onRevealLocal: noop, onMiddleClickFolder: noop,
-  thumbnailsEnabled: true, mediaMetaByPath: {}, onThumbnailMetadata: noop,
+  thumbnailsEnabled: true, mediaMetaStore: createMediaMetaStore(),
 }
 
 beforeEach(() => { menuRenders = 0 })
@@ -107,6 +108,28 @@ describe('scrolling re-renders nothing that is already on screen', () => {
     rerender(<BrowseGrid {...PROPS} selected={new Set([ENTRIES[0].name, ENTRIES[1].name])} />)
 
     expect(menuRenders - before).toBe(2)
+  })
+
+  it('list view: a thumbnail reporting its media facts re-renders only its own row', () => {
+    const mediaMetaStore = createMediaMetaStore()
+    const { container } = render(<BrowseList {...PROPS} mediaMetaStore={mediaMetaStore} />)
+    const before = menuRenders
+
+    act(() => mediaMetaStore.set(ENTRIES[3].entryPath, { kind: 'video', duration: 75, width: 1920, height: 1080 }))
+
+    expect(menuRenders - before).toBe(1)
+    const row = container.querySelector(`[data-entry-path="${ENTRIES[3].entryPath}"]`)
+    expect(row.querySelector('.rowMedia').textContent).toBe('1:15 · 1080p')
+  })
+
+  it('grid view: a thumbnail reporting its media facts re-renders no other card', () => {
+    const mediaMetaStore = createMediaMetaStore()
+    render(<BrowseGrid {...PROPS} mediaMetaStore={mediaMetaStore} />)
+    const before = menuRenders
+
+    act(() => mediaMetaStore.set(ENTRIES[3].entryPath, { kind: 'video', duration: 75, width: 1920, height: 1080 }))
+
+    expect(menuRenders - before).toBeLessThanOrEqual(1)
   })
 
   it('grid view: a scroll tick over the same window renders no card again', () => {

@@ -5,6 +5,7 @@ import EntryMenu from './EntryMenu'
 import Tooltip from '../ui/Tooltip'
 import { formatSize } from '../../utils/format'
 import { isEditableFile } from '../../utils/fileTypes'
+import { useMediaMeta } from '../../utils/mediaMetaStore'
 import styles from './GridCard.module.css'
 
 // Every prop is a primitive or keeps its identity while the entry is
@@ -16,10 +17,11 @@ const GridCard = memo(function GridCard({
   onMove, onDelete, onProperties, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
-  mediaMeta, onThumbnailMetadata,
+  mediaMetaStore,
 }) {
   const menuRef = useRef(null)
-  const handleMediaMetadata = useCallback((meta) => onThumbnailMetadata?.(entryPath, meta), [onThumbnailMetadata, entryPath])
+  const mediaMeta = useMediaMeta(mediaMetaStore, entryPath)
+  const handleMediaMetadata = useCallback((meta) => mediaMetaStore?.set(entryPath, meta), [mediaMetaStore, entryPath])
 
   // EntryMenu is shared by the dot button and right-click, which must
   // behave differently: the dot button always targets this card alone;

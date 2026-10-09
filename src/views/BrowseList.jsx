@@ -19,7 +19,7 @@ const BrowseList = memo(function BrowseList({
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
   visibleColumns = DEFAULT_VISIBLE_COLUMNS, thumbnailsEnabled = true, density = 'default',
-  mediaMetaByPath, onThumbnailMetadata,
+  mediaMetaStore,
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
@@ -260,8 +260,7 @@ const BrowseList = memo(function BrowseList({
                 onMiddleClickFolder={onMiddleClickFolder}
                 visibleColumns={visibleColumns}
                 thumbnailsEnabled={thumbnailsEnabled}
-                mediaMeta={mediaMetaByPath?.[entry.entryPath]}
-                onThumbnailMetadata={onThumbnailMetadata}
+                mediaMetaStore={mediaMetaStore}
               />
             )
           })}

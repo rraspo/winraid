@@ -49,6 +49,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   window.IntersectionObserver = saved.io
   globalThis.IntersectionObserver = saved.io
   URL.createObjectURL = saved.createObjectURL
@@ -87,8 +88,8 @@ async function captureFrame(video = document.querySelector('video')) {
   Object.defineProperty(video, 'videoHeight', { configurable: true, value: 1080 })
   fireEvent.loadedMetadata(video)
   fireEvent.seeked(video)
-  await flush()
-  await flush()
+  // Capture is a chain of promises (bitmap, encode, bytes, save); let it run out.
+  for (let i = 0; i < 5; i++) await flush()
 }
 
 describe('VideoThumb — cheap first, decode only when worth it', () => {
@@ -140,6 +141,37 @@ describe('VideoThumb — cheap first, decode only when worth it', () => {
     expect(container.querySelector('video')).toBeNull()
     expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:still')
     expect(onMetadata).toHaveBeenCalledWith({ duration: 60, width: 1920, height: 1080 })
+  })
+
+  it('scales the frame down off the main thread before drawing it, never drawing the full-size video', async () => {
+    const bitmap = { width: 320, height: 180, close: vi.fn() }
+    const drawImage = vi.fn()
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage }))
+    const createImageBitmap = vi.fn().mockResolvedValue(bitmap)
+    vi.stubGlobal('createImageBitmap', createImageBitmap)
+    await mount()
+    await dwell()
+    const video = document.querySelector('video')
+    await captureFrame(video)
+
+    expect(createImageBitmap).toHaveBeenCalledWith(video, expect.objectContaining({ resizeWidth: 320, resizeHeight: 180 }))
+    expect(drawImage).toHaveBeenCalledWith(bitmap, 0, 0)
+    expect(drawImage).not.toHaveBeenCalledWith(video, expect.anything(), expect.anything(), expect.anything(), expect.anything())
+    expect(bitmap.close).toHaveBeenCalled()
+    expect(window.winraid.cache.saveVideoFrame).toHaveBeenCalled()
+  })
+
+  it('still captures, the slower way, when the frame cannot be turned into a bitmap', async () => {
+    const drawImage = vi.fn()
+    HTMLCanvasElement.prototype.getContext = vi.fn(() => ({ drawImage }))
+    vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('unsupported source')))
+    await mount()
+    await dwell()
+    const video = document.querySelector('video')
+    await captureFrame(video)
+
+    expect(drawImage).toHaveBeenCalledWith(video, 0, 0, 320, 180)
+    expect(window.winraid.cache.saveVideoFrame).toHaveBeenCalled()
   })
 
   it(`runs at most ${MAX_DECODERS} decoders at once, and the next starts when one finishes`, async () => {

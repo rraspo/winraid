@@ -37,16 +37,29 @@ function loadSeekConfig() {
   }).catch(() => {})
 }
 
-function frameToWebp(video) {
-  return new Promise((resolve) => {
-    const width  = Math.min(STILL_WIDTH, video.videoWidth || STILL_WIDTH)
-    const height = video.videoWidth ? Math.round((width * video.videoHeight) / video.videoWidth) : Math.round(width * 9 / 16)
-    const canvas = document.createElement('canvas')
-    canvas.width  = width
-    canvas.height = height
-    canvas.getContext('2d').drawImage(video, 0, 0, width, height)
-    canvas.toBlob((blob) => resolve(blob), 'image/webp', STILL_QUALITY)
-  })
+// Drawing a <video> straight into a canvas reads the full-size frame back
+// from the GPU on the main thread, which stalls dragging and scrolling while
+// thumbnails fill in. createImageBitmap scales it down asynchronously first,
+// so only a 320 px bitmap ever touches the canvas.
+async function frameToWebp(video) {
+  const width  = Math.min(STILL_WIDTH, video.videoWidth || STILL_WIDTH)
+  const height = video.videoWidth ? Math.round((width * video.videoHeight) / video.videoWidth) : Math.round(width * 9 / 16)
+  const canvas = document.createElement('canvas')
+  canvas.width  = width
+  canvas.height = height
+  const context = canvas.getContext('2d')
+  const bitmap = typeof createImageBitmap === 'function'
+    ? await createImageBitmap(video, { resizeWidth: width, resizeHeight: height, resizeQuality: 'medium' }).catch(() => null)
+    : null
+  if (bitmap) {
+    context.drawImage(bitmap, 0, 0)
+    bitmap.close?.()
+  } else {
+    // A source the platform cannot bitmap still yields a still, just the
+    // slower way.
+    context.drawImage(video, 0, 0, width, height)
+  }
+  return new Promise((resolve) => canvas.toBlob((blob) => resolve(blob), 'image/webp', STILL_QUALITY))
 }
 
 // A video thumbnail that costs nothing until it is worth it: the cheap
