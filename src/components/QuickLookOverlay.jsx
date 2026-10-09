@@ -89,6 +89,16 @@ function captureVideoFrame(videoEl, fmt) {
 // ---------------------------------------------------------------------------
 // Preview sub-components
 // ---------------------------------------------------------------------------
+
+// Chromium's native media controls swallow every key while the <video> or
+// <audio> element holds focus, so after a click or drag on the seek bar
+// Escape never reached Quick Look. The controls take focus on interaction;
+// handing it straight back keeps every shortcut working, and the controls
+// themselves never needed keyboard focus to respond to the mouse.
+function releaseMediaFocus(e) {
+  const media = e.currentTarget
+  setTimeout(() => media.blur(), 0)
+}
 function panStyle(zoom, pan) {
   if (zoom === 1 && pan.x === 0 && pan.y === 0) return undefined
   return { transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: 'center center' }
@@ -305,6 +315,7 @@ function VideoPreview({ src, loop, zoom, pan, mediaRef, trimming, trimBar, rotat
           autoPlay
           loop={loop}
           onVolumeChange={handleVolumeChange}
+          onFocus={releaseMediaFocus}
           style={rotatedVideoStyle()}
         />
         {trimBar}
@@ -324,6 +335,7 @@ function AudioPreview({ file, src, mediaRef, trimming, trimBar }) {
         src={src}
         controls={!trimming}
         autoPlay
+        onFocus={releaseMediaFocus}
       />
       {trimBar}
     </div>
