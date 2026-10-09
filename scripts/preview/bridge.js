@@ -95,6 +95,8 @@ window.winraid = {
     thumbSize: () => Promise.resolve({ bytes: 42 * 1024 * 1024 }),
     clearThumbs: () => Promise.resolve(undefined),
     invalidateFile: () => Promise.resolve({ ok: true }),
+    getVideoFrame: () => Promise.resolve({ hit: false }),
+    saveVideoFrame: () => Promise.resolve({ ok: true }),
   },
 
   config: {

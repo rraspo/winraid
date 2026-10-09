@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('winraid', {
     clearThumbs: () => ipcRenderer.invoke('cache:clear-thumbs'),
     /** Invalidate the on-disk full+thumb cache for a single remote file (after a mutation). */
     invalidateFile: (connectionId, remotePath) => ipcRenderer.invoke('cache:invalidate-file', connectionId, remotePath),
+    /** Cached still of a remote video: { hit: true, bytes, meta } or { hit: false }. */
+    getVideoFrame: (connectionId, remotePath, modified) => ipcRenderer.invoke('cache:video-frame-get', connectionId, remotePath, modified),
+    /** Store a captured WebP still plus { duration, width, height } for a remote video. */
+    saveVideoFrame: (connectionId, remotePath, modified, bytes, meta) => ipcRenderer.invoke('cache:video-frame-save', connectionId, remotePath, modified, bytes, meta),
   },
 
   // -- Config --------------------------------------------------------------

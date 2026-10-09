@@ -57,6 +57,10 @@ const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size
       <span className={wrapClass}>
         <VideoThumb
           url={url}
+          connectionId={connectionId}
+          remotePath={remotePath}
+          modified={modified}
+          placeholder={isGrid ? <Film size={40} className={styles.gridIconFile} /> : <Film size={14} className={styles.iconFile} />}
           onError={() => setError(true)}
           onMetadata={(meta) => {
             setVideoMeta(meta)

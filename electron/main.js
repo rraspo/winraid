@@ -56,6 +56,7 @@ import { watchableConnections } from './watchable.js'
 import { planLaunchWatchers, withWatchIntent, describeBlockedWatcher } from './watcher-startup.js'
 import { CONFIG_SET_ALLOWLIST } from './config-allowlist.js'
 import { decideCacheAction, stampCacheMtime } from './thumb-cache-freshness.js'
+import { saveVideoFrame, loadVideoFrame, removeVideoFrame } from './video-frame-cache.js'
 
 // ---------------------------------------------------------------------------
 // Process and app identity — must run synchronously before app.whenReady().
@@ -1328,7 +1329,25 @@ function registerIPC() {
     if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
     await unlinkAsync(fullCachePath(connectionId, remotePath)).catch(() => {})
     await unlinkAsync(thumbCachePath(connectionId, remotePath)).catch(() => {})
+    removeVideoFrame({ baseDir: thumbsBaseDir(), connId: connectionId, remotePath })
     return { ok: true }
+  })
+
+  // -- Video frame cache: one captured still per remote video ------------------
+  // A hit means the renderer shows a still image and never starts a decoder.
+  ipcMain.handle('cache:video-frame-get', async (_e, connectionId, remotePath, modified) => {
+    if (typeof connectionId !== 'string' || !connectionId || !validateRemotePath(remotePath)) return { hit: false }
+    return loadVideoFrame({ baseDir: thumbsBaseDir(), connId: connectionId, remotePath, modified })
+  })
+
+  ipcMain.handle('cache:video-frame-save', async (_e, connectionId, remotePath, modified, bytes, meta) => {
+    if (typeof connectionId !== 'string' || !connectionId) return { ok: false, error: 'Invalid connection' }
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      return saveVideoFrame({ baseDir: thumbsBaseDir(), connId: connectionId, remotePath, modified, bytes, meta })
+    } catch (err) {
+      return { ok: false, error: err.message }
+    }
   })
 
   // -- SSH: test connection ---------------------------------------------------
@@ -3554,6 +3573,10 @@ function nodeStreamToReadableWithCache(nodeStream, onCached) {
       nodeStream.destroy()
     },
   })
+}
+
+function thumbsBaseDir() {
+  return join(app.getPath('userData'), 'thumbs')
 }
 
 // Returns the absolute path where a thumbnail JPEG for remotePath should be

@@ -58,6 +58,8 @@ export function createWinraidMock(overrides = {}) {
       thumbSize: vi.fn().mockResolvedValue({ bytes: 0 }),
       clearThumbs: vi.fn().mockResolvedValue(undefined),
       invalidateFile: vi.fn().mockResolvedValue({ ok: true }),
+      getVideoFrame: vi.fn().mockResolvedValue({ hit: false }),
+      saveVideoFrame: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.cache,
     },
 
