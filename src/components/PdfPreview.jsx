@@ -1,27 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { UnfoldHorizontal, UnfoldVertical } from 'lucide-react'
-import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import SegmentedControl from './ui/SegmentedControl'
 import { pageCssWidth } from '../utils/pdfFit'
+import { openPdf } from '../utils/pdfjsLoader'
+import { describePdfError } from '../utils/pdfError'
 import styles from './PdfPreview.module.css'
-
-// The legacy build, not the default one: pdf.js calls
-// Uint8Array.prototype.toHex() while fingerprinting a document, and this
-// Electron's Chromium does not implement it yet — opening any PDF died with
-// "toHex is not a function". Only the legacy build carries the polyfill, and
-// it has to be legacy on both sides, since the failing call happens in the
-// worker where a polyfill loaded here would never reach it. Revisit once
-// Electron ships a Chromium new enough to have the method natively.
-let _pdfjsPromise = null
-function getPdfjs() {
-  if (!_pdfjsPromise) {
-    _pdfjsPromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((lib) => {
-      lib.GlobalWorkerOptions.workerSrc = workerUrl
-      return lib
-    })
-  }
-  return _pdfjsPromise
-}
 
 const FIT_OPTIONS = [
   { value: 'width', label: <><UnfoldHorizontal size={14} aria-hidden="true" /> Fit width</> },
@@ -81,7 +64,7 @@ function PdfPage({ pdf, pageNumber, fit, box, estimate }) {
   )
 }
 
-export default function PdfPreview({ src }) {
+export default function PdfPreview({ src, remotePath }) {
   const scrollRef = useRef(null)
   const [pdf,      setPdf]      = useState(null)
   const [error,    setError]    = useState('')
@@ -122,23 +105,32 @@ export default function PdfPreview({ src }) {
     ;(async () => {
       try {
         setError(''); setPdf(null)
-        const pdfjs = await getPdfjs()
         const res = await fetch(src)
         if (!res.ok) throw new Error(`Failed to fetch PDF (HTTP ${res.status})`)
         const data = await res.arrayBuffer()
         if (cancelled) return
-        doc = await pdfjs.getDocument({ data }).promise
+        doc = await openPdf({ data }).then((task) => task.promise)
         if (cancelled) { doc.destroy?.(); return }
         const first = (await doc.getPage(1)).getViewport({ scale: 1 })
         if (cancelled) return
         setEstimate({ width: first.width, height: first.height })
         setPdf(doc)
       } catch (e) {
-        if (!cancelled) setError(e?.message || 'Failed to load PDF')
+        if (cancelled) return
+        setError(describePdfError(e))
+        // The on-screen line is for the user; the log line is for diagnosing
+        // a file that opens elsewhere but not here. Path and error only,
+        // never document content.
+        window.winraid?.log?.write?.({
+          scope: 'pdf-preview',
+          level: 'error',
+          message: e?.message || 'Failed to load PDF',
+          details: { name: e?.name, path: remotePath },
+        })
       }
     })()
     return () => { cancelled = true; doc?.destroy?.() }
-  }, [src])
+  }, [src, remotePath])
 
   return (
     <div className={styles.root}>

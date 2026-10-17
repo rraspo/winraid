@@ -1545,7 +1545,7 @@ export default function QuickLookOverlay({
       case 'image': return <ImagePreview src={src} size={file.size ?? 0} zoom={zoom} pan={pan} mediaRef={mediaRef} onContextMenu={handleImageContextMenu} />
       case 'video': return <VideoPreview src={src} loop={loop && !trimming} zoom={zoom} pan={pan} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} rotatePreviewDegrees={rotating ? ROTATE_PREVIEW_DEGREES[rotateDirection] : null} />
       case 'audio': return <AudioPreview file={file} src={src} mediaRef={mediaRef} trimming={trimming} trimBar={trimBar} />
-      case 'pdf':   return <PdfPreview src={src} />
+      case 'pdf':   return <PdfPreview src={src} remotePath={file.path} />
       case 'text':  return <TextPreview connectionId={connectionId} remotePath={file.path} />
       default:      return <UnknownPreview file={file} />
     }

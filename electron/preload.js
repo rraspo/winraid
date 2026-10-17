@@ -157,6 +157,8 @@ contextBridge.exposeInMainWorld('winraid', {
     reveal:  ()       => ipcRenderer.invoke('log:reveal'),
     /** Truncate today's log file. */
     clear:   ()       => ipcRenderer.invoke('log:clear'),
+    /** Append a renderer-side entry ({ scope, level, message, details }) to the log file. */
+    write:   (entry)  => ipcRenderer.invoke('log:write', entry),
     /** Subscribe to live log entries pushed from the main process. */
     onEntry: (cb)     => on('log:entry', cb),
   },

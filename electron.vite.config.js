@@ -2,6 +2,7 @@ import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath } from 'url'
 import { dirname, resolve } from 'path'
+import { pdfjsAssets } from './scripts/pdfjsAssetsPlugin.js'
 
 // Derive __dirname for ESM config files
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -38,7 +39,7 @@ export default defineConfig({
   // Renderer — React/Vite SPA
   renderer: {
     root: __dirname,
-    plugins: [react()],
+    plugins: [react(), pdfjsAssets()],
     build: {
       outDir: 'out/renderer',
       rollupOptions: {

@@ -24,6 +24,7 @@ import { readdir as readdirAsync, stat as statAsync, mkdir as mkdirAsync, writeF
 import { createHash, randomUUID } from 'crypto'
 import { homedir, userInfo, tmpdir } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
+import { formatRendererLog } from './renderer-log.js'
 import { initActivity, pushActivity, tailActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
 import { listCommand, parseListOutput, readdirEntries } from './remote-list.js'
@@ -1264,6 +1265,11 @@ function registerIPC() {
 
   ipcMain.handle('log:clear', () => {
     clearLog()
+  })
+
+  ipcMain.handle('log:write', (_e, entry) => {
+    const formatted = formatRendererLog(entry)
+    if (formatted) log(formatted.level, formatted.message)
   })
 
   // -- Thumbnail cache --------------------------------------------------------
@@ -3926,7 +3932,8 @@ app.whenReady().then(async () => {
 
   const csp = app.isPackaged
     ? "default-src 'self' nas-stream:; " +
-      "script-src 'self'; " +
+      // pdf.js compiles its JPX/JBIG2/ICC decoders from wasm in the worker.
+      "script-src 'self' 'wasm-unsafe-eval'; " +
       "style-src 'self' 'unsafe-inline'; " +
       `img-src 'self' data: blob: nas-stream: ${DASHBOARD_ICONS_CDN_PREFIX}; ` +
       "media-src 'self' nas-stream:; " +

@@ -149,6 +149,7 @@ window.winraid = {
     tail: () => Promise.resolve(clone(LOG_ENTRIES)),
     reveal: () => Promise.resolve(undefined),
     clear: () => Promise.resolve(undefined),
+    write: () => Promise.resolve(undefined),
     onEntry: (callback) => channels.logEntry.subscribe(callback),
   },
 
