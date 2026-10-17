@@ -13,7 +13,7 @@
   min-width: 0;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   background: var(--surface2);
   color: var(--text);
   font-size: var(--font-size-sm);

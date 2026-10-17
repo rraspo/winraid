@@ -117,7 +117,7 @@
   height: 34px;
   padding: 0 11px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   background: var(--surface2);
   color: var(--text);
   font-family: monospace;
@@ -136,7 +136,7 @@
   height: 34px;
   padding: 0 11px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   background: var(--surface2);
   color: var(--text);
   font-family: monospace;
@@ -155,7 +155,7 @@
   height: 34px;
   padding: 0 11px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   background: var(--surface2);
   color: var(--text2);
   font-family: monospace;

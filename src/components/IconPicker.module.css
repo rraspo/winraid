@@ -85,7 +85,7 @@
   width: 100%;
   padding: 5px 8px;
   background: var(--bg-input);
-  border: 1px solid var(--border-input);
+  border: 1px solid var(--outline);
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: var(--font-size-sm);
@@ -170,7 +170,7 @@
   flex: 1;
   padding: 5px 8px;
   background: var(--bg-input);
-  border: 1px solid var(--border-input);
+  border: 1px solid var(--outline);
   border-radius: var(--radius-sm);
   color: var(--text);
   font-size: var(--font-size-base);

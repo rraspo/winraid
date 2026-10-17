@@ -207,7 +207,7 @@
   width: 14px;
   height: 14px;
   border-radius: var(--radius-xs);
-  border: 1.5px solid var(--border-strong);
+  border: 1.5px solid var(--outline);
   background: var(--bg-card);
   display: inline-flex;
   align-items: center;
@@ -269,7 +269,7 @@
   padding: 0 var(--space-2);
   font-size: var(--font-size-sm);
   background: var(--bg-card);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--outline);
   border-radius: var(--radius-sm);
   color: var(--text);
   outline: none;

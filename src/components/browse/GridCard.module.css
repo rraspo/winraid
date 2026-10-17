@@ -95,7 +95,7 @@
   width: 16px;
   height: 16px;
   border-radius: 4px;
-  border: 1.5px solid var(--stroke);
+  border: 1.5px solid var(--outline);
   background: transparent;
   transition: background-color 150ms ease, border-color 150ms ease;
   display: flex;
