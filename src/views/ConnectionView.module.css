@@ -189,6 +189,8 @@
   border: 2px solid var(--accent);
   background: var(--active);
   padding: 9px;
+  /* --text3 drops under WCAG AA on the --active fill. */
+  --text3: var(--text2);
 }
 
 .protocolCardTitle {

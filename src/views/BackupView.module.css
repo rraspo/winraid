@@ -396,11 +396,10 @@
   color: var(--text3);
   cursor: help;
   flex-shrink: 0;
-  opacity: 0.55;
-  transition: opacity var(--transition);
+  transition: color var(--transition);
 }
 
-.hintTrigger:hover { opacity: 1; }
+.hintTrigger:hover { color: var(--text2); }
 
 .inputRow {
   display: flex;

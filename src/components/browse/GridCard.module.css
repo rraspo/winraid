@@ -129,6 +129,7 @@
 .gridCardSelected {
   border-color: var(--accent) !important;
   background: color-mix(in srgb, var(--accent) 8%, transparent) !important;
+  --text3: var(--text2);
 }
 
 /* ── Drag-and-drop states ─────────────────────────────────────────────────── */
@@ -140,13 +141,20 @@
 
 .dragging { opacity: 0.45; }
 
-.lastVisited { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
+/* Accent-tinted cards lift their muted text, as Browse list rows do, so it
+   stays at WCAG AA over the tint for every accent choice. */
+.lastVisited {
+  background: color-mix(in srgb, var(--accent) 25%, transparent) !important;
+  --text3: var(--text2);
+}
 
 /* Type-to-jump cursor — instant solid accent tint, snappier than the
    selection background. Snaps in immediately, eases out on removal so
    the previous card fades while the new one snaps. */
 .cursor {
   background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+  --text2: var(--text);
+  --text3: var(--text);
   border-color: var(--accent) !important;
   transition: background-color 200ms ease-out, border-color 200ms ease-out;
 }
