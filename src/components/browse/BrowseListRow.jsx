@@ -3,7 +3,7 @@ import { Folder, File } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
 import { formatSize, formatDate, formatMediaSummary } from '../../utils/format'
-import { isImageFile, isVideoFile, isEditableFile } from '../../utils/fileTypes'
+import { isImageFile, isVideoFile, isPdfFile, isEditableFile } from '../../utils/fileTypes'
 import { fileKind } from '../../utils/fileKind'
 import { useMediaMeta } from '../../utils/mediaMetaStore'
 import styles from '../../views/BrowseList.module.css'
@@ -40,7 +40,7 @@ const BrowseListRow = memo(function BrowseListRow({
   }
   const icon = isDir
     ? <Folder size={14} className={styles.iconDir} />
-    : (isImageFile(entry.name) || isVideoFile(entry.name))
+    : (isImageFile(entry.name) || isVideoFile(entry.name) || isPdfFile(entry.name))
       ? (
         <Thumbnail
           name={entry.name} remotePath={entryPath} connectionId={connectionId}

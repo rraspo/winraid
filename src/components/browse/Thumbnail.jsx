@@ -1,7 +1,9 @@
 import { memo, useState, useCallback } from 'react'
 import { Image, Film, File } from 'lucide-react'
 import VideoThumb from './VideoThumb'
-import { isImageFile, isVideoFile } from '../../utils/fileTypes'
+import PdfThumb from './PdfThumb'
+import PdfIcon from './PdfIcon'
+import { isImageFile, isVideoFile, isPdfFile } from '../../utils/fileTypes'
 import { formatDuration, formatVideoResolution } from '../../utils/format'
 import styles from './Thumbnail.module.css'
 
@@ -79,7 +81,25 @@ const Thumbnail = memo(function Thumbnail({ name, remotePath, connectionId, size
     )
   }
 
+  // List rows show the icon only: a first-page render per row is not worth it
+  // at 54x36.
+  if (isGrid && thumbnailsEnabled && !error && isPdfFile(name)) {
+    return (
+      <span className={wrapClass}>
+        <PdfThumb
+          url={`nas-stream://${connectionId}${encodedPath}${modified ? `?v=${modified}` : ''}`}
+          connectionId={connectionId}
+          remotePath={remotePath}
+          modified={modified}
+          placeholder={<PdfIcon size={40} />}
+          onError={() => setError(true)}
+        />
+      </span>
+    )
+  }
+
   // Fallback icons
+  if (isPdfFile(name)) return <PdfIcon size={isGrid ? 40 : 14} />
   if (isGrid) {
     if (isImageFile(name)) return <Image size={40} className={styles.gridIconFile} />
     if (isVideoFile(name)) return <Film size={40} className={styles.gridIconFile} />
