@@ -7,15 +7,21 @@
    `--accent` custom property set on the root element.
    ============================================================================= */
 
+/* Accent — static fallback on the root only. App sets --accent and
+   --onAccent inline on the root element from the resolved Settings >
+   Appearance choice; they are never declared in a theme scope, so a nested
+   [data-theme] scope (Quick Look, move picker) inherits the live values
+   instead of resetting them. */
+:root {
+  --accent:   #CA5010;
+  --onAccent: #FFFFFF;
+}
+
 /* Dark theme (default) */
 :root,
 [data-theme="dark"] {
-  /* Accent — the default is a static fallback; App sets --accent and
-     --onAccent on the root element from the resolved Settings > Appearance
-     choice, so every token below that derives from --accent recolors live. */
-  --accent:    #CA5010;
+  /* Derived from --accent, so they must recompute in every theme scope. */
   --accentHi:  color-mix(in oklab, var(--accent) 55%, white);
-  --onAccent:  #FFFFFF;
   --btnAccent: color-mix(in oklab, var(--accent) 85%, white);
 
   /* Surfaces */
@@ -140,8 +146,13 @@
    Every pre-redesign token name is kept, pointing at the closest token above,
    so existing CSS modules keep working unchanged until each screen migrates
    to the new names directly.
+   Declared on every theme scope, not just :root: a custom property that
+   references var() is resolved where it is declared and inherited as a
+   finished value, so aliases declared only at the root would keep the app
+   theme's colors inside a nested [data-theme] scope.
    ============================================================================= */
-:root {
+:root,
+[data-theme] {
   /* Surfaces */
   --bg-base:    var(--bg);
   --bg-panel:   var(--bg);
