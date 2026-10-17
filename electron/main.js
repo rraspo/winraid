@@ -38,7 +38,11 @@ import { deleteRemote } from './remote-delete.js'
 import { checkTrashFolder } from './trash-folder-check.js'
 import { resolveTrashFolder, trashContextFor } from './trash-context.js'
 import { execWithTimeout } from './exec-helpers.js'
-import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
+import {
+  pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe,
+  mountsCommand, parseMounts, isMountPoint, toolForPath,
+} from './size-tools.js'
+import { createLimiter } from './limiter.js'
 import { shQuote } from './shell-quote.js'
 import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { isWithinBase } from './path-guard.js'
@@ -197,8 +201,32 @@ function _readChildren(sftp, dirPath) {
   })
 }
 
-// Recursive size (KB) of a single path using the detected tool. If a fast
-// tool's output does not parse, fall back to du so results stay correct.
+// Mount targets on the remote, read once per scan. A remote without
+// /proc/mounts yields [] and sizing falls back to du -x alone.
+async function _readMounts(client) {
+  try {
+    const { stdout } = await execWithTimeout(client, mountsCommand(), 15_000)
+    return parseMounts(stdout)
+  } catch {
+    return []
+  }
+}
+
+// Every size command on a connection shares one pooled SSH client, and sshd
+// refuses channels past MaxSessions (10 by default) — the SFTP channel,
+// browsing, overlapping scans and drills all count. One limiter per
+// connection keeps sizing under that ceiling however many scans overlap.
+const _SIZE_SLOTS = 4
+const _sizeLimiters = new Map()
+
+function _sizeLimiter(connId) {
+  if (!_sizeLimiters.has(connId)) _sizeLimiters.set(connId, createLimiter(_SIZE_SLOTS))
+  return _sizeLimiters.get(connId)
+}
+
+// Recursive size (KB) of a single path using the detected tool, or null when
+// sizing failed. If a fast tool's output does not parse, fall back to du so
+// results stay correct.
 async function _sizeOne(client, tool, path) {
   try {
     const { stdout } = await execWithTimeout(client, sizeCommand(tool, path), 300_000)
@@ -210,20 +238,24 @@ async function _sizeOne(client, tool, path) {
     return kb ?? 0
   } catch (err) {
     log('warn', `[size-scan] size failed: ${path} — ${err?.message ?? err}`)
-    return 0
+    return null
   }
 }
 
 /**
  * Scan ONE directory level and stream results: list children immediately
  * (files sized from the listing, directories pending at 0), then size each
- * subdirectory concurrently with the detected tool, emitting each as it
- * resolves. The renderer upserts by path so sizes fill in live. Returns the
- * child count for this level.
+ * subdirectory with the detected tool through the connection's limiter,
+ * emitting each as it resolves. A subdirectory that is another filesystem's
+ * mount point is reported with status 'mount' and not walked; one whose
+ * sizing fails is reported with status 'failed'. The renderer upserts by
+ * path so sizes fill in live. Returns the child count for this level.
  */
-async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, concurrency, isCancelled, isActive, onProgress }) {
+async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, mounts, isCancelled, isActive, onProgress }) {
   const children = await _readChildren(sftp, dirPath)
   if (isCancelled?.()) return 0
+
+  const isForeignMount = (child) => child.type === 'dir' && isMountPoint(child.path, mounts)
 
   if (isActive?.() !== false) {
     sendToRenderer('size:level', {
@@ -233,38 +265,30 @@ async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, concu
         name: c.name,
         path: c.path,
         sizeKb: c.type === 'dir' ? 0 : Math.round((c.sizeBytes || 0) / 1024),
+        ...(isForeignMount(c) ? { status: 'mount' } : {}),
       })),
     })
   }
   onProgress?.(dirPath, children.length)
 
-  const dirs = children.filter((c) => c.type === 'dir')
-  let idx = 0
-  await new Promise((resolve) => {
-    let active = 0
-    function pump() {
-      if (isCancelled?.()) { if (active === 0) resolve(); return }
-      while (active < concurrency && idx < dirs.length) {
-        const dir = dirs[idx++]
-        active++
-        ;(async () => {
-          _poolTouch(connectionId)
-          const sizeKb = await _sizeOne(client, tool, dir.path)
-          if (isCancelled?.()) return
-          if (isActive?.() !== false) {
-            sendToRenderer('size:level', {
-              connectionId,
-              parentPath: dirPath,
-              entries: [{ name: dir.name, path: dir.path, sizeKb }],
-            })
-          }
-          onProgress?.(dir.path, children.length)
-        })().finally(() => { active--; pump() })
-      }
-      if (active === 0 && idx >= dirs.length) resolve()
+  const limiter = _sizeLimiter(connectionId)
+  const dirs = children.filter((c) => c.type === 'dir' && !isForeignMount(c))
+  await Promise.all(dirs.map((dir) => limiter.run(async () => {
+    if (isCancelled?.()) return
+    _poolTouch(connectionId)
+    const sizeKb = await _sizeOne(client, toolForPath(tool, dir.path, mounts), dir.path)
+    if (isCancelled?.()) return
+    if (isActive?.() !== false) {
+      sendToRenderer('size:level', {
+        connectionId,
+        parentPath: dirPath,
+        entries: [sizeKb == null
+          ? { name: dir.name, path: dir.path, sizeKb: 0, status: 'failed' }
+          : { name: dir.name, path: dir.path, sizeKb }],
+      })
     }
-    pump()
-  })
+    onProgress?.(dir.path, children.length)
+  })))
 
   return children.length
 }
@@ -2643,6 +2667,7 @@ function registerIPC() {
       const rootPath  = (conn.sftp?.remotePath || '/').replace(/\/+$/, '') || '/'
       const startTime = Date.now()
       const tool = await _detectSizeTool(connectionId, poolEntry.client)
+      const mounts = await _readMounts(poolEntry.client)
 
       // Liveness heartbeat so the renderer's no-progress watchdog measures
       // "still working" rather than "level completed".
@@ -2662,7 +2687,7 @@ function registerIPC() {
           connectionId,
           dirPath: rootPath,
           tool,
-          concurrency: 6,
+          mounts,
           isCancelled,
           isActive,
           onProgress: (path, count) => {
@@ -2709,6 +2734,7 @@ function registerIPC() {
       if (!poolEntry || !sftp) return { ok: false, error: 'Connection unavailable' }
 
       const tool = await _detectSizeTool(connectionId, poolEntry.client)
+      const mounts = await _readMounts(poolEntry.client)
       const keepAlive = setInterval(() => _poolTouch(connectionId), 10_000)
       try {
         await _scanSizeLevel({
@@ -2717,7 +2743,7 @@ function registerIPC() {
           connectionId,
           dirPath: subRoot.replace(/\/+$/, '') || '/',
           tool,
-          concurrency: 6,
+          mounts,
           isCancelled: () => false,
         })
       } finally {

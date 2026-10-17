@@ -9,6 +9,12 @@ import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
 
+// Legend copy for folders the scan reported without a size.
+const STATUS_NOTE = {
+  mount:  { label: 'Separate mount', tip: 'Another filesystem is mounted here. Open it to size it on its own.' },
+  failed: { label: 'Size failed',    tip: 'Sizing this folder failed or timed out. Details are in the log.' },
+}
+
 export default function SizeView({ connectionId, connection, connections, onSelectConnection, onBrowsePath, defaultConnectionId = null, onSetDefault }) {
   const [phase,      setPhase]      = useState(PHASE.IDLE)
   const [tree,       setTree]       = useState(null)
@@ -312,7 +318,13 @@ export default function SizeView({ connectionId, connection, connections, onSele
                           <span className={styles.barTrack}>
                             <span className={styles.barFill} style={{ width: `${pct}%`, background: color }} />
                           </span>
-                          <span className={styles.size}>{formatSize(child.sizeKb * 1024)}</span>
+                          {STATUS_NOTE[child.status] ? (
+                            <Tooltip tip={STATUS_NOTE[child.status].tip} side="top">
+                              <span className={styles.sizeNote}>{STATUS_NOTE[child.status].label}</span>
+                            </Tooltip>
+                          ) : (
+                            <span className={styles.size}>{formatSize(child.sizeKb * 1024)}</span>
+                          )}
                           <span className={styles.pct}>{pct}%</span>
                           {onBrowsePath && (
                             <Tooltip tip="Open in browser" side="top">

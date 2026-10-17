@@ -27,9 +27,48 @@ export function sizeCommand(tool, path) {
   const q = shellQuote(path)
   switch (tool) {
     case 'diskus': return `diskus -b ${q}`   // bytes, machine-readable
+    // -x keeps du on the filesystem it starts on, so a network mount below
+    // the path (an NFS share under /mnt) is not walked over the wire.
     case 'du':
-    default:       return `du -sk ${q}`       // kilobytes, "<kb>\t<path>"
+    default:       return `du -skx ${q}`      // kilobytes, "<kb>\t<path>"
   }
+}
+
+/** Shell command that lists the remote's mount table (Linux). */
+export function mountsCommand() {
+  return 'cat /proc/mounts'
+}
+
+/** Parse /proc/mounts output into the unique list of mount targets. */
+export function parseMounts(stdout) {
+  const targets = []
+  for (const line of (stdout || '').split('\n')) {
+    const field = line.trim().split(/\s+/)[1]
+    if (!field) continue
+    // /proc/mounts escapes spaces, tabs, newlines and backslashes as octal.
+    const target = field.replace(/\\([0-7]{3})/g, (_match, octal) => String.fromCharCode(parseInt(octal, 8)))
+    if (!targets.includes(target)) targets.push(target)
+  }
+  return targets
+}
+
+function trimSlash(path) {
+  return String(path).replace(/\/+$/, '') || '/'
+}
+
+/** True when `path` is itself a mount target. */
+export function isMountPoint(path, mounts) {
+  return mounts.includes(trimSlash(path))
+}
+
+/**
+ * The tool to size `path` with. diskus has no way to stay on one filesystem,
+ * so a path with another filesystem mounted below it is sized with du -x.
+ */
+export function toolForPath(tool, path, mounts) {
+  if (tool === 'du') return 'du'
+  const prefix = trimSlash(path) === '/' ? '/' : `${trimSlash(path)}/`
+  return mounts.some((mount) => mount !== '/' && mount.startsWith(prefix)) ? 'du' : tool
 }
 
 /**
