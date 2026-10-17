@@ -41,7 +41,7 @@ import { resolveTrashFolder, trashContextFor } from './trash-context.js'
 import { execWithTimeout } from './exec-helpers.js'
 import {
   pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe,
-  mountsCommand, parseMounts, isMountPoint, toolForPath,
+  mountsCommand, parseMounts, isMountPoint, toolForPath, levelEntry,
 } from './size-tools.js'
 import { createLimiter } from './limiter.js'
 import { shQuote } from './shell-quote.js'
@@ -262,12 +262,7 @@ async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, mount
     sendToRenderer('size:level', {
       connectionId,
       parentPath: dirPath,
-      entries: children.map((c) => ({
-        name: c.name,
-        path: c.path,
-        sizeKb: c.type === 'dir' ? 0 : Math.round((c.sizeBytes || 0) / 1024),
-        ...(isForeignMount(c) ? { status: 'mount' } : {}),
-      })),
+      entries: children.map((c) => levelEntry(c, mounts)),
     })
   }
   onProgress?.(dirPath, children.length)
@@ -284,8 +279,8 @@ async function _scanSizeLevel({ client, sftp, connectionId, dirPath, tool, mount
         connectionId,
         parentPath: dirPath,
         entries: [sizeKb == null
-          ? { name: dir.name, path: dir.path, sizeKb: 0, status: 'failed' }
-          : { name: dir.name, path: dir.path, sizeKb }],
+          ? { name: dir.name, path: dir.path, type: 'dir', sizeKb: 0, status: 'failed' }
+          : { name: dir.name, path: dir.path, type: 'dir', sizeKb }],
       })
     }
     onProgress?.(dir.path, children.length)

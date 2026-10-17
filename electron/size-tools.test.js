@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe,
-  parseMounts, isMountPoint, toolForPath,
+  parseMounts, isMountPoint, toolForPath, levelEntry,
 } from './size-tools.js'
 
 describe('pickSizeTool', () => {
@@ -108,5 +108,21 @@ describe('probeCommand / parseProbe', () => {
   it('parses probe output into a set of names', () => {
     expect(parseProbe('diskus\ndu\n')).toEqual(new Set(['diskus', 'du']))
     expect(parseProbe('')).toEqual(new Set())
+  })
+})
+
+describe('levelEntry', () => {
+  const mounts = ['/mnt/nas']
+
+  it('marks directories and files so the renderer only drills into folders', () => {
+    expect(levelEntry({ name: 'etc', path: '/etc', type: 'dir', sizeBytes: 4096 }, mounts))
+      .toEqual({ name: 'etc', path: '/etc', type: 'dir', sizeKb: 0 })
+    expect(levelEntry({ name: 'vmlinuz', path: '/vmlinuz', type: 'file', sizeBytes: 20480 }, mounts))
+      .toEqual({ name: 'vmlinuz', path: '/vmlinuz', type: 'file', sizeKb: 20 })
+  })
+
+  it('keeps the mount status on a foreign mount point', () => {
+    expect(levelEntry({ name: 'nas', path: '/mnt/nas', type: 'dir', sizeBytes: 0 }, mounts))
+      .toEqual({ name: 'nas', path: '/mnt/nas', type: 'dir', sizeKb: 0, status: 'mount' })
   })
 })

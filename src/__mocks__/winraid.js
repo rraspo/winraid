@@ -167,6 +167,7 @@ export function createWinraidMock(overrides = {}) {
       onSizeDone:          vi.fn().mockReturnValue(() => {}),
       onSizeError:         vi.fn().mockReturnValue(() => {}),
       sizeLoadCache:       vi.fn().mockResolvedValue(null),
+      sizeScanSubtree:     vi.fn().mockResolvedValue({ ok: true }),
       sizeSaveCache:       vi.fn().mockResolvedValue({ ok: true }),
       onDownloadProgress:  vi.fn().mockReturnValue(() => {}),
       mediaScan:    vi.fn().mockResolvedValue({ ok: true }),

@@ -32,6 +32,7 @@ export function upsertLevel(tree, parentPath, entries) {
     if (existing) {
       existing.sizeKb = entry.sizeKb
       if (entry.name != null) existing.name = entry.name
+      if (entry.type) existing.type = entry.type
       if (entry.status) existing.status = entry.status
       else delete existing.status
     } else {

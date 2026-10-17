@@ -103,3 +103,17 @@ export function probeCommand(tools = SIZE_TOOLS) {
 export function parseProbe(stdout) {
   return new Set((stdout || '').split('\n').map((s) => s.trim()).filter(Boolean))
 }
+
+// One legend/chart entry for a listed child. `type` lets the renderer tell a
+// folder it can drill into from a file or symlink, which readdir cannot open
+// (the server answers "No such file").
+export function levelEntry(child, mounts) {
+  const isDir = child.type === 'dir'
+  return {
+    name: child.name,
+    path: child.path,
+    type: isDir ? 'dir' : 'file',
+    sizeKb: isDir ? 0 : Math.round((child.sizeBytes || 0) / 1024),
+    ...(isDir && isMountPoint(child.path, mounts) ? { status: 'mount' } : {}),
+  }
+}

@@ -3,6 +3,7 @@ import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
 import ConnectionPicker from '../components/ConnectionPicker'
 import Tooltip from '../components/ui/Tooltip'
+import * as toast from '../services/toast'
 import { formatSize } from '../utils/format'
 import { findNodeByPath, upsertLevel } from '../utils/sizeTree'
 import styles from './SizeView.module.css'
@@ -163,8 +164,14 @@ export default function SizeView({ connectionId, connection, connections, onSele
     // beyond that, leaves have no children scanned. Kick off a subtree
     // scan and focus pre-emptively so the user sees the new arcs appear
     // as size:level events arrive.
+    // Files and symlinks cannot be listed; only folders (or entries from an
+    // older cached scan, which carry no type) are worth a request.
+    if (nodeData.type === 'file') return
     if (nodeData.path && window.winraid?.remote.sizeScanSubtree) {
-      window.winraid.remote.sizeScanSubtree(connectionId, nodeData.path)
+      const unreadable = (reason) => toast.show({ msg: `Couldn't read "${nodeData.name}": ${reason}`, type: 'error' })
+      Promise.resolve(window.winraid.remote.sizeScanSubtree(connectionId, nodeData.path))
+        .then((result) => { if (result && result.ok === false) unreadable(result.error || 'unknown error') })
+        .catch((err) => unreadable(err?.message || 'request failed'))
       setFocused(nodeData.path)
     }
   }
