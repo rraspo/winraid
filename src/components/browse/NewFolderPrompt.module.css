@@ -82,4 +82,4 @@
 .newFolderCardActions .newFolderCancel  { flex-shrink: 0; }
 
 /* ── Folder icon color (list variant) ───────────────────────────────────── */
-.iconDir { color: var(--accent); flex-shrink: 0; }
+.iconDir { color: var(--accentText); flex-shrink: 0; }

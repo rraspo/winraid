@@ -78,7 +78,7 @@
   overflow: hidden;
 }
 
-.iconDir  { color: var(--accent);     flex-shrink: 0; }
+.iconDir  { color: var(--accentText);     flex-shrink: 0; }
 .iconFile { color: var(--text3); flex-shrink: 0; }
 
 .nameBtn {
@@ -90,7 +90,7 @@
   transition: color var(--transition);
 }
 
-.nameBtn:hover { color: var(--accent); }
+.nameBtn:hover { color: var(--accentText); }
 
 .nameText {
   overflow: hidden;

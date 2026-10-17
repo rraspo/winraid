@@ -172,6 +172,6 @@
 .footerBtn:hover { background: var(--hover); }
 
 .footerBtnAccent {
-  color: var(--accentHi);
+  color: var(--accentText);
   font-weight: var(--font-weight-semibold);
 }

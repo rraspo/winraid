@@ -26,7 +26,7 @@
   border-radius: 8px 8px 0 0;
 }
 
-.gridIconDir { width: 40px; height: 40px; color: var(--accent); opacity: 0.8; }
+.gridIconDir { width: 40px; height: 40px; color: var(--accentText); opacity: 0.8; }
 
 .gridMeta {
   padding: 6px 8px 8px;

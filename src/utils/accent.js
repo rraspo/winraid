@@ -40,8 +40,7 @@ export function resolveAccentHex(choice, systemHex) {
   return swatch ? swatch.hex : ACCENT_PALETTE[0].hex
 }
 
-// Relative luminance (WCAG) of a #RRGGBB hex color, used to decide whether
-// text drawn on top of it should be white or near-black.
+// Relative luminance (WCAG) of a #RRGGBB hex color.
 function relativeLuminance(hex) {
   const [r, g, b] = [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)].map((channel) => {
     const normalized = parseInt(channel, 16) / 255
@@ -52,8 +51,19 @@ function relativeLuminance(hex) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b
 }
 
+function contrastRatio(firstHex, secondHex) {
+  const [lighter, darker] = [relativeLuminance(firstHex), relativeLuminance(secondHex)].sort((a, b) => b - a)
+  return (lighter + 0.05) / (darker + 0.05)
+}
+
+const LIGHT_LABEL = '#FFFFFF'
+const DARK_LABEL  = '#1B1B1B'
+
+// The label drawn on an accent fill: whichever of white or near-black
+// contrasts more with it. The two cross near luminance 0.2, not 0.5, so a
+// mid-luminance accent such as a sky blue takes the dark label.
 export function onAccentTextColor(hex) {
-  return relativeLuminance(hex) > 0.5 ? '#1B1B1B' : '#FFFFFF'
+  return contrastRatio(DARK_LABEL, hex) > contrastRatio(LIGHT_LABEL, hex) ? DARK_LABEL : LIGHT_LABEL
 }
 
 export function resolveTheme(choice, systemPrefersDark) {

@@ -79,7 +79,7 @@
 }
 
 .tabActive .tabType {
-  color: var(--accent);
+  color: var(--accentText);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: color-mix(in srgb, var(--accent) 30%, transparent);
 }

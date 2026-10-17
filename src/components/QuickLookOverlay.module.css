@@ -76,7 +76,7 @@
   transition: color var(--transition);
 }
 
-.fileName:hover { color: var(--accent); }
+.fileName:hover { color: var(--accentText); }
 
 @keyframes fadeSlide {
   from { opacity: 0; transform: translateY(-3px); }
@@ -127,7 +127,7 @@
   transition: color var(--transition);
 }
 
-.filePathSegment:hover { color: var(--accent); }
+.filePathSegment:hover { color: var(--accentText); }
 
 .filePathSegmentText {
   padding: 0 2px;
@@ -173,7 +173,7 @@
   text-decoration-color: var(--text-muted);
 }
 
-.folderSegment:hover { color: var(--accent); }
+.folderSegment:hover { color: var(--accentText); }
 
 .folderSep {
   color: var(--text-faint);
@@ -496,7 +496,7 @@
 
 .trimPlayBtn:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .trimPlayBtn:disabled {
@@ -625,7 +625,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .fileMenuLabel {
@@ -791,7 +791,7 @@
 }
 
 .audioIcon {
-  color: var(--accent);
+  color: var(--accentText);
   opacity: 0.7;
 }
 

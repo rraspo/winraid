@@ -22,7 +22,14 @@
 [data-theme="dark"] {
   /* Derived from --accent, so they must recompute in every theme scope. */
   --accentHi:  color-mix(in oklab, var(--accent) 55%, white);
-  --btnAccent: color-mix(in oklab, var(--accent) 85%, white);
+  /* The button fill is the accent itself: App picks --onAccent against
+     --accent, so a lightened fill would put a white label under 4.5:1. */
+  --btnAccent: var(--accent);
+  /* Accent for text and glyphs. --accent is a fill and sits near 3:1 on
+     dark surfaces, so text keeps the hue but lifts lightness to a floor;
+     the chroma cap keeps the lifted color inside sRGB so it is not
+     clipped back down. Clears 4.5:1 on every surface for every accent. */
+  --accentText: oklch(from var(--accent) max(l, 0.76) min(c, 0.15) h);
 
   /* Surfaces */
   --bg:         #202020;
@@ -66,6 +73,9 @@
 [data-theme="light"] {
   --accentHi:  var(--accent);
   --btnAccent: var(--accent);
+  /* Light text needs a lightness ceiling instead: gold or sky accents are
+     unreadable on a light page at their own lightness. */
+  --accentText: oklch(from var(--accent) min(l, 0.47) min(c, 0.15) h);
 
   --bg:       #F3F3F3;
   --card:     #FFFFFF;
@@ -82,9 +92,11 @@
   --hover:  rgba(0, 0, 0, 0.04);
   --active: rgba(0, 0, 0, 0.07);
 
-  --ok:   #0F7B0F;
-  --warn: #9D5D00;
-  --err:  #C42B1C;
+  /* Dark enough to stay at 4.5:1 on an 18% tint of themselves (badges, log
+     levels, the danger confirm), not just on a plain surface. */
+  --ok:   #006900;
+  --warn: #8A4C00;
+  --err:  #B21204;
 
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }

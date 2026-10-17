@@ -19,7 +19,8 @@ import {
 //   - DEFAULT_APPEARANCE: { theme: 'system', accent: 'system' }
 //   - isAccentChoice(value): 'system' or a palette id
 //   - resolveAccentHex(choice, systemHex): the hex the app should apply
-//   - onAccentTextColor(hex): '#FFFFFF' on dark accents, '#1B1B1B' on light
+//   - onAccentTextColor(hex): '#FFFFFF' or '#1B1B1B', whichever contrasts
+//     more with the accent
 //   - resolveTheme(choice, systemPrefersDark): 'dark' | 'light'
 //   - normalizeAppearance(raw): fills defaults, drops unknown values
 
@@ -85,6 +86,14 @@ describe('onAccentTextColor', () => {
     expect(onAccentTextColor('#0078D4')).toBe('#FFFFFF')
     expect(onAccentTextColor('#FCE100')).toBe('#1B1B1B')
     expect(onAccentTextColor('#FFFFFF')).toBe('#1B1B1B')
+  })
+
+  it('picks whichever label contrasts more, not a fixed 50% luminance cut', () => {
+    // Mid-luminance system accents (sky blue, light teal) read far better
+    // with dark text, though their luminance sits below 0.5.
+    expect(onAccentTextColor('#4CC2FF')).toBe('#1B1B1B')
+    expect(onAccentTextColor('#00B7C3')).toBe('#1B1B1B')
+    expect(onAccentTextColor('#744DA9')).toBe('#FFFFFF')
   })
 })
 

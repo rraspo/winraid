@@ -65,7 +65,7 @@
 .tabBtn:hover { color: var(--text); }
 
 .tabBtnActive {
-  color: var(--accent);
+  color: var(--accentText);
   background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
@@ -125,7 +125,7 @@
 
 .gridItemActive {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 /* Emoji tab */

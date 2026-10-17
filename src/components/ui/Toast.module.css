@@ -71,4 +71,4 @@
 .success .icon { color: var(--ok); }
 .error   .icon { color: var(--err); }
 .warning .icon { color: var(--warn); }
-.info    .icon { color: var(--accentHi); }
+.info    .icon { color: var(--accentText); }

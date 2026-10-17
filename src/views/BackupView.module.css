@@ -316,7 +316,7 @@
 }
 
 .connNoticeIcon {
-  color: var(--accent);
+  color: var(--accentText);
   flex-shrink: 0;
 }
 
@@ -381,7 +381,7 @@
   white-space: nowrap;
 }
 
-.req { color: var(--accent); }
+.req { color: var(--accentText); }
 
 .hintTrigger {
   display: inline-flex;

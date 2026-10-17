@@ -111,10 +111,10 @@
 /* Once pinned the ribbon owns the corner, so the control drops below it. */
 .pinBtnOn {
   top: 30px;
-  color: var(--accent);
+  color: var(--accentText);
 }
 
-.pinBtnOn:hover { color: var(--accent); }
+.pinBtnOn:hover { color: var(--accentText); }
 
 .cardTop {
   display: flex;

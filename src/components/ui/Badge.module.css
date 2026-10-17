@@ -17,7 +17,7 @@
 }
 
 .TRANSFERRING {
-  color: var(--accent);
+  color: var(--accentText);
   background-color: color-mix(in oklab, var(--accent) 12%, transparent);
 }
 

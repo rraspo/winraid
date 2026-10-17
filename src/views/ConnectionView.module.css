@@ -112,7 +112,7 @@
   color: var(--text2);
 }
 
-.req { color: var(--accent); }
+.req { color: var(--accentText); }
 
 .hintIcon {
   color: var(--text2);
@@ -721,7 +721,7 @@
 .extOptionOn {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .extCustomRow {
@@ -731,7 +731,7 @@
 
 .extAddBtn {
   font-size: 12px;
-  color: var(--accent);
+  color: var(--accentText);
   padding: 4px 8px;
   border-radius: 4px;
   width: 100%;

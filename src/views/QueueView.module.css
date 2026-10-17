@@ -53,7 +53,7 @@
 .chipActive {
   background: var(--active);
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .chipActive:hover {
@@ -249,7 +249,7 @@
 }
 
 .retryBtn:hover {
-  color: var(--accent);
+  color: var(--accentText);
   background: var(--hover);
 }
 

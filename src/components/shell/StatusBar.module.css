@@ -35,7 +35,7 @@
 
 .transferLink {
   white-space: nowrap;
-  color: var(--accentHi);
+  color: var(--accentText);
   background: none;
   border: none;
   padding: 0;
@@ -55,7 +55,7 @@
   padding: 2px 10px;
   border-radius: 10px;
   border: 1px solid var(--stroke);
-  color: var(--accentHi);
+  color: var(--accentText);
   font-size: 11px;
   white-space: nowrap;
   transition: background-color var(--transition);

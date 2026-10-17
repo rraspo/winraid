@@ -229,7 +229,7 @@
   transition: color var(--transition), border-color var(--transition);
 }
 
-.modalSecondary:hover { color: var(--accent); border-color: var(--accent); }
+.modalSecondary:hover { color: var(--accentText); border-color: var(--accent); }
 
 .modalConfirm {
   padding: 0 16px;
@@ -352,7 +352,7 @@
   overflow-wrap: anywhere;
 }
 
-.propValueBtn:hover { color: var(--accent); }
+.propValueBtn:hover { color: var(--accentText); }
 
 .propNote {
   font-size: 12.5px;
@@ -373,7 +373,7 @@
   transition: color var(--transition), border-color var(--transition);
 }
 
-.propScanBtn:hover { color: var(--accent); border-color: var(--accent); }
+.propScanBtn:hover { color: var(--accentText); border-color: var(--accent); }
 
 .propError { color: var(--err); }
 
