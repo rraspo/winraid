@@ -23,8 +23,9 @@ export function pdfjsAssets() {
 
     generateBundle() {
       for (const dir of PDFJS_ASSET_DIRS) {
+        // LICENSE_* files go along: the wasm decoders are third-party code
+        // the app redistributes.
         for (const name of readdirSync(join(root, dir))) {
-          if (name.startsWith('LICENSE')) continue
           this.emitFile({
             type: 'asset',
             fileName: `pdfjs/${dir}/${name}`,

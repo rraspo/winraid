@@ -19,6 +19,15 @@ describe('pdfjsAssets build plugin', () => {
     expect(PDFJS_ASSET_DIRS).toEqual(['standard_fonts', 'cmaps', 'wasm', 'iccs'])
   })
 
+  it('ships the third-party licenses next to the binaries they cover', () => {
+    const emitted = []
+    pdfjsAssets().generateBundle.call({ emitFile: (file) => emitted.push(file) })
+    const names = emitted.map((file) => file.fileName)
+    expect(names).toContain('pdfjs/wasm/LICENSE_OPENJPEG')
+    expect(names).toContain('pdfjs/wasm/LICENSE_JBIG2')
+    expect(names).toContain('pdfjs/wasm/LICENSE_QCMS')
+  })
+
   it('answers dev-server requests for /pdfjs/ files and passes everything else on', () => {
     const plugin = pdfjsAssets()
     let middleware
