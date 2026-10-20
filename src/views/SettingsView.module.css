@@ -306,6 +306,7 @@
 .updateOk    { color: var(--ok); }
 .updateReady { color: var(--accentText); font-weight: var(--font-weight-medium); }
 .updateError { color: var(--err); }
+.watcherError { color: var(--err); }
 
 @keyframes spin {
   from { transform: rotate(0deg); }
