@@ -96,6 +96,13 @@ textarea {
   -webkit-appearance: none;
 }
 
+/* Chromium's default placeholder gray is not themed and falls under AA on
+   dark surfaces; the muted token clears it on every surface in both. */
+::placeholder {
+  color: var(--text3);
+  opacity: 1;
+}
+
 /* =============================================================================
    Focus ring
    ============================================================================= */

@@ -62,11 +62,10 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  color: var(--text2);
-  opacity: 0.55;
-  transition: opacity var(--transition);
+  color: var(--text3);
+  transition: color var(--transition);
 }
-.close:hover { opacity: 1; }
+.close:hover { color: var(--text2); }
 
 .success .icon { color: var(--ok); }
 .error   .icon { color: var(--err); }

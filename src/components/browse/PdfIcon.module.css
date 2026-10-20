@@ -5,8 +5,6 @@
   color: var(--text-faint);
 }
 
-.large { opacity: 0.6; }
-
 /* The tag straddles the glyph's lower edge. */
 .badge {
   position: absolute;
