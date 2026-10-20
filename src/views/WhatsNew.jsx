@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useAppearance } from '../hooks/useAppearance'
 import {
   Palette, PanelsTopLeft, ClipboardPaste, Info, Trash2, Pin, Eye, Clapperboard,
 } from 'lucide-react'
@@ -52,6 +53,7 @@ const HIGHLIGHTS = [
 ]
 
 export default function WhatsNew() {
+  useAppearance()
   const [version, setVersion] = useState('')
   const [updateReady, setUpdateReady] = useState(false)
 
