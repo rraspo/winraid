@@ -34,6 +34,7 @@ import { backupWalkRemote, remoteWalkCreate, mediaWalk } from './sftp-helpers.js
 import { moveRemotePath } from './remote-move.js'
 import { copyRemotePath } from './remote-copy.js'
 import { createClipboardStore, shouldClearClipboardForConnectionsChange } from './clipboard.js'
+import { createDownloadManager } from './downloads.js'
 import { listTrash, restoreFromTrash, purgeTrash } from './remote-trash.js'
 import { deleteRemote } from './remote-delete.js'
 import { checkTrashFolder } from './trash-folder-check.js'
@@ -1594,48 +1595,24 @@ function registerIPC() {
     }
   })
 
-  // -- Remote browser: download file or folder to local path ---------------
-  ipcMain.handle('remote:download', async (_e, connectionId, remotePath, localPath, isDir) => {
+  // -- Remote browser: downloads run as background jobs (see downloads.js) --
+  // start answers with the job id at once; the renderer follows the job
+  // through downloads:update and can cancel it.
+  ipcMain.handle('downloads:start', async (_e, connectionId, items, destination) => {
     if (typeof connectionId !== 'string' || !connectionId.trim()) return { ok: false, error: 'Invalid connectionId' }
-    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
-    try {
-      const sftp = await _poolGet(connectionId)
-      if (!sftp) return { ok: false, error: 'Connection unavailable' }
-      _poolTouch(connectionId)
-      if (isDir) {
-        const files = await backupWalkRemote(sftp, remotePath, basename(remotePath))
-        const total = files.length
-        sendToRenderer('download:progress', { connectionId, name: basename(remotePath), filesProcessed: 0, totalFiles: total, bytesTransferred: 0, totalBytes: 0 })
-        for (let i = 0; i < files.length; i++) {
-          const { remotePath: rp, relPath } = files[i]
-          sendToRenderer('download:progress', { connectionId, name: basename(remotePath), filesProcessed: i, totalFiles: total, bytesTransferred: 0, totalBytes: 0 })
-          await backupDownloadFile(sftp, rp, join(localPath, relPath))
-        }
-        log('info', `Download [${await _connLabel(connectionId)}]: ${remotePath} -> ${localPath} (${files.length} files)`)
-        emitActivity({ type: 'download', connectionId, payload: { name: basename(remotePath), localDir: join(localPath, basename(remotePath)) } })
-        return { ok: true, count: files.length }
-      } else {
-        const name = basename(remotePath)
-        await mkdirAsync(dirname(localPath), { recursive: true })
-        await new Promise((resolve, reject) => {
-          sftp.fastGet(remotePath, localPath, {
-            concurrency: 4,
-            chunkSize: 256 * 1024,
-            step: (bytesTransferred, _chunk, totalBytes) => {
-              sendToRenderer('download:progress', { connectionId, name, filesProcessed: 0, totalFiles: 1, bytesTransferred, totalBytes })
-            },
-          }, (err) => err ? reject(err) : resolve())
-        })
-        log('info', `Download [${await _connLabel(connectionId)}]: ${remotePath} -> ${localPath}`)
-        emitActivity({ type: 'download', connectionId, payload: { name, localDir: localPath } })
-        return { ok: true, count: 1 }
-      }
-    } catch (err) {
-      log('error', `Download failed [${await _connLabel(connectionId)}]: ${err.message}`)
-      emitActivity({ type: 'download', connectionId, level: 'error', error: err.message })
-      return { ok: false, error: err.message }
+    if (!Array.isArray(items) || items.length === 0) return { ok: false, error: 'Nothing to download' }
+    for (const item of items) {
+      if (!validateRemotePath(item?.remotePath)) return { ok: false, error: 'Invalid remote path' }
+      if (typeof item.localPath !== 'string' || !item.localPath) return { ok: false, error: 'Invalid local path' }
     }
+    if (typeof destination !== 'string' || !destination) return { ok: false, error: 'Invalid destination' }
+    const id = downloads.start(connectionId, items.map(({ remotePath, localPath, isDir }) => ({ remotePath, localPath, isDir: Boolean(isDir) })), destination)
+    return { ok: true, id }
   })
+
+  ipcMain.handle('downloads:cancel', (_e, id) => ({ ok: downloads.cancel(id) }))
+  ipcMain.handle('downloads:dismiss', (_e, id) => ({ ok: downloads.dismiss(id) }))
+  ipcMain.handle('downloads:list', () => downloads.list())
 
   // -- Remote browser: read file content ------------------------------------
   ipcMain.handle('remote:read-file', async (_e, connectionId, remotePath) => {
@@ -3367,6 +3344,24 @@ const SFTP_POOL_TTL = 30_000  // 30 s idle before closing
 // The single cut/copy clipboard, shared across every tab and connection —
 // see clipboard.js for the pointer-not-bytes design.
 const clipboardStore = createClipboardStore()
+
+const downloads = createDownloadManager({
+  getSftp: _poolGet,
+  touch: _poolTouch,
+  onUpdate: (snapshot) => sendToRenderer('downloads:update', snapshot),
+  onFinish: async ({ connectionId, label, destination, state, filesDone, error }) => {
+    const connectionLabel = await _connLabel(connectionId)
+    if (state === 'done') {
+      log('info', `Download [${connectionLabel}]: ${label} -> ${destination} (${filesDone} file(s))`)
+      emitActivity({ type: 'download', connectionId, payload: { name: label, localDir: destination } })
+    } else if (state === 'failed') {
+      log('error', `Download failed [${connectionLabel}]: ${label}: ${error}`)
+      emitActivity({ type: 'download', connectionId, level: 'error', error })
+    } else {
+      log('info', `Download canceled [${connectionLabel}]: ${label} after ${filesDone} file(s)`)
+    }
+  },
+})
 
 function _poolTouch(connId) {
   const entry = _sftpPool.get(connId)

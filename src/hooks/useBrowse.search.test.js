@@ -37,7 +37,6 @@ beforeEach(() => {
     remote: {
       list: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
       readFile: vi.fn().mockResolvedValue({ ok: false, content: '' }),
-      onDownloadProgress: vi.fn().mockReturnValue(() => {}),
     },
     watcher: { list: vi.fn().mockResolvedValue({}) },
     queue: {

@@ -34,4 +34,5 @@ export const SCREEN_NAMES = [
   'entry-context-menu',
   'properties-dialog',
   'browse-options-popover',
+  'downloads',
 ]

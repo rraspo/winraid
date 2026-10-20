@@ -35,11 +35,8 @@ const DOWNLOAD_PATH = 'C:\\Users\\test\\Downloads'
 
 beforeEach(() => {
   // createWinraidMock only spreads nested overrides (config/remote/etc.);
-  // top-level IPC like selectDownloadPath is added on the returned object.
-  // The mock has no remote.download, so the Download test's override adds
-  // it here. The right-click → Download flow needs both mocks so
-  // handleDownload proceeds past its localPath early-return and records
-  // each call.
+  // top-level IPC like selectDownloadPath is added on the returned object,
+  // so the right-click → Download flow gets past its folder picker.
   window.winraid = {
     ...createWinraidMock({
       config: {
@@ -51,7 +48,6 @@ beforeEach(() => {
       },
       remote: {
         list: vi.fn().mockResolvedValue({ ok: true, entries: ENTRIES }),
-        download: vi.fn().mockResolvedValue({ ok: true, count: 1 }),
       },
     }),
     selectDownloadPath: vi.fn().mockResolvedValue(DOWNLOAD_PATH),
@@ -148,12 +144,10 @@ describe('Right-click on the list view — respects the current selection', () =
     await rightClickOn(user, 'Documents')
     await user.click(screen.getByText('Download'))
 
-    // The user-visible outcome is a download kicked off for each
-    // selected entry — the implementer can choose between N single
-    // downloads or a new bulk IPC. The contract only requires every
-    // selected entry's remote path to reach the download call.
+    // The user-visible outcome is a download kicked off for each selected
+    // entry: every selected entry's remote path reaches a started job.
     await waitFor(() => {
-      const paths = window.winraid.remote.download.mock.calls.map((c) => c[1])
+      const paths = window.winraid.downloads.start.mock.calls.flatMap((c) => c[1].map((item) => item.remotePath))
       expect(paths).toContain('/mnt/user/data/Documents')
       expect(paths).toContain('/mnt/user/data/Photos')
     })

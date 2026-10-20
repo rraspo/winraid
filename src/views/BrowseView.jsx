@@ -66,7 +66,7 @@ export default function BrowseView({
     connections, selectedId, path, entries, loading, error,
     confirmTarget, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
-    dragSource, dragPos, dragSourcePaths, moveInFlight, downloadProgress,
+    dragSource, dragPos, dragSourcePaths, moveInFlight,
     selected, bulkAction, bulkMoveDest, bulkProgress,
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
@@ -549,18 +549,6 @@ export default function BrowseView({
         <div className={styles.moveOverlay} data-theme="dark">
           <Loader size={24} className={styles.spinning} />
           <span className={styles.moveOverlayText}>Moving {moveInFlight}</span>
-        </div>
-      )}
-
-      {downloadProgress && (
-        <div className={styles.moveOverlay} data-theme="dark">
-          <Loader size={24} className={styles.spinning} />
-          <span className={styles.moveOverlayText}>
-            {downloadProgress.totalFiles > 1
-              ? `Downloading ${downloadProgress.name}... ${downloadProgress.filesProcessed} / ${downloadProgress.totalFiles} files`
-              : `Downloading ${downloadProgress.name}...${downloadProgress.totalBytes > 0 ? ` ${Math.round((downloadProgress.bytesTransferred / downloadProgress.totalBytes) * 100)}%` : ''}`
-            }
-          </span>
         </div>
       )}
 

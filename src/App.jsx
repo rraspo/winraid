@@ -15,6 +15,7 @@ import LogView from './views/LogView'
 import EditorView from './components/EditorView'
 import PlayOverlay from './components/PlayOverlay'
 import ToastHost from './components/ui/ToastHost'
+import DownloadsPanel from './components/DownloadsPanel'
 import { useNavHistory } from './hooks/useNavHistory'
 import * as toast from './services/toast'
 import { useAppearance } from './hooks/useAppearance'
@@ -923,6 +924,7 @@ export default function App() {
         connections={connections}
         onNavigate={navigate}
       />
+      <DownloadsPanel />
       <ToastHost />
     </div>
   )

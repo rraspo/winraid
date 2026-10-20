@@ -21,7 +21,7 @@ beforeEach(() => {
   remoteFS.list.mockResolvedValue([])
   window.winraid = {
     config: { get: vi.fn().mockImplementation((k) => k === 'connections' ? Promise.resolve(CONNECTIONS) : Promise.resolve(null)), set: vi.fn() },
-    remote: { list: vi.fn().mockResolvedValue({ ok: true, entries: [] }), readFile: vi.fn().mockResolvedValue({ ok: false }), onDownloadProgress: vi.fn().mockReturnValue(() => {}) },
+    remote: { list: vi.fn().mockResolvedValue({ ok: true, entries: [] }), readFile: vi.fn().mockResolvedValue({ ok: false }) },
     watcher: { list: vi.fn().mockResolvedValue({}) },
     queue: { list: vi.fn().mockResolvedValue([]), onUpdated: vi.fn((cb) => { queueCb = cb; return () => {} }), onProgress: vi.fn().mockReturnValue(() => {}) },
   }

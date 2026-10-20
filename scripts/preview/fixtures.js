@@ -236,6 +236,26 @@ export const BACKUP_BY_CONNECTION = {
 
 export const PLAY_DEFAULTS = { recursive: true, shuffle: true }
 
+// One download job per end of the panel's range: mid-transfer, finished,
+// and failed.
+export const DOWNLOAD_JOBS = [
+  {
+    id: 'dl-running', connectionId: 'atlas', label: 'photos', destination: 'C:\\Users\\user\\Downloads\\photos',
+    state: 'running', filesDone: 37, filesTotal: 124, bytesDone: 412_000_000, bytesTotal: 1_380_000_000,
+    currentFile: 'IMG_0412.jpg', error: null,
+  },
+  {
+    id: 'dl-done', connectionId: 'atlas', label: 'manual.pdf', destination: 'C:\\Users\\user\\Downloads\\manual.pdf',
+    state: 'done', filesDone: 1, filesTotal: 1, bytesDone: 911_974, bytesTotal: 911_974,
+    currentFile: null, error: null,
+  },
+  {
+    id: 'dl-failed', connectionId: 'atlas', label: 'family-trip.mp4', destination: 'C:\\Users\\user\\Downloads\\family-trip.mp4',
+    state: 'failed', filesDone: 0, filesTotal: 1, bytesDone: 98_000_000, bytesTotal: 249_960_000,
+    currentFile: null, error: 'Connection lost',
+  },
+]
+
 export const APPEARANCE = { theme: 'dark', accent: 'system' }
 
 export const SYSTEM_ACCENT_COLOR = '#0078D4'

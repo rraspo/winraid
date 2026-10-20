@@ -18,7 +18,7 @@
 import {
   CONFIG, WATCHER_STATUS, QUEUE_JOBS, QUEUE_STATS,
   ACTIVITY_ENTRIES, LOG_ENTRIES, REMOTE_ENTRIES, DISK_USAGE,
-  SIZE_TREES, SIZE_META, MEDIA_FILES, SYSTEM_ACCENT_COLOR,
+  SIZE_TREES, SIZE_META, MEDIA_FILES, SYSTEM_ACCENT_COLOR, DOWNLOAD_JOBS,
 } from './fixtures.js'
 import { SCREEN_NAMES } from './screens.js'
 import { CONFIG_SET_ALLOWLIST } from '../../electron/config-allowlist.js'
@@ -73,7 +73,7 @@ const channels = {
   activityEntry: createChannel(),
   backupProgress: createChannel(),
   updateStatus: createChannel(),
-  downloadProgress: createChannel(),
+  downloadsUpdate: createChannel(),
   sizeProgress: createChannel(),
   sizeLevel: createChannel(),
   sizeDone: createChannel(),
@@ -214,6 +214,16 @@ window.winraid = {
     reveal: () => Promise.resolve({ ok: true }),
   },
 
+  // The downloads screen shows the panel with one job in each state; every
+  // other screen starts with none.
+  downloads: {
+    start: () => Promise.resolve({ ok: true, id: 'preview-download' }),
+    cancel: () => Promise.resolve({ ok: true }),
+    dismiss: () => Promise.resolve({ ok: true }),
+    list: () => Promise.resolve(new URLSearchParams(location.search).get('screen') === 'downloads' ? clone(DOWNLOAD_JOBS) : []),
+    onUpdate: (callback) => channels.downloadsUpdate.subscribe(callback),
+  },
+
   remote: {
     list: (connectionId, path) => {
       const entries = REMOTE_ENTRIES[`${connectionId}:${path}`] ?? []
@@ -221,7 +231,6 @@ window.winraid = {
     },
     tree: () => Promise.resolve({ ok: true, dirMap: {} }),
     checkout: () => Promise.resolve({ ok: true, created: [] }),
-    download: () => Promise.resolve({ ok: true }),
     readFile: () => Promise.resolve({ ok: true, content: '' }),
     writeFile: () => Promise.resolve({ ok: true }),
     writeFileBinary: () => Promise.resolve({ ok: true }),
@@ -238,7 +247,6 @@ window.winraid = {
     mkdir: () => Promise.resolve({ ok: true }),
     verifyClean: () => Promise.resolve({ ok: true, total: 0, confirmed: [], notFound: [] }),
     verifyDelete: () => Promise.resolve({ ok: true, deleted: 0, errors: [] }),
-    onDownloadProgress: (callback) => channels.downloadProgress.subscribe(callback),
 
     diskUsage: (connectionId) => Promise.resolve(clone(DISK_USAGE[connectionId] ?? { ok: false, error: 'Not supported' })),
 
@@ -528,6 +536,11 @@ const SCREEN_STEPS = {
   ],
   settings: [
     clickNav('Settings'),
+  ],
+  // The downloads panel over the browser, fed by DOWNLOAD_JOBS (see the
+  // downloads stub above).
+  downloads: [
+    clickNav('Browse'),
   ],
   // The tray flyout is not a nav destination inside App — it is a separate
   // #tray hash route (see src/main.jsx), switched to below before main.jsx
