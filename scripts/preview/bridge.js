@@ -56,6 +56,10 @@ function createChannel() {
 }
 
 const configStore = clone(CONFIG)
+// ?theme=light|dark overrides the fixture's theme, so a screen can be checked
+// in both without a second fixture set.
+const requestedTheme = new URLSearchParams(location.search).get('theme')
+if (requestedTheme === 'light' || requestedTheme === 'dark') configStore.appearance.theme = requestedTheme
 const queueJobs = clone(QUEUE_JOBS)
 // { mode, connectionId, paths } | null — the harness's stand-in for the main
 // process's single clipboard buffer (electron/clipboard.js).
