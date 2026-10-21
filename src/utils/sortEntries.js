@@ -5,6 +5,8 @@ const COMPARATORS = {
   nameDesc: (a, b) => compareName(b, a),
   recent:   (a, b) => (b.modified ?? 0) - (a.modified ?? 0) || compareName(a, b),
   oldest:   (a, b) => (a.modified ?? 0) - (b.modified ?? 0) || compareName(a, b),
+  sizeDesc: (a, b) => (b.size ?? 0) - (a.size ?? 0) || compareName(a, b),
+  sizeAsc:  (a, b) => (a.size ?? 0) - (b.size ?? 0) || compareName(a, b),
 }
 
 export function sortEntries(entries, mode, dirsFirst) {

@@ -65,6 +65,50 @@ describe('sortEntries', () => {
     })
   })
 
+  describe('sizeDesc (dirs-first)', () => {
+    it('sorts dirs by name when sizes tie, then files largest-first', () => {
+      const result = sortEntries(ENTRIES, 'sizeDesc', true)
+      expect(result.map((e) => e.name)).toEqual(['docs', 'photos', 'apple.txt', 'banana.txt'])
+    })
+  })
+
+  describe('sizeDesc (no dirs-first)', () => {
+    it('interleaves all entries largest-first', () => {
+      const result = sortEntries(ENTRIES, 'sizeDesc', false)
+      expect(result.map((e) => e.name)).toEqual(['apple.txt', 'banana.txt', 'docs', 'photos'])
+    })
+
+    it('puts the larger file first even when its name sorts later', () => {
+      const entries = [
+        { name: 'a.txt', type: 'file', size: 1 },
+        { name: 'b.txt', type: 'file', size: 9 },
+      ]
+      expect(sortEntries(entries, 'sizeDesc', false).map((e) => e.name)).toEqual(['b.txt', 'a.txt'])
+    })
+  })
+
+  describe('sizeAsc (dirs-first)', () => {
+    it('sorts dirs by name when sizes tie, then files smallest-first', () => {
+      const result = sortEntries(ENTRIES, 'sizeAsc', true)
+      expect(result.map((e) => e.name)).toEqual(['docs', 'photos', 'banana.txt', 'apple.txt'])
+    })
+  })
+
+  describe('sizeAsc (no dirs-first)', () => {
+    it('interleaves all entries smallest-first', () => {
+      const result = sortEntries(ENTRIES, 'sizeAsc', false)
+      expect(result.map((e) => e.name)).toEqual(['docs', 'photos', 'banana.txt', 'apple.txt'])
+    })
+
+    it('treats a missing size as zero', () => {
+      const entries = [
+        { name: 'b.txt', type: 'file', size: 5 },
+        { name: 'a.txt', type: 'file' },
+      ]
+      expect(sortEntries(entries, 'sizeAsc', false).map((e) => e.name)).toEqual(['a.txt', 'b.txt'])
+    })
+  })
+
   describe('edge cases', () => {
     it('returns empty array for empty input', () => {
       expect(sortEntries([], 'nameAsc', true)).toEqual([])

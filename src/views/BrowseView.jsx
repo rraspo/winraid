@@ -301,6 +301,8 @@ export default function BrowseView({
     { value: 'nameDesc', label: 'Name Z-A' },
     { value: 'recent',   label: 'Recent' },
     { value: 'oldest',   label: 'Oldest' },
+    { value: 'sizeDesc', label: 'Largest' },
+    { value: 'sizeAsc',  label: 'Smallest' },
   ]
 
   // Ctrl+V / Cmd+V to paste clipboard content into the current directory.
