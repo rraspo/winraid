@@ -126,6 +126,14 @@ export default function BrowseView({
     onOpenTab?.(selectedId, 'browse', { path: entryPath, newTab: true, background: true })
   }
 
+  // Breadcrumbs are folders too: a middle click opens one in a background
+  // tab, the current folder included, rather than navigating or copying.
+  const handleMiddleClickCrumb = (e, crumbPath) => {
+    if (e.button !== 1) return
+    e.preventDefault()
+    handleMiddleClickFolder(crumbPath)
+  }
+
   // Properties for a single entry — the row's own "..." menu (always) and
   // right-click when it targets just one entry (nothing else selected, or a
   // one-item selection).
@@ -460,6 +468,7 @@ export default function BrowseView({
               role="menuitem"
               className={styles.crumbMenuItem}
               onClick={() => { setCrumbMenuOpen(false); navigate(c.path) }}
+              onMouseDown={(e) => handleMiddleClickCrumb(e, c.path)}
               onDragOver={(e) => handleDragOverFolder(e, c.path)}
               onDragLeave={handleDragLeaveFolder}
               onDrop={(e) => { setCrumbMenuOpen(false); handleDrop(e, c.path) }}
@@ -664,6 +673,7 @@ export default function BrowseView({
                     ].join(' ')}
                     title={c.path === path ? 'Copy full path' : undefined}
                     onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
+                    onMouseDown={(e) => handleMiddleClickCrumb(e, c.path)}
                     onDragOver={(e) => handleDragOverFolder(e, c.path)}
                     onDragLeave={handleDragLeaveFolder}
                     onDrop={(e) => handleDrop(e, c.path)}
