@@ -54,10 +54,11 @@ External users are welcome. Issues and pull requests get triaged, and releases s
 - **Host key pinning** — SSH host keys are trusted on first use and checked on every connection after that
 - **Pause and resume** — stop all watchers or a single one from the tray or the app; queued transfers still finish, and a watcher you stopped stays stopped after a restart
 
-### Transfer queue
+### Activity
 
-- Live view of pending, active, completed, and failed jobs with per-connection filtering
-- Retry, cancel, remove, clear done, clear stale
+- Live view of active, pending, and failed transfers with per-connection filtering
+- Retry, cancel, remove, clear stale
+- **History** of every upload, move, copy, rename, delete, and download, kept across restarts until you clear it — click an entry to open where it landed, or the log line that explains a failure
 - Lifetime completed counter and NAS disk usage on the dashboard
 
 ### Remote browser

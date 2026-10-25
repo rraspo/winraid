@@ -41,9 +41,9 @@ afterEach(() => {
 // Tests
 // ---------------------------------------------------------------------------
 describe('QueueView', () => {
-  it('renders empty state when no jobs exist', async () => {
+  it('renders empty state when there are no jobs and no history', async () => {
     render(<QueueView connections={TEST_CONNECTIONS} />)
-    expect(await screen.findByText('No transfers yet')).toBeInTheDocument()
+    expect(await screen.findByText('No activity yet')).toBeInTheDocument()
   })
 
   it('places a pending job under the Waiting group with its connection and size', async () => {
@@ -60,7 +60,7 @@ describe('QueueView', () => {
     expect(waiting.textContent).toContain('1.0 MB')
   })
 
-  it('renders correct status badge for each status', async () => {
+  it('renders correct status badge for each live status, and no row for finished jobs', async () => {
     window.winraid.queue.list.mockResolvedValue([
       makeJob({ id: 'j1', filename: 'pending.mp4', status: 'PENDING' }),
       makeJob({ id: 'j2', filename: 'done.mp4', status: 'DONE' }),
@@ -70,8 +70,9 @@ describe('QueueView', () => {
     render(<QueueView connections={TEST_CONNECTIONS} />)
 
     expect(await screen.findByText('Pending')).toBeInTheDocument()
-    expect(screen.getByText('Done')).toBeInTheDocument()
     expect(screen.getByText('Error')).toBeInTheDocument()
+    // Finished uploads are told by the history, not by the job list.
+    expect(screen.queryByText('done.mp4')).toBeNull()
   })
 
   it('shows the full nested destination for drop-uploaded folder children', async () => {
@@ -124,7 +125,7 @@ describe('QueueView', () => {
     ])
 
     render(<QueueView connections={TEST_CONNECTIONS} />)
-    await screen.findByText('good.mp4')
+    await screen.findByText('bad.mp4')
 
     // Retry and Remove buttons should exist (for error job)
     const retryBtns = screen.getAllByRole('button').filter(
@@ -146,17 +147,6 @@ describe('QueueView', () => {
       (btn) => btn.className.includes('cancel')
     )
     expect(cancelBtns.length).toBe(2)
-  })
-
-  it('shows "Clear N done" button when DONE jobs exist', async () => {
-    window.winraid.queue.list.mockResolvedValue([
-      makeJob({ id: 'j1', status: 'DONE' }),
-      makeJob({ id: 'j2', status: 'DONE' }),
-      makeJob({ id: 'j3', status: 'PENDING' }),
-    ])
-
-    render(<QueueView connections={TEST_CONNECTIONS} />)
-    expect(await screen.findByText('Clear 2 done')).toBeInTheDocument()
   })
 
   it('displays file size when available', async () => {
@@ -227,7 +217,7 @@ describe('QueueView converges on store state', () => {
 
     act(() => { updatedCb({ type: 'cleared' }) })
 
-    expect(await screen.findByText('No transfers yet')).toBeInTheDocument()
+    expect(await screen.findByText('No activity yet')).toBeInTheDocument()
   })
 
   it('a progress tick cannot resurrect a terminal ERROR status', async () => {
@@ -251,14 +241,15 @@ describe('QueueView converges on store state', () => {
     window.winraid.queue.onProgress = vi.fn((cb) => { progressCb = cb; return () => {} })
     window.winraid.queue.list = vi.fn().mockResolvedValue([
       makeJob({ id: 'j1', filename: 'finished.mp4', status: 'DONE' }),
+      makeJob({ id: 'j2', filename: 'waiting.mp4', status: 'PENDING' }),
     ])
 
     render(<QueueView connections={TEST_CONNECTIONS} />)
-    expect(await screen.findByText('Done')).toBeInTheDocument()
+    expect(await screen.findByText('waiting.mp4')).toBeInTheDocument()
 
     act(() => { progressCb({ jobId: 'j1', percent: 90 }) })
 
-    expect(screen.getByText('Done')).toBeInTheDocument()
+    expect(screen.queryByText('finished.mp4')).toBeNull()
     expect(screen.queryByText('90%')).toBeNull()
   })
 })

@@ -25,7 +25,7 @@ import { createHash, randomUUID } from 'crypto'
 import { homedir, userInfo, tmpdir } from 'os'
 import { initLogger, getLogPath, clearLog, log } from './logger.js'
 import { formatRendererLog } from './renderer-log.js'
-import { initActivity, pushActivity, tailActivity } from './activity.js'
+import { initActivity, pushActivity, tailActivity, clearActivity, flushActivity } from './activity.js'
 import { describeActivity, failureTitle } from './activity-format.js'
 import { listCommand, parseListOutput, readdirEntries } from './remote-list.js'
 import { entryInfoCommand, readlinkCommand, parseEntryInfoOutput } from './remote-entry-info.js'
@@ -428,7 +428,7 @@ function createWindow() {
 
   initIpcBridge(mainWindow)
   initLogger(sendToRenderer)
-  initActivity(sendToRenderer)
+  initActivity(sendToRenderer, { filePath: join(app.getPath('userData'), 'activity.json') })
 
   // Minimize to tray on close, unless a real quit is in progress (tray
   // flyout's Quit, or any other app.quit() path that sets isQuitting first).
@@ -1179,6 +1179,11 @@ function registerIPC() {
   // -- Activity feed ---------------------------------------------------------
   ipcMain.handle('activity:tail', (_e, n = 50) => tailActivity(Number(n) || 50))
 
+  ipcMain.handle('activity:clear', () => {
+    clearActivity()
+    return { ok: true }
+  })
+
   ipcMain.handle('activity:reveal', (_e, localPath) => {
     if (typeof localPath !== 'string' || !localPath.trim()) return { ok: false }
     shell.showItemInFolder(localPath)
@@ -1698,9 +1703,7 @@ function registerIPC() {
         if (srcDir === dstDir) {
           emitActivity({ type: 'rename', connectionId, payload: { oldName: srcPath.split('/').pop(), newName: name, dir: dstDir } })
         } else {
-          let isDir = false
-          try { isDir = await new Promise((res) => sftp.stat(dstPath, (e, st) => res(!e && st.isDirectory()))) } catch { /* default file */ }
-          emitActivity({ type: 'move', connectionId, payload: { name, srcDir, dstDir, isDir } })
+          emitActivity({ type: 'move', connectionId, payload: { name, srcDir, dstDir } })
         }
       } else {
         log('error', `Remote move failed [${label}] from: ${srcPath}`)
@@ -4017,6 +4020,7 @@ app.on('second-instance', () => {
 })
 
 app.on('before-quit', () => {
+  flushActivity()
   for (const entry of _sftpPool.values()) {
     clearTimeout(entry.timer)
     try { entry.client.end() } catch { /* best effort */ }

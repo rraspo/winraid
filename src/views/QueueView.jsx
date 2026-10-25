@@ -1,5 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
-import { File, Video, Image, FileText, Archive, X, RotateCcw, Clock, AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import {
+  File, Video, Image, FileText, Archive, X, RotateCcw, Clock, AlertTriangle, CheckCircle2,
+  Upload, FolderInput, Copy, Pencil, Trash2, FolderPlus, Download, FolderDown, SearchX,
+} from 'lucide-react'
 import Tooltip from '../components/ui/Tooltip'
 import styles from './QueueView.module.css'
 import { formatSize } from '../utils/format'
@@ -12,7 +15,8 @@ function relativeTime(ts) {
   if (s < 5)    return 'just now'
   if (s < 60)   return `${s}s ago`
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  return `${Math.floor(s / 3600)}h ago`
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
+  return `${Math.floor(s / 86400)}d ago`
 }
 
 // The directory shown next to a waiting job's filename.
@@ -45,6 +49,28 @@ function getFileIcon(filename) {
   return <File size={18} />
 }
 
+// How many recorded operations the History group reads — the whole feed the
+// main process keeps.
+const HISTORY_LIMIT = 500
+
+const HISTORY_ICONS = {
+  upload:           Upload,
+  move:             FolderInput,
+  copy:             Copy,
+  rename:           Pencil,
+  delete:           Trash2,
+  mkdir:            FolderPlus,
+  download:         Download,
+  checkout:         FolderDown,
+  'verify-missing': SearchX,
+}
+
+function historyIcon(entry) {
+  if (entry.level === 'error') return <AlertTriangle size={16} />
+  const Icon = HISTORY_ICONS[entry.type] ?? CheckCircle2
+  return <Icon size={16} />
+}
+
 // Connection name and size, kept as separate leaf elements (not one joined
 // string) so a caller can find either piece of text on its own.
 function RowMeta({ name, size }) {
@@ -63,7 +89,51 @@ function RowMeta({ name, size }) {
 // ---------------------------------------------------------------------------
 export default function QueueView({ connections = [], onBrowsePath, onNavigateLogs }) {
   const [jobs, setJobs] = useState([])
+  const [history, setHistory] = useState([])   // activity entries, newest first
   const [activeConnectionId, setActiveConnectionId] = useState(null)
+  // Clearing the history cannot be undone, so the button asks once more
+  // before it acts — the same two-step the Logs screen's Clear uses.
+  const [confirmClear, setConfirmClear] = useState(false)
+  const clearTimer = useRef(null)
+
+  useEffect(() => {
+    window.winraid?.activity?.tail?.(HISTORY_LIMIT)?.then((entries) => {
+      if (entries) setHistory(entries)
+    })
+    const unsub = window.winraid?.activity?.onEntry?.((entry) => {
+      setHistory((prev) => [entry, ...prev].slice(0, HISTORY_LIMIT))
+    })
+    return () => {
+      unsub?.()
+      clearTimeout(clearTimer.current)
+    }
+  }, [])
+
+  // Errors have nowhere to go but the log line that explains them; the rest
+  // open where the operation left things.
+  function handleHistoryClick(entry) {
+    if (entry.level === 'error') {
+      onNavigateLogs?.({ filename: '', errorAt: entry.ts })
+      return
+    }
+    const nav = entry.nav
+    if (nav?.kind === 'reveal') window.winraid?.activity.reveal(nav.localPath)
+    else if (nav?.kind === 'remote') onBrowsePath?.(entry.connectionId, nav.path, nav.highlight ?? null)
+  }
+
+  // Finished uploads live on as history entries, so clearing the history
+  // drops their queue records too; otherwise they would pile up unseen.
+  async function handleClearHistory() {
+    if (!confirmClear) {
+      setConfirmClear(true)
+      clearTimer.current = setTimeout(() => setConfirmClear(false), 3000)
+      return
+    }
+    clearTimeout(clearTimer.current)
+    setConfirmClear(false)
+    setHistory([])
+    await Promise.all([window.winraid?.activity.clear(), window.winraid?.queue.clearDone()])
+  }
 
   const connMap = useMemo(() => {
     const m = {}
@@ -163,11 +233,14 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
   const transferring = visibleJobs.filter((j) => j.status === 'TRANSFERRING')
   const waiting       = visibleJobs.filter((j) => j.status === 'PENDING')
   const failed        = visibleJobs.filter((j) => j.status === 'ERROR')
-  const done          = visibleJobs.filter((j) => j.status === 'DONE')
+  const visibleHistory = activeConnectionId
+    ? history.filter((entry) => entry.connectionId === activeConnectionId)
+    : history
 
   const totalTransferring = jobs.filter((j) => j.status === 'TRANSFERRING').length
   const totalWaiting      = jobs.filter((j) => j.status === 'PENDING').length
-  const subtitle = jobs.length === 0
+  const liveJobs          = jobs.filter((j) => j.status !== 'DONE')
+  const subtitle = liveJobs.length === 0
     ? 'Nothing queued'
     : `${totalTransferring} transferring · ${totalWaiting} waiting`
 
@@ -179,17 +252,17 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
   function retry(id) { window.winraid?.queue.retry(id) }
   function remove(id) { window.winraid?.queue.remove(id) }
 
-  if (jobs.length === 0) {
+  if (liveJobs.length === 0 && history.length === 0) {
     return (
       <div className={styles.container}>
         <div className={styles.header}>
-          <h1 className={styles.title}>Queue</h1>
+          <h1 className={styles.title}>Activity</h1>
           <p className={styles.subtitle}>{subtitle}</p>
         </div>
         <div className={styles.empty}>
           <File size={32} strokeWidth={1} className={styles.emptyIcon} />
-          <span>No transfers yet</span>
-          <span className={styles.emptyHint}>Add a connection with a watch folder to get started.</span>
+          <span>No activity yet</span>
+          <span className={styles.emptyHint}>Transfers, moves, copies and deletes show up here.</span>
         </div>
       </div>
     )
@@ -198,7 +271,7 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h1 className={styles.title}>Queue</h1>
+        <h1 className={styles.title}>Activity</h1>
         <p className={styles.subtitle}>{subtitle}</p>
       </div>
 
@@ -312,7 +385,18 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
 
         {/* Failed */}
         <section className={styles.group} aria-label="Failed">
-          <h2 className={styles.groupHeading}>Failed · {failed.length}</h2>
+          <div className={styles.groupHeaderRow}>
+            <h2 className={styles.groupHeading}>Failed · {failed.length}</h2>
+            <div className={styles.groupHeaderActions}>
+              <button
+                type="button"
+                className={styles.clearBtn}
+                onClick={() => window.winraid?.queue.clearStale()}
+              >
+                Clear stale
+              </button>
+            </div>
+          </div>
           {failed.map((job, idx) => (
             <div
               key={job.id}
@@ -351,50 +435,52 @@ export default function QueueView({ connections = [], onBrowsePath, onNavigateLo
           ))}
         </section>
 
-        {/* Completed today */}
-        <section className={styles.group} aria-label="Completed today">
+        {/* History — every recorded operation, newest first */}
+        <section className={styles.group} aria-label="History">
           <div className={styles.groupHeaderRow}>
-            <h2 className={styles.groupHeading}>Completed today · {done.length}</h2>
+            <h2 className={styles.groupHeading}>History</h2>
             <div className={styles.groupHeaderActions}>
-              {done.length > 0 && (
+              {history.length > 0 && (
                 <button
                   type="button"
-                  className={styles.clearBtn}
-                  aria-label="Clear done"
-                  onClick={() => window.winraid?.queue.clearDone()}
+                  className={[styles.clearBtn, confirmClear ? styles.clearConfirm : ''].join(' ')}
+                  onClick={handleClearHistory}
                 >
-                  Clear {done.length} done
+                  {confirmClear ? 'Clear history?' : 'Clear history'}
                 </button>
               )}
-              <button
-                type="button"
-                className={styles.clearBtn}
-                onClick={() => window.winraid?.queue.clearStale()}
-              >
-                Clear stale
-              </button>
             </div>
           </div>
-          {done.map((job, idx) => {
-            const meta = connMetaFor(job)
-            return (
-              <div
-                key={job.id}
-                className={[styles.row, idx > 0 ? styles.rowBordered : ''].join(' ')}
-                onClick={() => handleRowClick(job)}
-              >
-                <div className={styles.rowIcon}><CheckCircle2 size={16} /></div>
-                <div className={styles.rowMain}>
-                  <Tooltip tip={job.filename} side="bottom" onlyWhenTruncated>
-                    <span className={styles.rowName}>{job.filename}</span>
-                  </Tooltip>
-                  <RowMeta name={meta.name} size={meta.size} />
-                </div>
-                <span className={styles.srOnly}>Done</span>
-                {job.completedAt && <span className={styles.rowTime}>{relativeTime(job.completedAt)}</span>}
-              </div>
-            )
-          })}
+          {visibleHistory.length === 0 ? (
+            <p className={styles.emptyGroup}>Nothing recorded yet</p>
+          ) : (
+            visibleHistory.map((entry, idx) => {
+              const isError = entry.level === 'error'
+              const connName = connMap[entry.connectionId] ?? null
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={[styles.row, styles.rowButton, idx > 0 ? styles.rowBordered : ''].join(' ')}
+                  onClick={() => handleHistoryClick(entry)}
+                >
+                  <div className={[styles.rowIcon, isError ? styles.rowIconError : ''].join(' ')}>{historyIcon(entry)}</div>
+                  <div className={styles.rowMain}>
+                    <Tooltip tip={entry.title} side="bottom" onlyWhenTruncated>
+                      <span className={styles.rowName} data-testid="history-title">{entry.title}</span>
+                    </Tooltip>
+                    {entry.detail && (
+                      <Tooltip tip={entry.detail} side="bottom" onlyWhenTruncated>
+                        <span className={isError ? styles.rowError : styles.rowDest}>{entry.detail}</span>
+                      </Tooltip>
+                    )}
+                  </div>
+                  {connName && <span className={styles.rowMeta}>{connName}</span>}
+                  <span className={styles.rowTime}>{relativeTime(entry.ts)}</span>
+                </button>
+              )
+            })
+          )}
         </section>
 
       </div>

@@ -9,7 +9,7 @@ import NavRail from './NavRail'
 // DOM contract:
 //   - <nav aria-label="Primary">
 //   - one <button> per item, in this order, named exactly:
-//       Dashboard, Connections, Queue, Browse, Play wall, Size map, Backup,
+//       Dashboard, Connections, Activity, Browse, Play wall, Size map, Backup,
 //       Logs, then a spacer, then Tray (only when onOpenTray is given),
 //       Theme, Settings
 //   - the button whose view id equals activeView carries aria-current="page";
@@ -19,9 +19,9 @@ import NavRail from './NavRail'
 //   - Theme calls onThemeToggle; its title says which theme it switches to
 //   - Tray calls onOpenTray
 
-const NAV_ORDER = ['Dashboard', 'Connections', 'Queue', 'Browse', 'Play wall', 'Size map', 'Backup', 'Logs', 'Theme', 'Settings']
+const NAV_ORDER = ['Dashboard', 'Connections', 'Activity', 'Browse', 'Play wall', 'Size map', 'Backup', 'Logs', 'Theme', 'Settings']
 const VIEW_IDS  = {
-  Dashboard: 'dashboard', Connections: 'connections', Queue: 'queue', Browse: 'browse',
+  Dashboard: 'dashboard', Connections: 'connections', Activity: 'queue', Browse: 'browse',
   'Play wall': 'play', 'Size map': 'size', Backup: 'backup', Logs: 'logs', Settings: 'settings',
 }
 
@@ -58,7 +58,7 @@ describe('NavRail', () => {
     mount({ activeView: 'queue' })
     const current = within(rail()).getAllByRole('button').filter((button) => button.getAttribute('aria-current') === 'page')
     expect(current).toHaveLength(1)
-    expect(current[0].textContent.trim()).toBe('Queue')
+    expect(current[0].textContent.trim()).toBe('Activity')
   })
 
   it('marks nothing current when no view is active', () => {

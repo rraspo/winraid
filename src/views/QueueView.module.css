@@ -118,6 +118,15 @@
   background: var(--hover);
 }
 
+.clearConfirm {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+.clearConfirm:hover {
+  background: color-mix(in srgb, var(--err) 14%, transparent);
+}
+
 .emptyGroup {
   padding: 10px 0 16px;
   font-size: 12.5px;
@@ -193,6 +202,39 @@
   font-size: 11.5px;
   color: var(--text3);
   flex-shrink: 0;
+}
+
+/* History rows are whole-row buttons: they open where the operation left
+   things. Reset the button chrome so they read as the rows around them. */
+.rowButton {
+  width: 100%;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  transition: background-color var(--transition);
+}
+
+.rowButton.rowBordered {
+  border-top: 1px solid var(--strokeSoft);
+}
+
+.rowButton:hover {
+  background-color: var(--hover);
+}
+
+.rowIconError {
+  color: var(--err);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rowButton {
+    transition: none;
+  }
 }
 
 .percent {

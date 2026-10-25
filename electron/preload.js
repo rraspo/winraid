@@ -169,6 +169,8 @@ contextBridge.exposeInMainWorld('winraid', {
     tail:    (n)      => ipcRenderer.invoke('activity:tail', n),
     /** Subscribe to live activity entries pushed from the main process. */
     onEntry: (cb)     => on('activity:entry', cb),
+    /** Erase the recorded history, in memory and on disk. */
+    clear:   ()       => ipcRenderer.invoke('activity:clear'),
     /** Reveal a local folder/file in the OS file manager. */
     reveal:  (path)   => ipcRenderer.invoke('activity:reveal', path),
   },
