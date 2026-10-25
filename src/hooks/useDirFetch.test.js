@@ -262,3 +262,35 @@ describe('useDirFetch — prewalk when browse settings resolve after mount', () 
     expect(remoteFS.tree).not.toHaveBeenCalled()
   })
 })
+
+describe('useDirFetch — folders changed elsewhere', () => {
+  function changedListener() {
+    return remoteFS.onFoldersChanged.mock.calls.at(-1)[0]
+  }
+
+  beforeEach(() => {
+    remoteFS.onFoldersChanged.mockReturnValue(() => {})
+  })
+
+  it('re-lists the folder in view when another view changes it', async () => {
+    const fresh = [{ name: 'moved.jpg', type: 'file', size: 1, modified: 0 }]
+    const { result } = renderHook(() => useDirFetch(makeArgs()))
+    await waitFor(() => expect(remoteFS.list).toHaveBeenCalledTimes(1))
+
+    remoteFS.list.mockResolvedValue(fresh)
+    act(() => changedListener()('conn1', ['/elsewhere', '/media']))
+
+    await waitFor(() => expect(result.current.entries).toEqual(fresh))
+    expect(remoteFS.list).toHaveBeenCalledTimes(2)
+  })
+
+  it('ignores changes to other folders and other connections', async () => {
+    renderHook(() => useDirFetch(makeArgs()))
+    await waitFor(() => expect(remoteFS.list).toHaveBeenCalledTimes(1))
+
+    act(() => changedListener()('conn1', ['/elsewhere']))
+    act(() => changedListener()('conn2', ['/media']))
+
+    expect(remoteFS.list).toHaveBeenCalledTimes(1)
+  })
+})

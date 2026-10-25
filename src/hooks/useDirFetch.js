@@ -133,5 +133,15 @@ export function useDirFetch({ selectedId, path, connections, cacheModeRef, setti
     return () => { unsub?.(); clearTimeout(refreshTimerRef.current) }
   }, [selectedId, setHighlightFile])
 
+  // A write made from another view — a move dragged into or out of another
+  // tab — changed folders this view may be showing. Re-list only if so.
+  useEffect(() => {
+    if (!selectedId) return
+    const unsub = remoteFS.onFoldersChanged((connId, folders) => {
+      if (connId === selectedId && folders.includes(pathRef.current)) fetchDirRef.current(pathRef.current)
+    })
+    return () => unsub?.()
+  }, [selectedId])
+
   return { entries, setEntries, entriesRef, loading, error, setError, fetchDir }
 }

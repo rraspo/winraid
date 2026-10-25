@@ -118,6 +118,14 @@
   opacity: 0.5;
 }
 
+/* files from a browse tab hovering a tab they can move into */
+.tab[data-drop-target="true"] {
+  color: var(--text);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background-color: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .dropIndicator {
   width: 2px;
   align-self: stretch;

@@ -1,4 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
+import { setInternalDrag, getInternalDrag, clearInternalDrag } from '../services/internalDrag'
+import { movableEntries, moveEntries } from '../services/moveEntries'
 
 // Suppress the browser's native drag image — we render our own React
 // overlay (DragGhost) tracking the cursor instead. A 1×1 transparent GIF
@@ -74,6 +76,7 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     const src = { entry, entryPath, entries: draggingEntries, cardSize, clickOffset }
     dragSourceRef.current = src
     setDragSource(src)
+    setInternalDrag({ connectionId: selectedId, entries: draggingEntries })
     if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
       dragPosRef.current = { x: e.clientX, y: e.clientY }
       setDragPos(dragPosRef.current)
@@ -87,9 +90,10 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     if (TRANSPARENT_DRAG_IMAGE) {
       e.dataTransfer.setDragImage(TRANSPARENT_DRAG_IMAGE, 0, 0)
     }
-  }, [selected, entries, path])
+  }, [selected, entries, path, selectedId])
 
   const handleDragEnd = useCallback(() => {
+    clearInternalDrag()
     dragSourceRef.current = null
     dragPosRef.current = null
     setDragSource(null)
@@ -103,8 +107,10 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
   }, [])
 
   const handleDragOverFolder = useCallback((e, folderPath) => {
-    const src = dragSourceRef.current
-    if (!src) return
+    // The drag may have started in another tab; only one on this connection
+    // can land here, since a move never crosses servers.
+    const src = getInternalDrag()
+    if (!src || src.connectionId !== selectedId) return
     // Prevent dropping onto a source item itself
     if (src.entries.some((item) => item.entryPath === folderPath)) return
     e.preventDefault()
@@ -121,7 +127,7 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
         dwellTimer.current = setTimeout(() => navigate(folderPath), 600)
       }
     }
-  }, [navigate])
+  }, [navigate, selectedId])
 
   const handleDragLeaveFolder = useCallback((e) => {
     e.currentTarget.removeAttribute('data-drop-target')
@@ -138,49 +144,30 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     }
     clearTimeout(dwellTimer.current)
 
-    const src = dragSourceRef.current
-    if (!src || !selectedId) return
+    const src = getInternalDrag()
+    if (!src || !selectedId || src.connectionId !== selectedId) return
 
-    // Skip if dropping onto one of the source items or a child of them
-    const isInvalidTarget = src.entries.some(
-      (item) => targetDirPath === item.entryPath || targetDirPath.startsWith(item.entryPath + '/')
-    )
-    if (isInvalidTarget) return
-
-    // Filter to items whose destination differs from their current path —
-    // dropping a file back onto its existing parent is a no-op and should
-    // not surface a "Moved X" status or trigger a directory refresh.
-    const itemsToMove = src.entries.filter(
-      (item) => joinRemote(targetDirPath, item.name) !== item.entryPath
-    )
+    // A no-op drop (onto a dragged folder, or back where the files already
+    // are) must not surface a "Moved X" status or trigger a refresh.
+    const itemsToMove = movableEntries(src.entries, targetDirPath)
     if (itemsToMove.length === 0) return
 
+    clearInternalDrag()
     dragSourceRef.current = null
     dragPosRef.current = null
     setDragSource(null)
     setDragPos(null)
     clearSelection()
 
-    const firstName = itemsToMove[0].name
-    const label = itemsToMove.length > 1 ? `${itemsToMove.length} items` : firstName
-    setMoveInFlight(firstName)
-
-    let failMsg = null
+    setMoveInFlight(itemsToMove[0].name)
+    let status = null
     try {
-      for (const item of itemsToMove) {
-        const dstPath = joinRemote(targetDirPath, item.name)
-        const res = await window.winraid?.remote.move(selectedId, item.entryPath, dstPath)
-        if (!res?.ok && failMsg === null) failMsg = res?.error || 'Move failed'
-      }
+      status = await moveEntries(selectedId, itemsToMove, targetDirPath)
     } finally {
       setMoveInFlight(null)
       await fetchDir(pathRef.current)
     }
-    if (failMsg !== null) {
-      setStatus?.({ ok: false, msg: failMsg })
-    } else {
-      setStatus?.({ ok: true, msg: `Moved ${label}` })
-    }
+    setStatus?.(status)
   }, [selectedId, fetchDir, setStatus, clearSelection])
 
   return {

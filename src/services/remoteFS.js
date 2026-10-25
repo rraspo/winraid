@@ -1,6 +1,7 @@
 const cache     = new Map()
 const inflight  = new Map()
 const listeners = new Set()
+const folderListeners = new Set()
 
 function key(connId, path) {
   return `${connId}:${path}`
@@ -64,6 +65,19 @@ export function invalidate(connId, path) {
   cache.delete(k)
   inflight.delete(k)
   notify()
+}
+
+// A write changed these folders' contents. Drops their cached listings and
+// tells every view (including hidden tabs) so the ones showing any of them
+// re-list — a move started in one tab must not leave another tab stale.
+export function foldersChanged(connId, folders) {
+  for (const folder of folders) invalidate(connId, folder)
+  folderListeners.forEach((fn) => fn(connId, folders))
+}
+
+export function onFoldersChanged(listener) {
+  folderListeners.add(listener)
+  return () => folderListeners.delete(listener)
 }
 
 export function invalidateSubtree(connId, rootPath) {

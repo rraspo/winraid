@@ -54,7 +54,7 @@ export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigate, onOpenTab,
   onNavigateFavorite,
-  onSelectConnection, onBack, canGoBack = false, onForward, canGoForward = false,
+  onSelectConnection, onBack, canGoBack = false, onForward, canGoForward = false, onLocationChange,
   defaultConnectionId = null, onSetDefault, trashByConnection = {},
   // Whether this tab is the one currently on screen. Tabs stay mounted while
   // hidden, so anything that describes what is in front of the user has to
@@ -93,6 +93,12 @@ export default function BrowseView({
     handleExternalDragLeave,
     handleExternalDrop,
   } = browse
+
+  // Tells the tab strip which folder this tab is showing, so files dragged
+  // from another tab and dropped on this tab's header land here.
+  useEffect(() => {
+    if (selectedId) onLocationChange?.({ connectionId: selectedId, path })
+  }, [selectedId, path]) // eslint-disable-line react-hooks/exhaustive-deps -- the parent passes a fresh callback every render
 
   // Activating an editable file (click) opens it in an editor tab; media/PDF
   // still use QuickLook. The 3-dot Edit action routes to the same editor tab.
@@ -478,12 +484,17 @@ export default function BrowseView({
           trashByConnection={trashByConnection}
         />
       )}
-      <DragGhost
-        dragSource={dragSource}
-        dragPos={dragPos}
-        connectionId={selectedId}
-        viewMode={viewMode}
-      />
+      {/* Portalled so the ghost keeps following the cursor after hovering
+          another tab hides this one. */}
+      {createPortal(
+        <DragGhost
+          dragSource={dragSource}
+          dragPos={dragPos}
+          connectionId={selectedId}
+          viewMode={viewMode}
+        />,
+        document.body,
+      )}
 
       {confirmTarget && (
         <ConfirmModal

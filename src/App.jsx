@@ -18,6 +18,8 @@ import ToastHost from './components/ui/ToastHost'
 import DownloadsPanel from './components/DownloadsPanel'
 import { useNavHistory } from './hooks/useNavHistory'
 import * as toast from './services/toast'
+import { getInternalDrag, clearInternalDrag } from './services/internalDrag'
+import { moveEntries } from './services/moveEntries'
 import { useAppearance } from './hooks/useAppearance'
 import styles from './App.module.css'
 
@@ -359,6 +361,26 @@ export default function App() {
       delete next[tabId]
       return next
     })
+  }
+
+  // The folder a browse tab is showing, so files dropped on its header know
+  // where to go.
+  function setTabLocation(tabId, location) {
+    setOpenTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, location } : t)))
+  }
+
+  // Files dragged out of one browse tab and dropped on another's header move
+  // into the folder that tab is showing. TabBar only offers the drop for a
+  // browse tab on the dragged files' connection.
+  async function dropEntriesOnTab(tabId) {
+    const drag = getInternalDrag()
+    const tab  = openTabs.find((t) => t.id === tabId)
+    if (!drag || !tab?.location || tab.location.connectionId !== drag.connectionId) return
+    clearInternalDrag()
+    const status = await moveEntries(drag.connectionId, drag.entries, tab.location.path)
+    toast.show(status
+      ? { msg: status.msg, type: status.ok ? 'success' : 'error' }
+      : { msg: 'Nothing to move: the files are already in that folder' })
   }
 
   function setTabLabel(tabId, label) {
@@ -784,6 +806,7 @@ export default function App() {
             onActivate={activateTab}
             onClose={closeTab}
             onReorder={reorderTab}
+            onDropEntries={dropEntriesOnTab}
           />
           <main className={styles.content}>
             {/* Global views */}
@@ -825,6 +848,7 @@ export default function App() {
                   active={activeTabId === tab.id && connEdit === null && playTarget === null}
                   browseRestore={browseRestoreByTab[tab.id] ?? null}
                   onBrowseRestoreConsumed={() => clearTabBrowseRestore(tab.id)}
+                  onLocationChange={(location) => setTabLocation(tab.id, location)}
                   onHistoryPush={(entry) => {
                     push(scopeKey, entry)
                     if (entry.kind === 'browse' && entry.path) {
