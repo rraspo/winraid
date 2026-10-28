@@ -7,7 +7,7 @@
 const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
-const { assertReleasable } = require('./release-guards')
+const { assertReleasable, assertWhatsNewCurrent } = require('./release-guards')
 
 const root = path.resolve(__dirname, '..')
 
@@ -68,6 +68,12 @@ if (!/^v\d+\.\d+\.\d+$/.test(releaseTag)) {
 }
 if (tags.split('\n').includes(releaseTag)) {
   die(`tag ${releaseTag} already exists`)
+}
+try {
+  const whatsNew = JSON.parse(fs.readFileSync(path.join(root, 'src', 'whatsNew.json'), 'utf8'))
+  assertWhatsNewCurrent({ whatsNew, releaseVersion: releaseVer })
+} catch (err) {
+  die(err.message)
 }
 
 console.log()

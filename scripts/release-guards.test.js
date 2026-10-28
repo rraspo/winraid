@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi } from 'vitest'
-import { assertReleasable, assertQualityGate } from './release-guards.js'
+import { assertReleasable, assertQualityGate, assertWhatsNewCurrent } from './release-guards.js'
 
 function runSilentStub({ branch = 'master', status = '' } = {}) {
   return vi.fn((cmd) => {
@@ -63,5 +63,24 @@ describe('assertQualityGate', () => {
 
   it('requires a run function to be provided', () => {
     expect(() => assertQualityGate({})).toThrow(/run/)
+  })
+})
+
+describe('assertWhatsNewCurrent', () => {
+  const highlights = [{ icon: 'History', title: 'Activity', body: 'Past transfers stay listed.' }]
+
+  it('throws when What\'s New was written for an earlier version', () => {
+    expect(() => assertWhatsNewCurrent({ whatsNew: { version: '3.0.0', highlights }, releaseVersion: '3.1.0' }))
+      .toThrow(/3\.0\.0.*3\.1\.0/)
+  })
+
+  it('throws when What\'s New has no highlights', () => {
+    expect(() => assertWhatsNewCurrent({ whatsNew: { version: '3.1.0', highlights: [] }, releaseVersion: '3.1.0' }))
+      .toThrow(/highlights/i)
+  })
+
+  it('passes when the version matches and highlights are present', () => {
+    expect(() => assertWhatsNewCurrent({ whatsNew: { version: '3.1.0', highlights }, releaseVersion: '3.1.0' }))
+      .not.toThrow()
   })
 })
