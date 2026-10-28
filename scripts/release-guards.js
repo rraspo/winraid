@@ -42,4 +42,18 @@ function assertQualityGate({ run } = {}) {
   run('npm test')
 }
 
-module.exports = { assertReleasable, assertQualityGate }
+// What's New ships inside the installer and doubles as the release notes, so a
+// release must not go out with highlights written for an earlier version.
+function assertWhatsNewCurrent({ whatsNew, releaseVersion }) {
+  if (whatsNew.version !== releaseVersion) {
+    throw new Error(
+      `release aborted: src/whatsNew.json describes ${whatsNew.version}, not ${releaseVersion}. ` +
+      `Write the highlights for ${releaseVersion} and set its version before releasing.`
+    )
+  }
+  if (!Array.isArray(whatsNew.highlights) || whatsNew.highlights.length === 0) {
+    throw new Error('release aborted: src/whatsNew.json has no highlights.')
+  }
+}
+
+module.exports = { assertReleasable, assertQualityGate, assertWhatsNewCurrent }

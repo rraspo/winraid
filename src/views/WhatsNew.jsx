@@ -1,56 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useAppearance } from '../hooks/useAppearance'
 import {
-  Palette, PanelsTopLeft, ClipboardPaste, Info, Trash2, Pin, Eye, Clapperboard,
+  History, Download, PanelsTopLeft, ArrowDownWideNarrow, FileText, Scissors, Contrast,
 } from 'lucide-react'
+import whatsNew from '../whatsNew.json'
 import iconSrc from '../../assets/winraid_icon_32x32.png'
 import Button from '../components/ui/Button'
 import styles from './WhatsNew.module.css'
 
-// Highlights for the current release. Keep entries short and friendly —
-// one line each, written for a person, not a changelog.
-const HIGHLIGHTS = [
-  {
-    icon: Palette,
-    title: 'A whole new look',
-    body: 'Every screen is redesigned around a new title bar, nav rail and status bar. Pick your accent color in Settings.',
-  },
-  {
-    icon: PanelsTopLeft,
-    title: 'Tabs that behave',
-    body: 'Open folders and files in tabs, drag them into any order, and step back and forward through each one with the mouse side buttons.',
-  },
-  {
-    icon: ClipboardPaste,
-    title: 'Cut, copy and paste',
-    body: 'Move and copy files between folders on your NAS from the new two-row command bar, right where you would expect them.',
-  },
-  {
-    icon: Info,
-    title: 'Properties at a glance',
-    body: 'See size, dates and attributes for anything you select, a Kind column in the list, and video length and resolution right on the thumbnail.',
-  },
-  {
-    icon: Trash2,
-    title: 'Deletes you can undo',
-    body: 'Local deletes go to the Recycle Bin, and each connection can keep its own trash on the NAS instead of deleting for good.',
-  },
-  {
-    icon: Pin,
-    title: 'A default connection',
-    body: 'Pin the connection Browse, Play and the other screens open on, and keep every favorite folder in one list.',
-  },
-  {
-    icon: Eye,
-    title: 'Watchers remember',
-    body: 'A watcher you stopped stays stopped after a restart, and a connection that cannot be watched now tells you why.',
-  },
-  {
-    icon: Clapperboard,
-    title: 'Play wall and Quick Look',
-    body: 'Select tiles on the play wall to move or delete them, and open any of them straight into Quick Look.',
-  },
-]
+// Highlights live in whatsNew.json so the release script can refuse to tag a
+// version they were not written for, and CI can reuse them as release notes.
+const ICONS = { History, Download, PanelsTopLeft, ArrowDownWideNarrow, FileText, Scissors, Contrast }
+const HIGHLIGHTS = whatsNew.highlights.map((highlight) => ({ ...highlight, icon: ICONS[highlight.icon] }))
 
 export default function WhatsNew() {
   useAppearance()

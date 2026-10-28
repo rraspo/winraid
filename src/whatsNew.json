@@ -1,0 +1,40 @@
+{
+  "version": "3.1.1",
+  "highlights": [
+    {
+      "icon": "History",
+      "title": "Activity remembers",
+      "body": "Queue is now Activity, and it keeps a history of past transfers, so you can see what moved even after a restart."
+    },
+    {
+      "icon": "Download",
+      "title": "Downloads in the background",
+      "body": "Downloads run in the background with live progress and a Cancel button, so you can keep browsing while they finish."
+    },
+    {
+      "icon": "PanelsTopLeft",
+      "title": "Tabs that work together",
+      "body": "Drag files from one tab onto another to move them, and middle-click any breadcrumb to open that folder in a new tab."
+    },
+    {
+      "icon": "ArrowDownWideNarrow",
+      "title": "Sort by size",
+      "body": "Sort any folder by size, largest or smallest first, to find what is taking up space."
+    },
+    {
+      "icon": "FileText",
+      "title": "PDFs in Quick Look",
+      "body": "PDFs get their own icon and a first-page thumbnail, and Quick Look opens them with fit-width and fit-page controls."
+    },
+    {
+      "icon": "Scissors",
+      "title": "Trim audio",
+      "body": "Cut audio files right in Quick Look, the same way you already trim videos."
+    },
+    {
+      "icon": "Contrast",
+      "title": "Easier to read",
+      "body": "Text, icons and control outlines now meet contrast guidelines in both light and dark themes, and the tray flyout follows your saved appearance."
+    }
+  ]
+}
