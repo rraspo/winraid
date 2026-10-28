@@ -5,8 +5,8 @@ import { resolve } from 'node:path'
 
 // Control outlines must hold 3:1 against every surface a control can sit on
 // (WCAG 1.4.11). Values are read from tokens.css so a retune cannot silently
-// regress the ratio.
-const css = readFileSync(resolve(__dirname, 'tokens.css'), 'utf8')
+// regress the ratio. Windows checkouts carry CRLF, so normalize before matching.
+const css = readFileSync(resolve(__dirname, 'tokens.css'), 'utf8').replace(/\r\n/g, '\n')
 
 function block(selectorStart) {
   const start = css.indexOf(selectorStart)
