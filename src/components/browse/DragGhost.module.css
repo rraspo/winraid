@@ -132,7 +132,7 @@
 }
 
 /* ── Icons ────────────────────────────────────────────────────────────────── */
-.iconDir  { color: var(--accent); }
+.iconDir  { color: var(--accentText); }
 .iconFile { color: var(--text-faint); }
 
 /* ── Count badge ──────────────────────────────────────────────────────────── */

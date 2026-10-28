@@ -15,7 +15,7 @@
 .bar {
   display: inline-flex;
   align-items: stretch;
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   border-radius: var(--radius-md);
   overflow: hidden;
   background: var(--surface2);

@@ -123,7 +123,7 @@ describe('the play wall is a screen, not a curtain', () => {
   it('lets another screen be reached without closing the wall first', async () => {
     await mountApp()
     await openPlayWall()
-    await clickNav('Queue')
+    await clickNav('Activity')
     expect(screen.getByTestId('queue-view')).toBeTruthy()
     expect(screen.queryByRole('region', { name: 'Play' })).toBeNull()
   })

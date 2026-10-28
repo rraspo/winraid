@@ -96,7 +96,7 @@
   align-self: flex-start;
   font-size: 11.5px;
   margin-top: 2px;
-  color: var(--accentHi);
+  color: var(--accentText);
   transition: opacity var(--transition);
 }
 
@@ -134,7 +134,22 @@
   flex-shrink: 0;
 }
 
-.activityCard .cardHeading { margin-bottom: 6px; }
+.activityCard .cardHeading { margin-bottom: 0; }
+
+/* Heading with a trailing link, e.g. Recent activity's "View all". */
+.cardHeadingRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 14px;
+  margin-bottom: 6px;
+  flex-shrink: 0;
+}
+
+.cardHeadingRow .statLinkFootnote {
+  margin-top: 0;
+}
 
 /* ---- Active transfers list ---- */
 .transferList {

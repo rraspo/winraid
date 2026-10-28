@@ -3,11 +3,12 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { createWinraidMock } from '../__mocks__/winraid'
 import QueueView from './QueueView'
 
-// Contract under test — the Queue on the redesign, after ref/queue.png:
-// the table becomes four groups, with a connection filter above them.
+// Contract under test — the Activity screen (formerly Queue), after
+// ref/queue.png: live transfers in three groups, then the history of
+// everything done, with a connection filter above them.
 //
 // DOM contract:
-//   - <h1>Queue</h1> with a subtitle summarizing the load
+//   - <h1>Activity</h1> with a subtitle summarizing the load
 //   - a connection filter: buttons "All" plus one per connection name,
 //     with aria-pressed on the active one; a pressed connection hides
 //     every job from other connections
@@ -15,8 +16,8 @@ import QueueView from './QueueView'
 //     "Transferring" (TRANSFERRING jobs; "Nothing transferring" when none),
 //     "Waiting" (PENDING, heading text "Waiting · <n>"),
 //     "Failed" (ERROR, heading "Failed · <n>", each row with Retry and
-//     Remove), "Completed today" (DONE, heading "Completed today · <n>",
-//     with "Clear done" and "Clear stale" actions)
+//     Remove, and a "Clear stale" action), "History" (every recorded
+//     operation, newest first)
 //   - transferring rows keep a Cancel button and the percentage; failed
 //     rows show the error message; waiting rows keep Cancel
 //   - job rows keep the connection name and the size
@@ -42,8 +43,15 @@ const JOBS = [
   job({ id: 'j5', filename: 'done.txt',    status: 'DONE', progress: 1 }),
 ]
 
+const HISTORY = [
+  { id: 1, ts: Date.now(), type: 'upload', level: 'info', connectionId: 'conn-1', title: 'Uploaded done.txt', detail: '/mnt', nav: { kind: 'remote', path: '/mnt', highlight: 'done.txt' } },
+]
+
 beforeEach(() => {
-  window.winraid = createWinraidMock({ queue: { list: vi.fn().mockResolvedValue(JOBS) } })
+  window.winraid = createWinraidMock({
+    queue:    { list: vi.fn().mockResolvedValue(JOBS) },
+    activity: { tail: vi.fn().mockResolvedValue(HISTORY) },
+  })
 })
 
 afterEach(() => { delete window.winraid })
@@ -58,18 +66,17 @@ function group(name) {
 }
 
 describe('QueueView redesign', () => {
-  it('has the title and the four groups in prototype order', async () => {
+  it('has the title and the four groups in order', async () => {
     await mount()
-    expect(screen.getByRole('heading', { level: 1, name: 'Queue' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Activity' })).toBeInTheDocument()
     const groups = screen.getAllByRole('region').map((region) => region.getAttribute('aria-label'))
-    expect(groups).toEqual(['Transferring', 'Waiting', 'Failed', 'Completed today'])
+    expect(groups).toEqual(['Transferring', 'Waiting', 'Failed', 'History'])
   })
 
-  it('counts the waiting, failed and completed groups in their headings', async () => {
+  it('counts the waiting and failed groups in their headings', async () => {
     await mount()
     expect(within(group('Waiting')).getByText('Waiting · 2')).toBeInTheDocument()
     expect(within(group('Failed')).getByText('Failed · 1')).toBeInTheDocument()
-    expect(within(group('Completed today')).getByText('Completed today · 1')).toBeInTheDocument()
   })
 
   it('places each job in its group with its connection and size', async () => {
@@ -80,12 +87,12 @@ describe('QueueView redesign', () => {
     expect(within(group('Waiting')).getByText('later.jpg')).toBeInTheDocument()
     expect(within(group('Failed')).getByText('broken.xlsx')).toBeInTheDocument()
     expect(within(group('Failed')).getByText('Name collision on NAS')).toBeInTheDocument()
-    expect(within(group('Completed today')).getByText('done.txt')).toBeInTheDocument()
+    expect(within(group('History')).getByText('Uploaded done.txt')).toBeInTheDocument()
     expect(within(group('Waiting')).getAllByText('Atlas').length).toBeGreaterThan(0)
     expect(within(group('Waiting')).getAllByText('1.0 MB').length).toBeGreaterThan(0)
   })
 
-  it('keeps the row actions: Cancel, Retry, Remove, Clear done, Clear stale', async () => {
+  it('keeps the row actions: Cancel, Retry, Remove, Clear stale', async () => {
     await mount()
     fireEvent.click(within(group('Transferring')).getByRole('button', { name: 'Cancel' }))
     expect(window.winraid.queue.cancel).toHaveBeenCalledWith('j1')
@@ -93,9 +100,7 @@ describe('QueueView redesign', () => {
     expect(window.winraid.queue.retry).toHaveBeenCalledWith('j4')
     fireEvent.click(within(group('Failed')).getByRole('button', { name: 'Remove' }))
     expect(window.winraid.queue.remove).toHaveBeenCalledWith('j4')
-    fireEvent.click(within(group('Completed today')).getByRole('button', { name: 'Clear done' }))
-    expect(window.winraid.queue.clearDone).toHaveBeenCalledTimes(1)
-    fireEvent.click(within(group('Completed today')).getByRole('button', { name: 'Clear stale' }))
+    fireEvent.click(within(group('Failed')).getByRole('button', { name: 'Clear stale' }))
     expect(window.winraid.queue.clearStale).toHaveBeenCalledTimes(1)
   })
 

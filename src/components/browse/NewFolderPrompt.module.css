@@ -13,7 +13,7 @@
   min-width: 0;
   padding: 4px 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   background: var(--surface2);
   color: var(--text);
   font-size: var(--font-size-sm);
@@ -82,4 +82,4 @@
 .newFolderCardActions .newFolderCancel  { flex-shrink: 0; }
 
 /* ── Folder icon color (list variant) ───────────────────────────────────── */
-.iconDir { color: var(--accent); flex-shrink: 0; }
+.iconDir { color: var(--accentText); flex-shrink: 0; }

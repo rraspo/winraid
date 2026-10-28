@@ -1,12 +1,13 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { X, FileText } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
 import Tooltip from './ui/Tooltip'
+import { getInternalDrag } from '../services/internalDrag'
 import styles from './TabBar.module.css'
 
 const DRAG_MIME = 'application/x-winraid-tab'
 
-export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, onActivate, onClose, onReorder }) {
+export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, onActivate, onClose, onReorder, onDropEntries }) {
   // `dragId` names the tab currently being dragged; `overIndex` is the array
   // slot the insertion indicator sits in front of (0..openTabs.length, the
   // same range `Array.prototype.splice` accepts). Both live only for the
@@ -14,6 +15,11 @@ export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, 
   // themselves — only a `drop` does that, via `onReorder`.
   const [dragId,    setDragId]    = useState(null)
   const [overIndex, setOverIndex] = useState(null)
+  // The tab files from a browse view are hovering, and the timer that
+  // switches to it if they stay.
+  const [entriesOverId, setEntriesOverId] = useState(null)
+  const dwellTimer = useRef(null)
+  useEffect(() => () => clearTimeout(dwellTimer.current), [])
 
   if (!openTabs.length) return null
 
@@ -39,16 +45,66 @@ export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, 
     setOverIndex(index)
   }
 
-  function handleTabDragOver(e, index) {
-    e.preventDefault()
+  // Files dragged out of a browse tab can land on another browse tab of the
+  // same connection — they move into the folder that tab is showing. The tab
+  // in front is refused: dropping there is just a drop into the view below.
+  function acceptsEntries(tab) {
+    const drag = getInternalDrag()
+    return drag != null
+      && tab.type === 'browse'
+      && tab.id !== activeTabId
+      && tab.location?.connectionId === drag.connectionId
+  }
+
+  function clearEntriesHover() {
+    clearTimeout(dwellTimer.current)
+    dwellTimer.current = null
+    setEntriesOverId(null)
+  }
+
+  // Hovering any other tab with files switches to it after a short dwell,
+  // the way hovering a folder opens it, so the drop can aim at a folder
+  // inside that tab instead of the tab as a whole.
+  function handleEntriesDragOver(e, tab) {
+    if (acceptsEntries(tab)) {
+      e.preventDefault()
+      if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+    }
+    if (entriesOverId === tab.id) return
+    clearTimeout(dwellTimer.current)
+    setEntriesOverId(tab.id)
+    dwellTimer.current = tab.id === activeTabId ? null : setTimeout(() => {
+      dwellTimer.current = null
+      // A drag cancelled while resting here (Esc) must not switch tabs.
+      if (getInternalDrag() != null) onActivate(tab.id)
+    }, 600)
+  }
+
+  function handleTabDragOver(e, index, tab) {
     e.stopPropagation()
+    if (dragId == null && getInternalDrag() != null) {
+      handleEntriesDragOver(e, tab)
+      return
+    }
+    e.preventDefault()
     if (dragId == null) return
     setOverIndex(index)
+  }
+
+  function handleTabDragLeave(e) {
+    if (e.currentTarget.contains(e.relatedTarget)) return
+    clearEntriesHover()
   }
 
   function handleTabDrop(e, targetId, index) {
     e.preventDefault()
     e.stopPropagation()
+    if (dragId == null && getInternalDrag() != null) {
+      const tab = openTabs.find((t) => t.id === targetId)
+      clearEntriesHover()
+      if (tab && acceptsEntries(tab)) onDropEntries?.(targetId)
+      return
+    }
     if (dragId != null) {
       const fromIndex = openTabs.findIndex((t) => t.id === dragId)
       if (fromIndex !== -1) onReorder?.(fromIndex, index)
@@ -99,7 +155,9 @@ export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, 
         onClick={() => onActivate(tab.id)}
         onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); onClose(tab.id) } }}
         onDragStart={(e) => handleDragStart(e, tab, index)}
-        onDragOver={(e) => handleTabDragOver(e, index)}
+        data-drop-target={entriesOverId === tab.id && acceptsEntries(tab) ? 'true' : undefined}
+        onDragOver={(e) => handleTabDragOver(e, index, tab)}
+        onDragLeave={handleTabDragLeave}
         onDrop={(e) => handleTabDrop(e, tab.id, index)}
         onDragEnd={resetDrag}
       >

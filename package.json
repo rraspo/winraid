@@ -19,6 +19,7 @@
     "preview": "vite --config scripts/preview/vite.config.js",
     "preview:shoot": "node scripts/preview/shoot.mjs",
     "preview:hits": "node scripts/preview/hit-audit.mjs",
+    "preview:contrast": "node scripts/preview/contrast-audit.mjs",
     "clean:gyp": "node scripts/clean-native.js",
     "dist": "npm run build && npm run clean:gyp && electron-builder",
     "dist:win": "npm run build && npm run clean:gyp && electron-builder --win",

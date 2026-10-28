@@ -8,7 +8,7 @@
   height: 30px;
   padding: 0 10px;
   max-width: 200px;
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   border-radius: 6px;
   font-size: 12.5px;
   color: var(--text2);
@@ -96,8 +96,8 @@
 
 .pin:hover { color: var(--text); background: var(--hover); }
 
-.pinOn { color: var(--accent); }
-.pinOn:hover { color: var(--accent); }
+.pinOn { color: var(--accentText); }
+.pinOn:hover { color: var(--accentText); }
 
 .item {
   position: relative;
@@ -115,7 +115,7 @@
 
 .item:hover { background: var(--hover); }
 
-.itemActive { color: var(--accent); }
+.itemActive { color: var(--accentText); }
 
 .itemLabel { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 

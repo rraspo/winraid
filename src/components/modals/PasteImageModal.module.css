@@ -54,5 +54,5 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--accent-dark);
+  color: var(--accentText);
 }

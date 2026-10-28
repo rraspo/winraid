@@ -1,0 +1,25 @@
+.icon {
+  position: relative;
+  display: inline-block;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+/* The tag straddles the glyph's lower edge. */
+.badge {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 35%);
+  padding: 0 2px;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--onAccent);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.large .badge { font-size: 9px; }
+.small .badge { font-size: 6px; padding: 0 1px; }

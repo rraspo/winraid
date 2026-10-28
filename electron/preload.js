@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('winraid', {
     clearThumbs: () => ipcRenderer.invoke('cache:clear-thumbs'),
     /** Invalidate the on-disk full+thumb cache for a single remote file (after a mutation). */
     invalidateFile: (connectionId, remotePath) => ipcRenderer.invoke('cache:invalidate-file', connectionId, remotePath),
+    /** Cached still of a remote video: { hit: true, bytes, meta } or { hit: false }. */
+    getVideoFrame: (connectionId, remotePath, modified) => ipcRenderer.invoke('cache:video-frame-get', connectionId, remotePath, modified),
+    /** Store a captured WebP still plus { duration, width, height } for a remote video. */
+    saveVideoFrame: (connectionId, remotePath, modified, bytes, meta) => ipcRenderer.invoke('cache:video-frame-save', connectionId, remotePath, modified, bytes, meta),
   },
 
   // -- Config --------------------------------------------------------------
@@ -153,6 +157,8 @@ contextBridge.exposeInMainWorld('winraid', {
     reveal:  ()       => ipcRenderer.invoke('log:reveal'),
     /** Truncate today's log file. */
     clear:   ()       => ipcRenderer.invoke('log:clear'),
+    /** Append a renderer-side entry ({ scope, level, message, details }) to the log file. */
+    write:   (entry)  => ipcRenderer.invoke('log:write', entry),
     /** Subscribe to live log entries pushed from the main process. */
     onEntry: (cb)     => on('log:entry', cb),
   },
@@ -163,6 +169,8 @@ contextBridge.exposeInMainWorld('winraid', {
     tail:    (n)      => ipcRenderer.invoke('activity:tail', n),
     /** Subscribe to live activity entries pushed from the main process. */
     onEntry: (cb)     => on('activity:entry', cb),
+    /** Erase the recorded history, in memory and on disk. */
+    clear:   ()       => ipcRenderer.invoke('activity:clear'),
     /** Reveal a local folder/file in the OS file manager. */
     reveal:  (path)   => ipcRenderer.invoke('activity:reveal', path),
   },
@@ -257,6 +265,20 @@ contextBridge.exposeInMainWorld('winraid', {
     reveal: (path) => ipcRenderer.invoke('local:reveal', path),
   },
 
+  // -- Downloads (background jobs, see electron/downloads.js) -------------
+  downloads: {
+    /** Start a job for items [{ remotePath, localPath, isDir }]. Returns { ok, id } at once. */
+    start: (connectionId, items, destination) => ipcRenderer.invoke('downloads:start', connectionId, items, destination),
+    /** Stop a running job mid-file; the partial file is removed. */
+    cancel: (id) => ipcRenderer.invoke('downloads:cancel', id),
+    /** Forget a finished job. */
+    dismiss: (id) => ipcRenderer.invoke('downloads:dismiss', id),
+    /** Snapshots of every job not yet dismissed. */
+    list: () => ipcRenderer.invoke('downloads:list'),
+    /** Subscribe to job snapshots: { id, connectionId, label, destination, state, filesDone, filesTotal, bytesDone, bytesTotal, currentFile, error }. */
+    onUpdate: (cb) => on('downloads:update', cb),
+  },
+
   // -- Remote browser ------------------------------------------------------
   remote: {
     /** List a remote directory via SFTP (pooled connection). */
@@ -266,9 +288,6 @@ contextBridge.exposeInMainWorld('winraid', {
     /** Recursively create local directories mirroring a remote folder structure. */
     checkout: (connectionId, remotePath, localRoot) =>
       ipcRenderer.invoke('remote:checkout', connectionId, remotePath, localRoot),
-    /** Download a remote file or folder to a local path chosen via save dialog. */
-    download: (connectionId, remotePath, localPath, isDir) =>
-      ipcRenderer.invoke('remote:download', connectionId, remotePath, localPath, isDir),
     /** Read a remote file as UTF-8 text. */
     readFile: (connectionId, path) => ipcRenderer.invoke('remote:read-file', connectionId, path),
     /** Write UTF-8 text content to a remote file. */
@@ -297,8 +316,6 @@ contextBridge.exposeInMainWorld('winraid', {
     verifyClean: (connectionId, localFolder) => ipcRenderer.invoke('remote:verify-clean', connectionId, localFolder),
     /** Delete a list of local files (by relative path) inside localFolder. */
     verifyDelete: (localFolder, relPaths) => ipcRenderer.invoke('remote:verify-delete', localFolder, relPaths),
-    /** Subscribe to download progress events. Payload: { connectionId, name, filesProcessed, totalFiles, bytesTransferred, totalBytes } */
-    onDownloadProgress: (cb) => on('download:progress', cb),
     /** Get filesystem disk usage stats for a remote connection. Returns { ok, total, used, free } in bytes. */
     diskUsage: (connectionId) => ipcRenderer.invoke('remote:disk-usage', connectionId),
     /** Stat a single remote entry for its own attributes (never follows a symlink).

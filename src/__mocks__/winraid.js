@@ -58,6 +58,8 @@ export function createWinraidMock(overrides = {}) {
       thumbSize: vi.fn().mockResolvedValue({ bytes: 0 }),
       clearThumbs: vi.fn().mockResolvedValue(undefined),
       invalidateFile: vi.fn().mockResolvedValue({ ok: true }),
+      getVideoFrame: vi.fn().mockResolvedValue({ hit: false }),
+      saveVideoFrame: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.cache,
     },
 
@@ -106,6 +108,7 @@ export function createWinraidMock(overrides = {}) {
       tail: vi.fn().mockResolvedValue([]),
       onEntry: vi.fn().mockReturnValue(() => {}),
       reveal: vi.fn().mockResolvedValue({ ok: true }),
+      clear: vi.fn().mockResolvedValue({ ok: true }),
       ...overrides.activity,
     },
 
@@ -139,6 +142,15 @@ export function createWinraidMock(overrides = {}) {
       ...overrides.local,
     },
 
+    downloads: {
+      start: vi.fn().mockResolvedValue({ ok: true, id: 'download-1' }),
+      cancel: vi.fn().mockResolvedValue({ ok: true }),
+      dismiss: vi.fn().mockResolvedValue({ ok: true }),
+      list: vi.fn().mockResolvedValue([]),
+      onUpdate: vi.fn().mockReturnValue(() => {}),
+      ...overrides.downloads,
+    },
+
     remote: {
       list: vi.fn().mockResolvedValue({ ok: true, entries: [] }),
       tree: vi.fn().mockResolvedValue({ ok: true, dirMap: {} }),
@@ -165,8 +177,8 @@ export function createWinraidMock(overrides = {}) {
       onSizeDone:          vi.fn().mockReturnValue(() => {}),
       onSizeError:         vi.fn().mockReturnValue(() => {}),
       sizeLoadCache:       vi.fn().mockResolvedValue(null),
+      sizeScanSubtree:     vi.fn().mockResolvedValue({ ok: true }),
       sizeSaveCache:       vi.fn().mockResolvedValue({ ok: true }),
-      onDownloadProgress:  vi.fn().mockReturnValue(() => {}),
       mediaScan:    vi.fn().mockResolvedValue({ ok: true }),
       mediaCancel:  vi.fn().mockResolvedValue({ ok: true }),
       onMediaFound: vi.fn().mockReturnValue(() => {}),

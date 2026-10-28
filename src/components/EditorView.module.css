@@ -34,7 +34,7 @@
 }
 
 .dirtyDot {
-  color: var(--accentHi);
+  color: var(--accentText);
   font-size: 9px;
   flex-shrink: 0;
 }

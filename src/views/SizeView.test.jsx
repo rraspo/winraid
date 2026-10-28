@@ -119,4 +119,29 @@ describe('SizeView — results state (via size:done event)', () => {
     act(() => doneCb({ connectionId: 'conn-1', totalFolders: 42, elapsedMs: 5000 }))
     await waitFor(() => expect(screen.getByRole('button', { name: /re-scan/i })).toBeInTheDocument())
   })
+
+  it('labels folders that were mounts or failed to size instead of showing 0 B', async () => {
+    let levelCb
+    let doneCb
+    window.winraid.remote.onSizeLevel = vi.fn((cb) => { levelCb = cb; return () => {} })
+    window.winraid.remote.onSizeDone = vi.fn((cb) => { doneCb = cb; return () => {} })
+
+    render(<SizeView connectionId="conn-1" connection={CONN} />)
+    fireEvent.click(screen.getByRole('button', { name: /scan now/i }))
+    await waitFor(() => expect(doneCb).toBeDefined())
+
+    act(() => levelCb({
+      connectionId: 'conn-1',
+      parentPath: '/mnt/data',
+      entries: [
+        { name: 'media', path: '/mnt/data/media', sizeKb: 2048 },
+        { name: 'nas', path: '/mnt/data/nas', sizeKb: 0, status: 'mount' },
+        { name: 'slow', path: '/mnt/data/slow', sizeKb: 0, status: 'failed' },
+      ],
+    }))
+    act(() => doneCb({ connectionId: 'conn-1', totalFolders: 3, elapsedMs: 1000 }))
+
+    await waitFor(() => expect(screen.getByText('Separate mount')).toBeInTheDocument())
+    expect(screen.getByText('Size failed')).toBeInTheDocument()
+  })
 })

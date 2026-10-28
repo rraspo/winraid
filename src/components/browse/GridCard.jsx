@@ -1,22 +1,27 @@
-import { memo, useRef } from 'react'
+import { memo, useRef, useCallback } from 'react'
 import { Folder } from 'lucide-react'
 import Thumbnail from './Thumbnail'
 import EntryMenu from './EntryMenu'
 import Tooltip from '../ui/Tooltip'
 import { formatSize } from '../../utils/format'
 import { isEditableFile } from '../../utils/fileTypes'
+import { useMediaMeta } from '../../utils/mediaMetaStore'
 import styles from './GridCard.module.css'
 
+// Every prop is a primitive or keeps its identity while the entry is
+// unchanged: memo is what stops a scroll from re-rendering every mounted card.
 const GridCard = memo(function GridCard({
   entry, entryPath, connectionId, isDir, busy, index,
-  isSelected, selectedCount, isDragSource, isLastVisited, isHighlighted, isCursor,
+  isSelected, inMultiSelection, isDragSource, isLastVisited, isHighlighted, isCursor,
   highlightRef, onItemPointer, onNavigate, onQuickLook, onDownload, onEdit,
   onMove, onDelete, onProperties, onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localCandidate, checkLocalExists, onRevealLocal, onMiddleClickFolder, thumbnailsEnabled = true,
-  mediaMeta, onMediaMetadata,
+  mediaMetaStore,
 }) {
   const menuRef = useRef(null)
+  const mediaMeta = useMediaMeta(mediaMetaStore, entryPath)
+  const handleMediaMetadata = useCallback((meta) => mediaMetaStore?.set(entryPath, meta), [mediaMetaStore, entryPath])
 
   // EntryMenu is shared by the dot button and right-click, which must
   // behave differently: the dot button always targets this card alone;
@@ -25,7 +30,7 @@ const GridCard = memo(function GridCard({
   // resulting target is then always just this card, same as the dot button).
   function resolveTarget(viaContextMenu) {
     if (!viaContextMenu) return 'self'
-    if (isSelected) return selectedCount > 1 ? 'selection' : 'self'
+    if (isSelected) return inMultiSelection ? 'selection' : 'self'
     onItemPointer(index)
     return 'self'
   }
@@ -35,7 +40,7 @@ const GridCard = memo(function GridCard({
       <Thumbnail
         name={entry.name} remotePath={entryPath} connectionId={connectionId}
         size="grid" modified={entry.modified} thumbnailsEnabled={thumbnailsEnabled}
-        onMetadata={onMediaMetadata}
+        onMetadata={handleMediaMetadata}
       />
     )
 

@@ -89,6 +89,24 @@ decodes bit-identically to the source, and the seam has no gap. On an open-GOP
 HEVC source ffmpeg logs `Could not find ref with POC …` at the seam; the frames
 were confirmed bit-identical, so it is noise, not corruption.
 
+### Audio files (added 2026-10-05)
+
+Audio trims through the same QuickLook flow; the timeline sits under the audio
+player. `runTrim` routes any `AUDIO_EXTENSIONS` input to its own path: none of
+the keyframe work applies (and cover art would read as a fake video stream), so
+it runs one stream probe for the audio codec and then a single cut. The choice
+follows the codec, not the extension:
+
+| codec               | cut                          | measured against real ffmpeg            |
+|---------------------|------------------------------|-----------------------------------------|
+| mp3, aac, opus      | stream copy                  | starts within ~30 ms, no generation loss |
+| flac, pcm_*         | re-encode to the same codec  | exact; lossless; fresh flac STREAMINFO  |
+| vorbis              | re-encode, `libvorbis -q:a 6`| exact; a copy started a whole second early |
+
+`-c copy` precedes the audio override, so embedded cover art is carried over
+untouched. An `.ogg` may hold Vorbis, so its trim card does not claim to be
+lossless. A failed probe degrades to a plain stream copy (`exact: false`).
+
 ## Backend
 
 ### `electron/shell-quote.js` (new, pure)

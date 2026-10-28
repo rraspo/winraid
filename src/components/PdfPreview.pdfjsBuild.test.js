@@ -11,7 +11,7 @@ import { resolve } from 'path'
 // Both fail silently at runtime and only on a real PDF, so they are worth
 // pinning here. Delete once Electron's Chromium has the method natively.
 describe('pdfjs build selection', () => {
-  const source = readFileSync(resolve(import.meta.dirname, 'PdfPreview.jsx'), 'utf8')
+  const source = readFileSync(resolve(import.meta.dirname, '../utils/pdfjsLoader.js'), 'utf8')
 
   it('loads the worker from the legacy build', () => {
     expect(source).toContain('pdfjs-dist/legacy/build/pdf.worker.min.mjs')

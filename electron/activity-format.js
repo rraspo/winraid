@@ -23,13 +23,13 @@ export function describeActivity(type, payload = {}) {
         nav: { kind: 'remote', path: payload.destDir, highlight: payload.name },
       }
 
+    // Files and folders alike open the folder they landed in, with the moved
+    // item highlighted — the destination is what a move is about.
     case 'move':
       return {
         title: `Moved ${payload.name}`,
         detail: `→ ${payload.dstDir}`,
-        nav: payload.isDir
-          ? { kind: 'remote', path: joinRemote(payload.dstDir, payload.name) }
-          : { kind: 'remote', path: payload.dstDir, highlight: payload.name },
+        nav: { kind: 'remote', path: payload.dstDir, highlight: payload.name },
       }
 
     case 'copy':

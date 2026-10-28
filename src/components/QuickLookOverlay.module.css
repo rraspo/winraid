@@ -8,7 +8,10 @@
   position: fixed;
   inset: var(--titlebar-height) 0 0 0;
   z-index: 1000;
-  background: color-mix(in oklab, var(--bg) 82%, transparent);
+  /* The overlay forces a dark scope, so its light text needs a dark ground
+     even when the app behind it is light: a translucent wash over a blurred
+     light app composites to mid-gray. */
+  background: color-mix(in oklab, color-mix(in oklab, var(--bg) 70%, black) 92%, transparent);
   display: flex;
   flex-direction: column;
   backdrop-filter: blur(6px);
@@ -73,7 +76,7 @@
   transition: color var(--transition);
 }
 
-.fileName:hover { color: var(--accent); }
+.fileName:hover { color: var(--accentText); }
 
 @keyframes fadeSlide {
   from { opacity: 0; transform: translateY(-3px); }
@@ -124,7 +127,7 @@
   transition: color var(--transition);
 }
 
-.filePathSegment:hover { color: var(--accent); }
+.filePathSegment:hover { color: var(--accentText); }
 
 .filePathSegmentText {
   padding: 0 2px;
@@ -170,7 +173,7 @@
   text-decoration-color: var(--text-muted);
 }
 
-.folderSegment:hover { color: var(--accent); }
+.folderSegment:hover { color: var(--accentText); }
 
 .folderSep {
   color: var(--text-faint);
@@ -493,7 +496,7 @@
 
 .trimPlayBtn:hover:not(:disabled) {
   border-color: var(--accent);
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .trimPlayBtn:disabled {
@@ -622,7 +625,7 @@
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .fileMenuLabel {
@@ -777,8 +780,18 @@
   padding: var(--space-8);
 }
 
+/* Trimming: widen the column so the timeline has room to be dragged with
+   precision, and let the player follow its width. */
+.audioWrapTrimming {
+  width: min(640px, 100%);
+}
+
+.audioWrapTrimming .previewAudio {
+  width: 100%;
+}
+
 .audioIcon {
-  color: var(--accent);
+  color: var(--accentText);
   opacity: 0.7;
 }
 

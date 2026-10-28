@@ -108,7 +108,7 @@
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--stroke);
+  background: var(--text3);
   flex-shrink: 0;
 }
 
@@ -172,6 +172,6 @@
 .footerBtn:hover { background: var(--hover); }
 
 .footerBtnAccent {
-  color: var(--accentHi);
+  color: var(--accentText);
   font-weight: var(--font-weight-semibold);
 }

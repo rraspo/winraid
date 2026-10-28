@@ -95,7 +95,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 .idleHeading {
@@ -312,6 +312,16 @@
   text-align: right;
   font-size: 12.5px;
   color: var(--text2);
+}
+
+.sizeNote {
+  min-width: 64px;
+  flex-shrink: 0;
+  text-align: right;
+  white-space: nowrap;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text3);
 }
 
 .pct {

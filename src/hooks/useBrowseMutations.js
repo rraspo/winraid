@@ -22,8 +22,9 @@ function isOutsideRoot(remotePath, cfgRemotePath) {
 
 // Write-side concern for the remote browser: every operation that changes the
 // remote filesystem (delete, move, create folder, checkout, set sync root) or
-// pulls bytes down (download), plus the in-flight flag and the download
-// progress readout those operations drive.
+// pulls bytes down (download), plus the in-flight flag those operations drive.
+// A download only starts a background job; the app-level DownloadsPanel
+// follows it, so it never holds the in-flight flag.
 //
 // The dialog-target state stays with the composing hook — the views bind to it
 // directly; only the operations that consume and clear it live here.
@@ -58,26 +59,10 @@ export function useBrowseMutations({
   setBulkMoveDest,
 }) {
   const [opInFlight,      setOpInFlight]      = useState(false)
-  const [downloadProgress, setDownloadProgress] = useState(null)
-  // shape: null | { name, filesProcessed, totalFiles, bytesTransferred, totalBytes }
   // Per-entry progress for the sequential bulk delete/move loops below —
   // mirrors usePlayMutations' `inFlight` shape so the transient bulk bar can
   // show the same "Deleting <i> of <n>" / "Moving <i> of <n>" wording.
   const [bulkProgress, setBulkProgress] = useState(null)
-
-  useEffect(() => {
-    if (!window.winraid) return
-    return window.winraid.remote.onDownloadProgress((payload) => {
-      if (payload.connectionId !== selectedId) return
-      setDownloadProgress({
-        name: payload.name,
-        filesProcessed: payload.filesProcessed,
-        totalFiles: payload.totalFiles,
-        bytesTransferred: payload.bytesTransferred,
-        totalBytes: payload.totalBytes,
-      })
-    })
-  }, [selectedId])
 
   const doCheckout = useCallback(async (remotePath, clearFirst = false, targetFolder = localFolder, newSyncRoot = null) => {
     setOpInFlight(true)
@@ -116,21 +101,15 @@ export function useBrowseMutations({
     }
   }, [selectedId, localFolder, opInFlight, cfgRemotePath, doCheckout, setConfirmTarget])
 
+  // A folder lands under the chosen folder, by its own name.
   const handleDownload = useCallback(async (remotePath, entryName, isDir) => {
-    if (!selectedId || opInFlight) return
+    if (!selectedId) return
     const localPath = await window.winraid?.selectDownloadPath(entryName, isDir)
     if (!localPath) return
-    setOpInFlight(true)
-    setDownloadProgress(null)
-    const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
-    setDownloadProgress(null)
-    setOpInFlight(false)
-    if (res?.ok) {
-      setStatus({ ok: true, msg: isDir ? `Downloaded ${res.count} file(s) to ${localPath}` : `Downloaded to ${localPath}` })
-    } else {
-      setStatus({ ok: false, msg: res?.error || 'Download failed' })
-    }
-  }, [selectedId, opInFlight, setStatus])
+    const destination = isDir ? joinLocalPath(localPath, entryName) : localPath
+    const res = await window.winraid?.downloads.start(selectedId, [{ remotePath, localPath, isDir }], destination)
+    if (!res?.ok) setStatus({ ok: false, msg: `Download failed: ${res?.error ?? 'could not start'}` })
+  }, [selectedId, setStatus])
 
   const handleConfirm = useCallback((checkoutPath, targetFolder, newSyncRoot) => {
     setConfirmTarget(null)
@@ -348,39 +327,20 @@ export function useBrowseMutations({
     const folder = await window.winraid?.selectDownloadPath('', true)
     if (!folder) return  // user cancelled
 
-    setOpInFlight(true)
-    setDownloadProgress(null)
+    // One background job for the whole selection. A folder's files land
+    // under the chosen folder by the folder's own name, so it is passed
+    // unchanged; a file needs its destination name spelled out.
+    const items = targets.map((entry) => {
+      const isDir = entry.type === 'dir'
+      return { remotePath: joinRemote(path, entry.name), localPath: isDir ? folder : joinLocalPath(folder, entry.name), isDir }
+    })
     selection.clearSelection()
-    let ok = 0, fail = 0
-    let lastError = null
-    try {
-      for (const entry of targets) {
-        if (cancelledRef.current) break
-        const remotePath = joinRemote(path, entry.name)
-        const isDir = entry.type === 'dir'
-        // For directories the backend appends `basename(remotePath)` to the
-        // local path itself, so we pass the chosen folder unchanged; for
-        // files we have to spell out the destination filename.
-        const localPath = isDir ? folder : joinLocalPath(folder, entry.name)
-        const res = await window.winraid?.remote.download(selectedId, remotePath, localPath, isDir)
-        if (res?.ok) ok++
-        else { fail++; if (!lastError) lastError = res?.error }
-      }
-    } finally {
-      setOpInFlight(false)
-    }
-    if (cancelledRef.current) return
-    setDownloadProgress(null)
-    if (fail === 0) {
-      setStatus({ ok: true, msg: `Downloaded ${ok} item${ok !== 1 ? 's' : ''} to ${folder}` })
-    } else {
-      setStatus({ ok: false, msg: `Downloaded ${ok}, failed ${fail}${lastError ? ': ' + lastError : ''}` })
-    }
-  }, [selectedId, selectedEntries, path, selection, cancelledRef, setStatus])
+    const res = await window.winraid?.downloads.start(selectedId, items, folder)
+    if (!res?.ok) setStatus({ ok: false, msg: `Download failed: ${res?.error ?? 'could not start'}` })
+  }, [selectedId, selectedEntries, path, selection, setStatus])
 
   return {
     opInFlight, setOpInFlight,
-    downloadProgress,
     bulkProgress,
     handleCheckout, handleConfirm, handleSetRoot,
     handleDownload,

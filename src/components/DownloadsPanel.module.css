@@ -1,0 +1,88 @@
+/* Bottom-left, clear of the nav rail and both bottom bars; toasts own the
+   bottom-right corner. */
+.panel {
+  position: fixed;
+  left: calc(76px + var(--space-4));
+  bottom: calc(var(--statusbar-height) + var(--space-10));
+  z-index: 9997;
+  width: min(340px, calc(100vw - 76px - 2 * var(--space-4)));
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--space-3);
+  background: var(--card);
+  border: 1px solid var(--stroke);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  font-size: var(--font-size-sm);
+  color: var(--text);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.icon { color: var(--text2); flex-shrink: 0; }
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: var(--font-weight-medium);
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  color: var(--text2);
+  flex-shrink: 0;
+}
+
+.iconBtn:hover { background: var(--hover); color: var(--text); }
+
+.detail {
+  margin: 0;
+  color: var(--text2);
+  overflow-wrap: anywhere;
+}
+
+.file {
+  margin: 0;
+  color: var(--text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.error {
+  margin: 0;
+  color: var(--err);
+  overflow-wrap: anywhere;
+}

@@ -4,7 +4,7 @@ import {
   FFMPEG_WIN64_CANDIDATES, FFMPEG_PINNED_VERSION,
   ffmpegKeyframeProbeArgs, ffmpegStreamProbeArgs, ffmpegReencodeArgs, ffmpegTailSegmentArgs, ffmpegConcatArgs,
   parseKeyframeTimes, parseVideoStreamInfo, encoderForCodec, planTrim,
-  shellFromArgs, runTrim,
+  shellFromArgs, runTrim, ffmpegAudioTrimArgs, parseAudioCodec, audioCodecArgs,
 } from './video-trim.js'
 
 const NO_ROTATION = { degrees: 0, modern: true }
@@ -391,5 +391,118 @@ describe('runTrim', () => {
     const res = await runTrim({ ...base, exec, remove: vi.fn() })
 
     expect(res).toEqual({ ok: false, error: 'No space left on device' })
+  })
+})
+
+describe('parseAudioCodec', () => {
+  it('reads the audio codec, ignoring an attached cover-art stream', () => {
+    const stderr = [
+      '  Stream #0:0: Audio: mp3 (mp3float), 48000 Hz, mono, fltp, 128 kb/s',
+      '  Stream #0:1: Video: png, rgb24(pc), 64x64 (attached pic)',
+    ].join('\n')
+    expect(parseAudioCodec(stderr)).toBe('mp3')
+  })
+
+  it('returns null when there is no audio stream', () => {
+    expect(parseAudioCodec('Stream #0:0: Video: h264, yuv420p, 640x360')).toBeNull()
+  })
+})
+
+describe('audioCodecArgs', () => {
+  it('re-encodes lossless codecs to themselves', () => {
+    expect(audioCodecArgs('flac')).toEqual(['-c:a', 'flac'])
+    expect(audioCodecArgs('pcm_s24le')).toEqual(['-c:a', 'pcm_s24le'])
+  })
+
+  it('re-encodes vorbis at high quality, since its stream copy cuts a page off target', () => {
+    expect(audioCodecArgs('vorbis')).toEqual(['-c:a', 'libvorbis', '-q:a', '6'])
+  })
+
+  it('stream-copies the codecs that cut cleanly', () => {
+    for (const codec of ['mp3', 'aac', 'opus', null]) expect(audioCodecArgs(codec)).toEqual([])
+  })
+})
+
+describe('ffmpegAudioTrimArgs', () => {
+  it('stream-copies every stream, so embedded cover art survives', () => {
+    const args = ffmpegAudioTrimArgs({ input: '/m/song.mp3', output: '/m/out.mp3', start: 3, duration: 4.5, codecArgs: [] })
+    expect(args).toEqual([
+      '-nostdin', '-y',
+      '-ss', '3.000',
+      '-i', '/m/song.mp3',
+      '-t', '4.500',
+      '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero',
+      '/m/out.mp3',
+    ])
+  })
+
+  it('re-encodes only the audio, keeping the cover art copied', () => {
+    const args = ffmpegAudioTrimArgs({ input: '/m/s.flac', output: '/m/o.flac', start: 3, duration: 4.5, codecArgs: ['-c:a', 'flac'] })
+    expect(args.join(' ')).toContain('-c copy -c:a flac -map 0')
+  })
+})
+
+describe('runTrim on audio', () => {
+  // Fake ffmpeg: the 3-arg call is the stream probe; everything else is the cut.
+  function makeExec({ codec = 'mp3', cut = { code: 0, stdout: '', stderr: '' } } = {}) {
+    const calls = []
+    const exec = vi.fn(async (args) => {
+      calls.push(args)
+      if (args.length === 3) return { code: 1, stdout: '', stderr: `  Stream #0:0: Audio: ${codec}, 48000 Hz, stereo` }
+      return cut
+    })
+    return { exec, calls }
+  }
+
+  const base = { output: '/m/.winraid-trim-1.mp3', start: 2, end: 9.5 }
+
+  it('probes the codec once and cuts in one run, without the video keyframe probe', async () => {
+    const { exec, calls } = makeExec()
+
+    const res = await runTrim({ ...base, input: '/m/song.mp3', exec, remove: vi.fn() })
+
+    expect(res).toEqual({ ok: true, mode: 'copy' })
+    expect(calls).toEqual([
+      ffmpegStreamProbeArgs({ input: '/m/song.mp3' }),
+      ffmpegAudioTrimArgs({ input: '/m/song.mp3', output: base.output, start: 2, duration: 7.5, codecArgs: [] }),
+    ])
+  })
+
+  it('recognises audio by extension regardless of case', async () => {
+    const { exec, calls } = makeExec({ codec: 'aac' })
+    await runTrim({ ...base, input: '/m/SONG.M4A', exec, remove: vi.fn() })
+    expect(calls).toHaveLength(2)
+    expect(calls.flat()).not.toContain('showinfo')
+  })
+
+  it('re-encodes by codec, not extension: an .ogg holding vorbis is re-encoded', async () => {
+    const { exec, calls } = makeExec({ codec: 'vorbis' })
+    const res = await runTrim({ ...base, input: '/m/song.ogg', exec, remove: vi.fn() })
+    expect(res).toEqual({ ok: true, mode: 'reencode' })
+    expect(calls[1].join(' ')).toContain('-c:a libvorbis')
+  })
+
+  it('stream-copies an .ogg holding opus', async () => {
+    const { exec, calls } = makeExec({ codec: 'opus' })
+    const res = await runTrim({ ...base, input: '/m/song.ogg', exec, remove: vi.fn() })
+    expect(res).toEqual({ ok: true, mode: 'copy' })
+    expect(calls[1]).not.toContain('-c:a')
+  })
+
+  it('still cuts, as a stream copy, when the probe itself fails', async () => {
+    const calls = []
+    const exec = vi.fn(async (args) => {
+      calls.push(args)
+      if (args.length === 3) throw new Error('channel closed')
+      return { code: 0, stdout: '', stderr: '' }
+    })
+    const res = await runTrim({ ...base, input: '/m/song.wav', exec, remove: vi.fn() })
+    expect(res).toEqual({ ok: true, mode: 'copy', degraded: true })
+  })
+
+  it('reports the ffmpeg error when the cut fails', async () => {
+    const { exec } = makeExec({ cut: { code: 1, stdout: '', stderr: 'Invalid data found when processing input' } })
+    const res = await runTrim({ ...base, input: '/m/song.mp3', exec, remove: vi.fn() })
+    expect(res).toEqual({ ok: false, error: 'Invalid data found when processing input' })
   })
 })

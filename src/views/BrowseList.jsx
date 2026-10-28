@@ -19,7 +19,7 @@ const BrowseList = memo(function BrowseList({
   requestBulkDelete, requestBulkMove, requestBulkDownload, requestBulkProperties,
   localMirrorOf, checkLocalExists, onRevealLocal, onMiddleClickFolder,
   visibleColumns = DEFAULT_VISIBLE_COLUMNS, thumbnailsEnabled = true, density = 'default',
-  mediaMetaByPath, onThumbnailMetadata,
+  mediaMetaStore,
 }) {
   const entries = entriesWithPaths
   const [listScrollEl, setListScrollEl] = useState(null)
@@ -225,12 +225,13 @@ const BrowseList = memo(function BrowseList({
                 key={entry.name}
                 entry={entry}
                 entryPath={entry.entryPath}
-                virtualRow={virtualRow}
+                top={virtualRow.start}
+                height={virtualRow.size}
                 index={virtualRow.index}
                 connectionId={selectedId}
                 busy={busy}
                 isSelected={selected.has(entry.name)}
-                selectedCount={selected.size}
+                inMultiSelection={selected.size > 1 && selected.has(entry.name)}
                 isDragSource={dragSourcePaths.has(entry.entryPath)}
                 isLastVisited={entry.type === 'dir' && lastVisitedDir === entry.name}
                 isHighlighted={highlightFile === entry.name}
@@ -259,8 +260,7 @@ const BrowseList = memo(function BrowseList({
                 onMiddleClickFolder={onMiddleClickFolder}
                 visibleColumns={visibleColumns}
                 thumbnailsEnabled={thumbnailsEnabled}
-                mediaMeta={mediaMetaByPath?.[entry.entryPath]}
-                onMediaMetadata={(meta) => onThumbnailMetadata?.(entry.entryPath, meta)}
+                mediaMetaStore={mediaMetaStore}
               />
             )
           })}

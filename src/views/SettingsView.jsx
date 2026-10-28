@@ -22,6 +22,7 @@ const DIRECTORY_CACHE_OPTIONS = [
 
 export default function SettingsView({ onTrashByConnectionChanged, defaultConnectionId = null, onSetDefault } = {}) {
   const [watching, setWatching] = useState(false)
+  const [watcherError, setWatcherError] = useState(null)
   const [version, setVersion] = useState('')
   const [updateStatus, setUpdateStatus] = useState(null) // { status, version?, percent?, error? }
   const [cacheBytes, setCacheBytes] = useState(0)
@@ -136,17 +137,24 @@ export default function SettingsView({ onTrashByConnectionChanged, defaultConnec
   }
 
   async function handleWatcherToggle() {
+    setWatcherError(null)
     if (watching) {
       await window.winraid?.watcher.pauseAll()
     } else {
       const cfg = await window.winraid?.config.get()
       const conns = cfg?.connections ?? []
       const watchable = conns.filter((c) => c.localFolder)
-      if (watchable.length === 0) return
-      // Start watchers for all connections with a localFolder
-      for (const conn of watchable) {
-        await window.winraid?.watcher.start(conn.id)
+      if (watchable.length === 0) {
+        setWatcherError('No connection has a watch folder. Set one in Connections to start scanning.')
+        return
       }
+      const refusals = []
+      for (const conn of watchable) {
+        const result = await window.winraid?.watcher.start(conn.id)
+          .catch((error) => ({ ok: false, error: error?.message ?? String(error) }))
+        if (result?.ok === false) refusals.push(`${conn.name}: ${result.error}`)
+      }
+      if (refusals.length > 0) setWatcherError(`Could not start ${refusals.join('; ')}`)
     }
   }
 
@@ -336,6 +344,7 @@ export default function SettingsView({ onTrashByConnectionChanged, defaultConnec
                   {watching ? 'Stop scanner' : 'Start scanner'}
                 </Button>
               </Tooltip>
+              {watcherError && <p role="alert" className={`${styles.hint} ${styles.watcherError}`}>{watcherError}</p>}
               <p className={styles.hint}>Closing the window keeps WinRaid running in the tray — watchers stay armed.</p>
             </div>
           </section>

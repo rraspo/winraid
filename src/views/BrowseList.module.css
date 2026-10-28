@@ -78,7 +78,7 @@
   overflow: hidden;
 }
 
-.iconDir  { color: var(--accent);     flex-shrink: 0; }
+.iconDir  { color: var(--accentText);     flex-shrink: 0; }
 .iconFile { color: var(--text3); flex-shrink: 0; }
 
 .nameBtn {
@@ -90,7 +90,7 @@
   transition: color var(--transition);
 }
 
-.nameBtn:hover { color: var(--accent); }
+.nameBtn:hover { color: var(--accentText); }
 
 .nameText {
   overflow: hidden;
@@ -182,7 +182,7 @@
   width: 16px;
   height: 16px;
   border-radius: var(--radius-sm);
-  border: 1.5px solid var(--stroke);
+  border: 1.5px solid var(--outline);
   background: transparent;
   transition: background-color 150ms ease, border-color 150ms ease;
   display: flex;
@@ -223,7 +223,13 @@
 .checkbox:hover .checkmark { border-color: var(--accent); }
 
 /* ── Row selection ────────────────────────────────────────────────────────── */
-.rowSelected          { background: color-mix(in srgb, var(--accent) 10%, transparent) !important; }
+/* An accent tint eats into muted text's contrast, so tinted rows lift their
+   muted cells one level (and to full text on the 30% cursor tint) to keep
+   them at WCAG AA for every accent choice. */
+.rowSelected {
+  background: color-mix(in srgb, var(--accent) 10%, transparent) !important;
+  --text3: var(--text2);
+}
 .rowSelected:hover    { background: color-mix(in srgb, var(--accent) 15%, transparent) !important; }
 
 /* ── Empty dir ────────────────────────────────────────────────────────────── */
@@ -242,7 +248,10 @@
 
 .dragging { opacity: 0.45; }
 
-.lastVisited { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
+.lastVisited {
+  background: color-mix(in srgb, var(--accent) 25%, transparent) !important;
+  --text3: var(--text2);
+}
 
 /* Type-to-jump cursor — instant solid accent tint, snappier than the
    selection background so the user can see where their keystrokes
@@ -251,5 +260,7 @@
    keystrokes feel responsive. */
 .cursor {
   background: color-mix(in srgb, var(--accent) 30%, transparent) !important;
+  --text2: var(--text);
+  --text3: var(--text);
   transition: background-color 200ms ease-out;
 }

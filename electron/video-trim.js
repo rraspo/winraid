@@ -1,4 +1,5 @@
 import { shQuote } from './shell-quote.js'
+import { isAudioFile } from '../src/utils/fileTypes.js'
 import { parseRotation, supportsDisplayRotation, rotationInputArgs, rotationOutputArgs } from './video-rotate.js'
 
 // Seconds formatted for ffmpeg's -ss/-t (plain seconds, millisecond precision).
@@ -44,6 +45,56 @@ export function ffmpegTrimArgs({ input, output, start, duration }) {
     '-c', 'copy', '-map', '0', '-avoid_negative_ts', 'make_zero',
     output,
   ]
+}
+
+// "Stream #0:0: Audio: mp3 (mp3float), 48000 Hz, mono, fltp, 128 kb/s"
+const AUDIO_STREAM = /:\s*Audio:\s*([A-Za-z0-9_]+)/
+
+export function parseAudioCodec(stderr) {
+  return AUDIO_STREAM.exec(String(stderr ?? ''))?.[1] ?? null
+}
+
+// How the audio stream is written. Audio needs none of the video keyframe
+// work, but a stream copy is only as exact as the codec's packets: mp3, aac
+// and opus land within a frame (a few dozen ms) with no generation loss, so
+// they copy. Lossless codecs re-encode to themselves -- exact at no cost in
+// quality, and flac gets a fresh STREAMINFO duration. Vorbis copies cut on an
+// Ogg page and can start a whole second early, so it re-encodes at a quality
+// high enough that the second generation is not audible.
+export function audioCodecArgs(codec) {
+  if (codec === 'flac' || /^pcm_/.test(codec ?? '')) return ['-c:a', codec]
+  if (codec === 'vorbis') return ['-c:a', 'libvorbis', '-q:a', '6']
+  return []
+}
+
+// Audio trim argv. -c copy before the audio codec override keeps cover art
+// (an attached mjpeg/png "video" stream) copied as-is.
+export function ffmpegAudioTrimArgs({ input, output, start, duration, codecArgs }) {
+  return [
+    '-nostdin', '-y',
+    '-ss', fmtSecs(start),
+    '-i', input,
+    '-t', fmtSecs(duration),
+    '-c', 'copy', ...codecArgs, '-map', '0', '-avoid_negative_ts', 'make_zero',
+    output,
+  ]
+}
+
+async function runAudioTrim({ input, output, start, end, exec, log }) {
+  let codecArgs = []
+  let degraded = false
+  try {
+    const probe = await exec(ffmpegStreamProbeArgs({ input }))
+    codecArgs = audioCodecArgs(parseAudioCodec(probe.stderr))
+  } catch (err) {
+    log('warn', `Audio probe failed, stream-copying instead: ${err.message}`)
+    degraded = true
+  }
+
+  const { code, stderr } = await exec(ffmpegAudioTrimArgs({ input, output, start, duration: end - start, codecArgs }))
+  if (code !== 0) return { ok: false, error: stderrTail(stderr) || `ffmpeg exited ${code}` }
+  const result = { ok: true, mode: codecArgs.length ? 'reencode' : 'copy' }
+  return degraded ? { ...result, degraded } : result
 }
 
 // Ask ffmpeg for the keyframes in [start, start+window]. -skip_frame nokey
@@ -210,6 +261,8 @@ export async function runTrim({ input, output, start, end, exec, remove, log = (
     const { code, stderr } = await exec(ffmpegTrimArgs({ input, output, start, duration: end - start }))
     return code === 0 ? { ok: true, mode: 'copy' } : { ok: false, error: stderrTail(stderr) || `ffmpeg exited ${code}` }
   }
+
+  if (isAudioFile(input)) return runAudioTrim({ input, output, start, end, exec, log })
 
   let plan = { mode: 'copy' }
   let encoder = null

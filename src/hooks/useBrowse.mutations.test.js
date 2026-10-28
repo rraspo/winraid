@@ -45,11 +45,10 @@ beforeEach(() => {
       move: vi.fn().mockResolvedValue({ ok: true }),
       mkdir: vi.fn().mockResolvedValue({ ok: true }),
       checkout: vi.fn().mockResolvedValue({ ok: true, created: [] }),
-      download: vi.fn().mockResolvedValue({ ok: true, count: 1 }),
       readFile: vi.fn().mockResolvedValue({ ok: false, content: '' }),
-      onDownloadProgress: vi.fn().mockReturnValue(() => {}),
       verifyClean: vi.fn().mockResolvedValue({ ok: true, clean: true }),
     },
+    downloads: { start: vi.fn().mockResolvedValue({ ok: true, id: 'download-1' }) },
     selectDownloadPath: vi.fn().mockResolvedValue('C:\\Users\\test\\Downloads'),
     watcher: { list: vi.fn().mockResolvedValue({}) },
     queue: {
@@ -265,11 +264,16 @@ describe('selection clearing after bulk operations', () => {
     await act(() => result.current.handleBulkCheckout())
     // Folder picker invoked with isDir=true.
     expect(window.winraid.selectDownloadPath).toHaveBeenCalledWith('', true)
-    // One download call per selected file, destination joined under chosen folder.
-    expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/a.jpg', 'C:\\Users\\test\\Downloads\\a.jpg', false)
-    expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/b.jpg', 'C:\\Users\\test\\Downloads\\b.jpg', false)
-    // Selection cleared after running.
+    // One background job for the whole selection, each file joined under the
+    // chosen folder, which is also where the panel points when it is done.
+    expect(window.winraid.downloads.start).toHaveBeenCalledTimes(1)
+    expect(window.winraid.downloads.start).toHaveBeenCalledWith('conn1', [
+      { remotePath: '/media/a.jpg', localPath: 'C:\\Users\\test\\Downloads\\a.jpg', isDir: false },
+      { remotePath: '/media/b.jpg', localPath: 'C:\\Users\\test\\Downloads\\b.jpg', isDir: false },
+    ], 'C:\\Users\\test\\Downloads')
+    // Selection cleared, and the browser is not held while the job runs.
     expect(result.current.selected.size).toBe(0)
+    expect(result.current.opInFlight).toBe(false)
   })
 
   it('handleBulkCheckout does nothing if the user cancels the folder picker', async () => {
@@ -286,7 +290,7 @@ describe('selection clearing after bulk operations', () => {
     await waitFor(() => expect(result.current.selected.size).toBe(1))
     await act(() => result.current.handleBulkCheckout())
     // No download attempted, selection preserved so the user can retry.
-    expect(window.winraid.remote.download).not.toHaveBeenCalled()
+    expect(window.winraid.downloads.start).not.toHaveBeenCalled()
     expect(result.current.selected.size).toBe(1)
   })
 
@@ -302,7 +306,9 @@ describe('selection clearing after bulk operations', () => {
     await act(async () => result.current.toggleSelectAll())
     await waitFor(() => expect(result.current.selected.size).toBe(1))
     await act(() => result.current.handleBulkCheckout())
-    expect(window.winraid.remote.download).toHaveBeenCalledWith('conn1', '/media/subdir', 'C:\\Users\\test\\Downloads', true)
+    expect(window.winraid.downloads.start).toHaveBeenCalledWith('conn1', [
+      { remotePath: '/media/subdir', localPath: 'C:\\Users\\test\\Downloads', isDir: true },
+    ], 'C:\\Users\\test\\Downloads')
   })
 })
 
@@ -416,21 +422,14 @@ describe('bulk operation cancellation clears the busy flag', () => {
     expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
   })
 
-  it('handleBulkCheckout clears opInFlight when cancelled mid-run, and skips the summary toast', async () => {
-    const cancelledRef = { current: false }
+  it('handleBulkCheckout says why when the download cannot start', async () => {
     const setStatus = vi.fn()
-    window.winraid.remote.download.mockImplementation(async (_id, remotePath) => {
-      if (remotePath === '/media/a.jpg') cancelledRef.current = true
-      return { ok: true, count: 1 }
-    })
+    window.winraid.downloads.start.mockResolvedValue({ ok: false, error: 'Invalid remote path' })
 
     const { result, unmount } = renderHook(() => useMutationsHarness({
-      initialEntries: [
-        { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
-        { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
-      ],
+      initialEntries: [{ name: 'a.jpg', type: 'file', size: 100, modified: 0 }],
       cacheMutRef: { current: 'update' },
-      cancelledRef,
+      cancelledRef: { current: false },
       fetchDir: vi.fn().mockResolvedValue(undefined),
       setStatus,
     }))
@@ -439,11 +438,29 @@ describe('bulk operation cancellation clears the busy flag', () => {
     await act(async () => result.current.selection.toggleSelectAll())
     await act(() => result.current.handleBulkCheckout())
 
+    expect(setStatus).toHaveBeenCalledWith({ ok: false, msg: 'Download failed: Invalid remote path' })
+  })
+
+  it('handleDownload starts one background job and leaves the browser usable', async () => {
+    const setStatus = vi.fn()
+    const { result, unmount } = renderHook(() => useMutationsHarness({
+      initialEntries: [{ name: 'photos', type: 'dir', size: 0, modified: 0 }],
+      cacheMutRef: { current: 'update' },
+      cancelledRef: { current: false },
+      fetchDir: vi.fn().mockResolvedValue(undefined),
+      setStatus,
+    }))
+    cleanup = unmount
+
+    await act(() => result.current.handleDownload('/media/photos', 'photos', true))
+
+    expect(window.winraid.selectDownloadPath).toHaveBeenCalledWith('photos', true)
+    expect(window.winraid.downloads.start).toHaveBeenCalledWith('conn1', [
+      { remotePath: '/media/photos', localPath: 'C:\\Users\\test\\Downloads', isDir: true },
+    ], 'C:\\Users\\test\\Downloads\\photos')
     expect(result.current.opInFlight).toBe(false)
-    expect(window.winraid.remote.download).toHaveBeenCalledTimes(1)
-    // A cancelled run returns before the summary toast fires, so setStatus
-    // should never be called with a truthy msg here.
-    expect(setStatus).not.toHaveBeenCalledWith(expect.objectContaining({ msg: expect.any(String) }))
+    // The downloads panel reports the outcome, not the status line.
+    expect(setStatus).not.toHaveBeenCalled()
   })
 })
 

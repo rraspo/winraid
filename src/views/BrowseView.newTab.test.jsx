@@ -73,6 +73,38 @@ describe('BrowseView middle click opens a folder in another tab', () => {
     expect(onOpenTab).not.toHaveBeenCalled()
   })
 
+  it('opens a breadcrumb folder in a background tab', async () => {
+    const { onOpenTab } = await mount()
+    fireEvent.click(screen.getByText('Documents').closest('.row'))
+    await act(async () => {})
+    const parentCrumb = screen.getByRole('button', { name: 'data' })
+    fireEvent.mouseDown(parentCrumb, { button: 1 })
+    expect(onOpenTab).toHaveBeenCalledWith(
+      'conn-1',
+      'browse',
+      expect.objectContaining({ path: '/mnt/user/data', newTab: true, background: true }),
+    )
+  })
+
+  it('opens the current folder crumb in a background tab instead of copying its path', async () => {
+    const { onOpenTab } = await mount()
+    fireEvent.click(screen.getByText('Documents').closest('.row'))
+    await act(async () => {})
+    const crumbs = document.querySelectorAll('.crumb')
+    fireEvent.mouseDown(crumbs[crumbs.length - 1], { button: 1 })
+    expect(onOpenTab).toHaveBeenCalledWith(
+      'conn-1',
+      'browse',
+      expect.objectContaining({ path: '/mnt/user/data/Documents', newTab: true, background: true }),
+    )
+  })
+
+  it('ignores a left mouse down on a breadcrumb', async () => {
+    const { onOpenTab } = await mount()
+    fireEvent.mouseDown(document.querySelectorAll('.crumb')[0], { button: 0 })
+    expect(onOpenTab).not.toHaveBeenCalled()
+  })
+
   it('still navigates in place on a plain click', async () => {
     const { onOpenTab } = await mount()
     fireEvent.click(screen.getByText('Documents').closest('.row'))

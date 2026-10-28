@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Server, ListOrdered, Folder, Play, PieChart, Download,
+  LayoutDashboard, Server, History, Folder, Play, PieChart, Download,
   FileText, Monitor, Sun, Moon, Settings,
 } from 'lucide-react'
 import styles from './NavRail.module.css'
@@ -9,7 +9,7 @@ import styles from './NavRail.module.css'
 const NAV_ITEMS = [
   { id: 'dashboard',   label: 'Dashboard',   Icon: LayoutDashboard },
   { id: 'connections', label: 'Connections', Icon: Server },
-  { id: 'queue',       label: 'Queue',       Icon: ListOrdered },
+  { id: 'queue',       label: 'Activity',    Icon: History },
   { id: 'browse',      label: 'Browse',      Icon: Folder },
   { id: 'play',        label: 'Play wall',   Icon: Play },
   { id: 'size',        label: 'Size map',    Icon: PieChart },

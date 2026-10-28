@@ -40,6 +40,8 @@ export function getExt(name) {
 
 export function isImageFile(name)    { return IMAGE_EXTENSIONS.has(getExt(name)) }
 export function isVideoFile(name)    { return VIDEO_EXTENSIONS.has(getExt(name)) }
+export function isPdfFile(name)      { return PDF_EXTENSIONS.has(getExt(name)) }
+export function isAudioFile(name)    { return AUDIO_EXTENSIONS.has(getExt(name)) }
 export function isRotatableVideo(name) { return ROTATABLE_VIDEO_EXTENSIONS.has(getExt(name)) }
 export function isEditableFile(name) { return !BINARY_EXTENSIONS.has(getExt(name)) }
 

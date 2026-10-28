@@ -15,9 +15,12 @@ import LogView from './views/LogView'
 import EditorView from './components/EditorView'
 import PlayOverlay from './components/PlayOverlay'
 import ToastHost from './components/ui/ToastHost'
+import DownloadsPanel from './components/DownloadsPanel'
 import { useNavHistory } from './hooks/useNavHistory'
 import * as toast from './services/toast'
-import { normalizeAppearance, resolveTheme, resolveAccentHex, onAccentTextColor } from './utils/accent'
+import { getInternalDrag, clearInternalDrag } from './services/internalDrag'
+import { moveEntries } from './services/moveEntries'
+import { useAppearance } from './hooks/useAppearance'
 import styles from './App.module.css'
 
 // ---------------------------------------------------------------------------
@@ -95,78 +98,7 @@ export default function App() {
   })
 
   // --- Appearance (theme + accent) --------------------------------------------
-  const [appearance, setAppearance] = useState(() => normalizeAppearance(undefined))
-  const [systemPrefersDark, setSystemPrefersDark] = useState(
-    () => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? true
-  )
-  const [systemAccentHex, setSystemAccentHex] = useState(null)
-  const resolvedTheme = resolveTheme(appearance.theme, systemPrefersDark)
-
-  // Load the persisted appearance. Installs that predate the appearance
-  // setting hold the theme in localStorage under 'winraid-theme'; it wins
-  // over the default exactly once and is then removed, so an explicit
-  // choice in Settings can never be overridden by the stale key.
-  useEffect(() => {
-    let cancelled = false
-    window.winraid?.config.get('appearance').then((raw) => {
-      if (cancelled) return
-      const legacyTheme = localStorage.getItem('winraid-theme')
-      if ((legacyTheme === 'dark' || legacyTheme === 'light') && raw?.theme == null) {
-        const migrated = { ...normalizeAppearance(raw), theme: legacyTheme }
-        setAppearance(migrated)
-        window.winraid?.config.set('appearance', migrated)
-        localStorage.removeItem('winraid-theme')
-      } else {
-        setAppearance(normalizeAppearance(raw))
-      }
-    }).catch(() => {})
-    return () => { cancelled = true }
-  }, [])
-
-  // Re-resolve a 'system' theme choice when the OS preference changes live.
-  useEffect(() => {
-    const media = window.matchMedia?.('(prefers-color-scheme: dark)')
-    if (!media) return
-    const handleChange = (e) => setSystemPrefersDark(e.matches)
-    media.addEventListener?.('change', handleChange)
-    return () => media.removeEventListener?.('change', handleChange)
-  }, [])
-
-  // Pick up appearance changes written by SettingsView without a reload.
-  useEffect(() => {
-    function handleAppearanceChanged(e) {
-      if (e.detail) setAppearance(normalizeAppearance(e.detail))
-    }
-    window.addEventListener('winraid:appearance-changed', handleAppearanceChanged)
-    return () => window.removeEventListener('winraid:appearance-changed', handleAppearanceChanged)
-  }, [])
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', resolvedTheme)
-  }, [resolvedTheme])
-
-  // Track the live Windows system accent so a 'system' accent choice follows
-  // it without requiring a restart.
-  useEffect(() => {
-    if (!window.winraid?.system) return
-    let cancelled = false
-    window.winraid.system.accentColor().then((hex) => {
-      if (!cancelled) setSystemAccentHex(hex ?? null)
-    }).catch(() => {})
-    const unsubscribe = window.winraid.system.onAccentColorChanged((hex) => {
-      setSystemAccentHex(hex ?? null)
-    })
-    return () => {
-      cancelled = true
-      unsubscribe?.()
-    }
-  }, [])
-
-  useEffect(() => {
-    const accentHex = resolveAccentHex(appearance.accent, systemAccentHex)
-    document.documentElement.style.setProperty('--accent', accentHex)
-    document.documentElement.style.setProperty('--onAccent', onAccentTextColor(accentHex))
-  }, [appearance.accent, systemAccentHex])
+  const { setAppearance, resolvedTheme } = useAppearance()
 
   function toggleTheme() {
     const next = resolvedTheme === 'dark' ? 'light' : 'dark'
@@ -431,6 +363,26 @@ export default function App() {
     })
   }
 
+  // The folder a browse tab is showing, so files dropped on its header know
+  // where to go.
+  function setTabLocation(tabId, location) {
+    setOpenTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, location } : t)))
+  }
+
+  // Files dragged out of one browse tab and dropped on another's header move
+  // into the folder that tab is showing. TabBar only offers the drop for a
+  // browse tab on the dragged files' connection.
+  async function dropEntriesOnTab(tabId) {
+    const drag = getInternalDrag()
+    const tab  = openTabs.find((t) => t.id === tabId)
+    if (!drag || !tab?.location || tab.location.connectionId !== drag.connectionId) return
+    clearInternalDrag()
+    const status = await moveEntries(drag.connectionId, drag.entries, tab.location.path)
+    toast.show(status
+      ? { msg: status.msg, type: status.ok ? 'success' : 'error' }
+      : { msg: 'Nothing to move: the files are already in that folder' })
+  }
+
   function setTabLabel(tabId, label) {
     setOpenTabs((prev) => prev.map((t) => (t.id === tabId ? { ...t, label } : t)))
   }
@@ -499,8 +451,18 @@ export default function App() {
     // window listener on every one.
   }, [activeScopeKey, back, forward]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The editor saves the whole connection, so it has to start from what
+  // config holds. Browse writes per-connection state (view options, the sync
+  // root) straight to config, and an editor seeded from this in-memory list
+  // would put the older values back on Save.
   async function openConnEdit(conn) {
-    setConnEdit({ conn: conn ?? null })
+    if (!conn) {
+      setConnEdit({ conn: null })
+      return
+    }
+    const fresh = await window.winraid?.config.get('connections') ?? []
+    setConnections(fresh)
+    setConnEdit({ conn: fresh.find((c) => c.id === conn.id) ?? conn })
   }
 
   async function handleConnSave() {
@@ -844,6 +806,7 @@ export default function App() {
             onActivate={activateTab}
             onClose={closeTab}
             onReorder={reorderTab}
+            onDropEntries={dropEntriesOnTab}
           />
           <main className={styles.content}>
             {/* Global views */}
@@ -885,6 +848,7 @@ export default function App() {
                   active={activeTabId === tab.id && connEdit === null && playTarget === null}
                   browseRestore={browseRestoreByTab[tab.id] ?? null}
                   onBrowseRestoreConsumed={() => clearTabBrowseRestore(tab.id)}
+                  onLocationChange={(location) => setTabLocation(tab.id, location)}
                   onHistoryPush={(entry) => {
                     push(scopeKey, entry)
                     if (entry.kind === 'browse' && entry.path) {
@@ -984,6 +948,7 @@ export default function App() {
         connections={connections}
         onNavigate={navigate}
       />
+      <DownloadsPanel />
       <ToastHost />
     </div>
   )

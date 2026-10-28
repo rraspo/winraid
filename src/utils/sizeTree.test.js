@@ -25,6 +25,20 @@ describe('upsertLevel', () => {
     expect(tree.children.map((c) => c.path)).toEqual(['/data/movies', '/data/iso.img'])
   })
 
+  it('records a status that arrives with a child’s size', () => {
+    const tree = root()
+    upsertLevel(tree, '/data', [{ name: 'movies', path: '/data/movies', sizeKb: 0 }])
+    upsertLevel(tree, '/data', [{ name: 'movies', path: '/data/movies', sizeKb: 0, status: 'failed' }])
+    expect(tree.children[0].status).toBe('failed')
+  })
+
+  it('clears a previous status when a later size arrives without one', () => {
+    const tree = root()
+    upsertLevel(tree, '/data', [{ name: 'movies', path: '/data/movies', sizeKb: 0, status: 'failed' }])
+    upsertLevel(tree, '/data', [{ name: 'movies', path: '/data/movies', sizeKb: 300 }])
+    expect(tree.children[0].status).toBeUndefined()
+  })
+
   it('updates an existing child size instead of duplicating it', () => {
     const tree = root()
     upsertLevel(tree, '/data', [{ name: 'movies', path: '/data/movies', sizeKb: 0 }])

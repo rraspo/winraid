@@ -33,6 +33,7 @@ import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
 import * as toast from '../services/toast'
 import * as remoteFS from '../services/remoteFS'
+import { createMediaMetaStore } from '../utils/mediaMetaStore'
 
 const MERGERFS_MSG = 'This directory is a mergerfs union mount — files cannot be uploaded or created here. Navigate into a share folder.'
 
@@ -53,7 +54,7 @@ export default function BrowseView({
   onHistoryPush, browseRestore, onBrowseRestoreConsumed, connections: connectionsProp, connectionId,
   style, favorites, favoritesByConnection, onToggleFavorite, onOpenEditor, onNavigate, onOpenTab,
   onNavigateFavorite,
-  onSelectConnection, onBack, canGoBack = false, onForward, canGoForward = false,
+  onSelectConnection, onBack, canGoBack = false, onForward, canGoForward = false, onLocationChange,
   defaultConnectionId = null, onSetDefault, trashByConnection = {},
   // Whether this tab is the one currently on screen. Tabs stay mounted while
   // hidden, so anything that describes what is in front of the user has to
@@ -65,7 +66,7 @@ export default function BrowseView({
     connections, selectedId, path, entries, loading, error,
     confirmTarget, deleteTarget, moveTarget,
     viewMode, selectedFile, showQuickLook,
-    dragSource, dragPos, dragSourcePaths, moveInFlight, downloadProgress,
+    dragSource, dragPos, dragSourcePaths, moveInFlight,
     selected, bulkAction, bulkMoveDest, bulkProgress,
     searchQuery, setSearchQuery,
     cursorEntry, setCursorEntry,
@@ -93,6 +94,12 @@ export default function BrowseView({
     handleExternalDrop,
   } = browse
 
+  // Tells the tab strip which folder this tab is showing, so files dragged
+  // from another tab and dropped on this tab's header land here.
+  useEffect(() => {
+    if (selectedId) onLocationChange?.({ connectionId: selectedId, path })
+  }, [selectedId, path]) // eslint-disable-line react-hooks/exhaustive-deps -- the parent passes a fresh callback every render
+
   // Activating an editable file (click) opens it in an editor tab; media/PDF
   // still use QuickLook. The 3-dot Edit action routes to the same editor tab.
   const activateFile = (entry, entryPath) =>
@@ -119,6 +126,14 @@ export default function BrowseView({
     onOpenTab?.(selectedId, 'browse', { path: entryPath, newTab: true, background: true })
   }
 
+  // Breadcrumbs are folders too: a middle click opens one in a background
+  // tab, the current folder included, rather than navigating or copying.
+  const handleMiddleClickCrumb = (e, crumbPath) => {
+    if (e.button !== 1) return
+    e.preventDefault()
+    handleMiddleClickFolder(crumbPath)
+  }
+
   // Properties for a single entry — the row's own "..." menu (always) and
   // right-click when it targets just one entry (nothing else selected, or a
   // one-item selection).
@@ -127,7 +142,7 @@ export default function BrowseView({
       name: entry.name, path: entry.path, size: entry.size, modified: entry.modified,
       type: entry.isDir ? 'dir' : 'file',
       mode: entry.mode, owner: entry.owner, group: entry.group, uid: entry.uid, gid: entry.gid, target: entry.target,
-      media: entry.media ?? mediaMetaByPath[entry.path] ?? null,
+      media: entry.media ?? mediaMetaStore.get(entry.path) ?? null,
     }])
   }
 
@@ -139,7 +154,7 @@ export default function BrowseView({
       name: e.name, type: e.type, size: e.size, modified: e.modified,
       path: joinPath(path, e.name),
       mode: e.mode, owner: e.owner, group: e.group, uid: e.uid, gid: e.gid, target: e.target,
-      media: mediaMetaByPath[joinPath(path, e.name)] ?? null,
+      media: mediaMetaStore.get(joinPath(path, e.name)) ?? null,
     })))
   }
 
@@ -177,21 +192,11 @@ export default function BrowseView({
   // (an overflow-menu "Properties" opened over a multi-selection).
   const [propertiesEntries, setPropertiesEntries] = useState(null)
   // Media metadata (video duration/resolution, image dimensions) surfaced by
-  // a thumbnail once it renders, keyed by entry path. Lifted here — rather
-  // than kept local to each row/card — because Properties (opened from
-  // either a single row or a multi-selection built independently in
-  // openPropertiesForSelection) needs the same values the grid bar and the
-  // list Media column already show, without re-deriving them or triggering
-  // a second read of the thumbnail's own video/img element.
-  const [mediaMetaByPath, setMediaMetaByPath] = useState({})
-  const handleThumbnailMetadata = useCallback((entryPath, meta) => {
-    setMediaMetaByPath((prev) => {
-      const existing = prev[entryPath]
-      if (existing && existing.kind === meta.kind && existing.duration === meta.duration
-        && existing.width === meta.width && existing.height === meta.height) return prev
-      return { ...prev, [entryPath]: meta }
-    })
-  }, [])
+  // a thumbnail once it renders, keyed by entry path. Owned here because
+  // Properties (single row or multi-selection) needs the same values the grid
+  // bar and the list Media column show; held in a store rather than state so
+  // each report re-renders only the row it belongs to.
+  const [mediaMetaStore] = useState(createMediaMetaStore)
   const [optionsOpen, setOptionsOpen]         = useState(false)
   const [breadcrumbOverflow, setBreadcrumbOverflow] = useState(false)
   const [sortDropOpen, setSortDropOpen]       = useState(false)
@@ -310,6 +315,8 @@ export default function BrowseView({
     { value: 'nameDesc', label: 'Name Z-A' },
     { value: 'recent',   label: 'Recent' },
     { value: 'oldest',   label: 'Oldest' },
+    { value: 'sizeDesc', label: 'Largest' },
+    { value: 'sizeAsc',  label: 'Smallest' },
   ]
 
   // Ctrl+V / Cmd+V to paste clipboard content into the current directory.
@@ -461,6 +468,7 @@ export default function BrowseView({
               role="menuitem"
               className={styles.crumbMenuItem}
               onClick={() => { setCrumbMenuOpen(false); navigate(c.path) }}
+              onMouseDown={(e) => handleMiddleClickCrumb(e, c.path)}
               onDragOver={(e) => handleDragOverFolder(e, c.path)}
               onDragLeave={handleDragLeaveFolder}
               onDrop={(e) => { setCrumbMenuOpen(false); handleDrop(e, c.path) }}
@@ -485,12 +493,17 @@ export default function BrowseView({
           trashByConnection={trashByConnection}
         />
       )}
-      <DragGhost
-        dragSource={dragSource}
-        dragPos={dragPos}
-        connectionId={selectedId}
-        viewMode={viewMode}
-      />
+      {/* Portalled so the ghost keeps following the cursor after hovering
+          another tab hides this one. */}
+      {createPortal(
+        <DragGhost
+          dragSource={dragSource}
+          dragPos={dragPos}
+          connectionId={selectedId}
+          viewMode={viewMode}
+        />,
+        document.body,
+      )}
 
       {confirmTarget && (
         <ConfirmModal
@@ -558,18 +571,6 @@ export default function BrowseView({
         <div className={styles.moveOverlay} data-theme="dark">
           <Loader size={24} className={styles.spinning} />
           <span className={styles.moveOverlayText}>Moving {moveInFlight}</span>
-        </div>
-      )}
-
-      {downloadProgress && (
-        <div className={styles.moveOverlay} data-theme="dark">
-          <Loader size={24} className={styles.spinning} />
-          <span className={styles.moveOverlayText}>
-            {downloadProgress.totalFiles > 1
-              ? `Downloading ${downloadProgress.name}... ${downloadProgress.filesProcessed} / ${downloadProgress.totalFiles} files`
-              : `Downloading ${downloadProgress.name}...${downloadProgress.totalBytes > 0 ? ` ${Math.round((downloadProgress.bytesTransferred / downloadProgress.totalBytes) * 100)}%` : ''}`
-            }
-          </span>
         </div>
       )}
 
@@ -672,6 +673,7 @@ export default function BrowseView({
                     ].join(' ')}
                     title={c.path === path ? 'Copy full path' : undefined}
                     onClick={() => (c.path === path ? copyPath(c.path) : navigate(c.path))}
+                    onMouseDown={(e) => handleMiddleClickCrumb(e, c.path)}
                     onDragOver={(e) => handleDragOverFolder(e, c.path)}
                     onDragLeave={handleDragLeaveFolder}
                     onDrop={(e) => handleDrop(e, c.path)}
@@ -1028,8 +1030,7 @@ export default function BrowseView({
               visibleColumns={browse.browseOptions.columns}
               thumbnailsEnabled={browse.browseOptions.thumbnails}
               density={browse.browseOptions.density}
-              mediaMetaByPath={mediaMetaByPath}
-              onThumbnailMetadata={handleThumbnailMetadata}
+              mediaMetaStore={mediaMetaStore}
             />
           )}
           {viewMode === 'grid' && (
@@ -1078,8 +1079,7 @@ export default function BrowseView({
               requestBulkDownload={requestBulkDownload}
               requestBulkProperties={openPropertiesForSelection}
               thumbnailsEnabled={browse.browseOptions.thumbnails}
-              mediaMetaByPath={mediaMetaByPath}
-              onThumbnailMetadata={handleThumbnailMetadata}
+              mediaMetaStore={mediaMetaStore}
             />
           )}
           <BulkSelectionBar

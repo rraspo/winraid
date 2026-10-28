@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
-import VideoThumb from './VideoThumb'
+import VideoThumb, { DWELL_MS } from './VideoThumb'
+import { __resetDecodeSlots } from '../../utils/decodeSlots'
 import { createWinraidMock } from '../../__mocks__/winraid'
 
 // Contract under test — surfacing media metadata (duration / resolution)
@@ -41,6 +42,8 @@ function fireIntersections() {
 let savedIntersectionObserver
 
 beforeEach(() => {
+  vi.useFakeTimers()
+  __resetDecodeSlots()
   savedIntersectionObserver = window.IntersectionObserver
   window.IntersectionObserver     = IntersectionObserverStub
   globalThis.IntersectionObserver = IntersectionObserverStub
@@ -57,15 +60,19 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   window.IntersectionObserver     = savedIntersectionObserver
   globalThis.IntersectionObserver = savedIntersectionObserver
   VideoThumb.__resetSeekConfig()
   delete window.winraid
 })
 
-function mount(url, props = {}) {
+// The decoder only starts once the card has stayed visible for DWELL_MS.
+async function mount(url, props = {}) {
   render(<VideoThumb url={url} onError={props.onError} />)
+  await act(async () => { await Promise.resolve() })
   act(() => { fireIntersections() })
+  await act(async () => { vi.advanceTimersByTime(DWELL_MS) })
 }
 
 function videoEl() {
@@ -75,8 +82,8 @@ function videoEl() {
 }
 
 describe('VideoThumb — existing behaviour under metadata surfacing', () => {
-  it('still seeks to the offset computeSeekTime picks on loadedmetadata', () => {
-    mount('nas-stream://c1/clip.mp4')
+  it('still seeks to the offset computeSeekTime picks on loadedmetadata', async () => {
+    await mount('nas-stream://c1/clip.mp4')
 
     const v = videoEl()
     Object.defineProperty(v, 'duration', { value: 60, configurable: true })
@@ -86,8 +93,8 @@ describe('VideoThumb — existing behaviour under metadata surfacing', () => {
     expect(v.currentTime).toBe(2)
   })
 
-  it('still clamps the seek to 90% of duration for short clips', () => {
-    mount('nas-stream://c1/short.mp4')
+  it('still clamps the seek to 90% of duration for short clips', async () => {
+    await mount('nas-stream://c1/short.mp4')
 
     const v = videoEl()
     Object.defineProperty(v, 'duration', { value: 1, configurable: true })
@@ -97,9 +104,9 @@ describe('VideoThumb — existing behaviour under metadata surfacing', () => {
     expect(v.currentTime).toBeCloseTo(0.9, 5)
   })
 
-  it('still surfaces a load error through onError', () => {
+  it('still surfaces a load error through onError', async () => {
     const onError = vi.fn()
-    mount('nas-stream://c1/broken.mp4', { onError })
+    await mount('nas-stream://c1/broken.mp4', { onError })
 
     const v = videoEl()
     fireEvent.error(v)

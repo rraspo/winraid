@@ -6,7 +6,7 @@ import App from './App'
 // title bar on top, the nav rail on the left, the tab strip and content in
 // the middle, the status bar at the bottom. The old sidebar and header are
 // gone, so the nav rail is the only way to reach every screen:
-//   - Dashboard, Connections, Queue, Logs, Settings switch the global view
+//   - Dashboard, Connections, Activity, Logs, Settings switch the global view
 //   - Browse, Size map and Backup open (or activate) that tab for the
 //     active connection (config activeConnectionId, else the first one)
 //   - Play wall opens Play for the active connection at its remote root and
@@ -123,9 +123,9 @@ describe('App shell', () => {
 
   it('switches the global views from the nav rail', async () => {
     await mountAndSettle()
-    await clickNav('Queue')
+    await clickNav('Activity')
     expect(screen.getByTestId('queue-view')).toBeTruthy()
-    expect(navButton('Queue').getAttribute('aria-current')).toBe('page')
+    expect(navButton('Activity').getAttribute('aria-current')).toBe('page')
     await clickNav('Logs')
     expect(screen.getByTestId('logs-view')).toBeTruthy()
     await clickNav('Settings')
@@ -157,7 +157,7 @@ describe('App shell', () => {
 
   it('opens the play wall for the active connection at its remote root and returns on close', async () => {
     await mountAndSettle()
-    await clickNav('Queue')
+    await clickNav('Activity')
     await clickNav('Play wall')
     expect(screen.getByTestId('play-overlay').textContent).toContain('play:c2:/mnt/user/docs')
     expect(navButton('Play wall').getAttribute('aria-current')).toBe('page')
@@ -165,7 +165,7 @@ describe('App shell', () => {
     await act(async () => {})
     expect(screen.queryByTestId('play-overlay')).toBeNull()
     expect(screen.getByTestId('queue-view')).toBeTruthy()
-    expect(navButton('Queue').getAttribute('aria-current')).toBe('page')
+    expect(navButton('Activity').getAttribute('aria-current')).toBe('page')
   })
 
   it('flips the theme from the nav rail and persists it', async () => {

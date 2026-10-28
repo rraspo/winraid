@@ -37,7 +37,7 @@
 }
 
 /* Fallback icons when image/video fails to load or isn't yet active */
-.gridIconFile { width: 40px; height: 40px; color: var(--text-faint); opacity: 0.6; }
+.gridIconFile { width: 40px; height: 40px; color: var(--text-faint); }
 .iconFile     { color: var(--text-faint); flex-shrink: 0; }
 
 /* Grid metadata bar — duration/resolution across the thumbnail's bottom

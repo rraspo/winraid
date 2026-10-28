@@ -57,6 +57,7 @@ const codeMirrorTheme = CodeMirrorView.theme({
   },
   '.cm-activeLineGutter': {
     backgroundColor: 'var(--hover)',
+    color: 'var(--text2)',
   },
   '.cm-foldPlaceholder': {
     backgroundColor: 'var(--surface2)',

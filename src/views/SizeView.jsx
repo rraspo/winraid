@@ -3,11 +3,18 @@ import { HardDrive, FolderOpen } from 'lucide-react'
 import SizeSunburst, { PALETTE } from '../components/size/SizeSunburst'
 import ConnectionPicker from '../components/ConnectionPicker'
 import Tooltip from '../components/ui/Tooltip'
+import * as toast from '../services/toast'
 import { formatSize } from '../utils/format'
 import { findNodeByPath, upsertLevel } from '../utils/sizeTree'
 import styles from './SizeView.module.css'
 
 const PHASE = { IDLE: 'idle', SCANNING: 'scanning', RESULTS: 'results' }
+
+// Legend copy for folders the scan reported without a size.
+const STATUS_NOTE = {
+  mount:  { label: 'Separate mount', tip: 'Another filesystem is mounted here. Open it to size it on its own.' },
+  failed: { label: 'Size failed',    tip: 'Sizing this folder failed or timed out. Details are in the log.' },
+}
 
 export default function SizeView({ connectionId, connection, connections, onSelectConnection, onBrowsePath, defaultConnectionId = null, onSetDefault }) {
   const [phase,      setPhase]      = useState(PHASE.IDLE)
@@ -157,8 +164,14 @@ export default function SizeView({ connectionId, connection, connections, onSele
     // beyond that, leaves have no children scanned. Kick off a subtree
     // scan and focus pre-emptively so the user sees the new arcs appear
     // as size:level events arrive.
+    // Files and symlinks cannot be listed; only folders (or entries from an
+    // older cached scan, which carry no type) are worth a request.
+    if (nodeData.type === 'file') return
     if (nodeData.path && window.winraid?.remote.sizeScanSubtree) {
-      window.winraid.remote.sizeScanSubtree(connectionId, nodeData.path)
+      const unreadable = (reason) => toast.show({ msg: `Couldn't read "${nodeData.name}": ${reason}`, type: 'error' })
+      Promise.resolve(window.winraid.remote.sizeScanSubtree(connectionId, nodeData.path))
+        .then((result) => { if (result && result.ok === false) unreadable(result.error || 'unknown error') })
+        .catch((err) => unreadable(err?.message || 'request failed'))
       setFocused(nodeData.path)
     }
   }
@@ -312,7 +325,13 @@ export default function SizeView({ connectionId, connection, connections, onSele
                           <span className={styles.barTrack}>
                             <span className={styles.barFill} style={{ width: `${pct}%`, background: color }} />
                           </span>
-                          <span className={styles.size}>{formatSize(child.sizeKb * 1024)}</span>
+                          {STATUS_NOTE[child.status] ? (
+                            <Tooltip tip={STATUS_NOTE[child.status].tip} side="top">
+                              <span className={styles.sizeNote}>{STATUS_NOTE[child.status].label}</span>
+                            </Tooltip>
+                          ) : (
+                            <span className={styles.size}>{formatSize(child.sizeKb * 1024)}</span>
+                          )}
                           <span className={styles.pct}>{pct}%</span>
                           {onBrowsePath && (
                             <Tooltip tip="Open in browser" side="top">

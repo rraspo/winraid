@@ -146,7 +146,7 @@ export default function DashboardView({
             <span className={styles.statLabel}>Failed</span>
             <span className={[styles.statValue, styles.statValueErr].join(' ')}>{errorJobs.length}</span>
             <button type="button" className={styles.statLinkFootnote} onClick={() => onNavigate?.('queue')}>
-              view in queue
+              view in activity
             </button>
           </article>
         </div>
@@ -170,7 +170,12 @@ export default function DashboardView({
           </div>
 
           <section className={styles.activityCard} aria-label="Recent activity">
-            <h2 className={styles.cardHeading}>Recent activity</h2>
+            <div className={styles.cardHeadingRow}>
+              <h2 className={styles.cardHeading}>Recent activity</h2>
+              <button type="button" className={styles.statLinkFootnote} onClick={() => onNavigate?.('queue')}>
+                View all
+              </button>
+            </div>
             {activityEntries.length === 0 ? (
               <div className={styles.emptyRow}>
                 <span>No activity yet</span>

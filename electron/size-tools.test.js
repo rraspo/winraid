@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe } from './size-tools.js'
+import {
+  pickSizeTool, sizeCommand, parseSizeKb, probeCommand, parseProbe,
+  parseMounts, isMountPoint, toolForPath, levelEntry,
+} from './size-tools.js'
 
 describe('pickSizeTool', () => {
   it('prefers the faster tool when available', () => {
@@ -15,14 +18,62 @@ describe('pickSizeTool', () => {
 })
 
 describe('sizeCommand', () => {
-  it('builds a du command in kilobytes', () => {
-    expect(sizeCommand('du', '/mnt/data')).toBe("du -sk '/mnt/data'")
+  it('builds a du command in kilobytes that stays on one filesystem', () => {
+    expect(sizeCommand('du', '/mnt/data')).toBe("du -skx '/mnt/data'")
   })
   it('builds a diskus command in bytes', () => {
     expect(sizeCommand('diskus', '/mnt/data')).toBe("diskus -b '/mnt/data'")
   })
   it('escapes single quotes in the path', () => {
-    expect(sizeCommand('du', "/mnt/a'b")).toBe("du -sk '/mnt/a'\\''b'")
+    expect(sizeCommand('du', "/mnt/a'b")).toBe("du -skx '/mnt/a'\\''b'")
+  })
+})
+
+describe('parseMounts', () => {
+  const procMounts = [
+    '/dev/sda2 / ext4 rw,relatime 0 0',
+    'proc /proc proc rw,nosuid 0 0',
+    'systemd-1 /mnt/nas autofs rw,relatime 0 0',
+    'nas.local:/mnt/user/media /mnt/nas nfs rw,relatime 0 0',
+    '/dev/loop1 /snap/core22/2437 squashfs ro 0 0',
+    '/dev/sdb1 /mnt/my\\040disk ext4 rw 0 0',
+  ].join('\n')
+
+  it('returns the unique mount targets', () => {
+    expect(parseMounts(procMounts)).toEqual(['/', '/proc', '/mnt/nas', '/snap/core22/2437', '/mnt/my disk'])
+  })
+  it('returns an empty list for empty or missing output', () => {
+    expect(parseMounts('')).toEqual([])
+    expect(parseMounts(undefined)).toEqual([])
+  })
+})
+
+describe('isMountPoint', () => {
+  const mounts = ['/', '/proc', '/mnt/nas']
+  it('is true for a listed mount target', () => {
+    expect(isMountPoint('/mnt/nas', mounts)).toBe(true)
+  })
+  it('ignores a trailing slash', () => {
+    expect(isMountPoint('/mnt/nas/', mounts)).toBe(true)
+  })
+  it('is false for a plain folder', () => {
+    expect(isMountPoint('/mnt', mounts)).toBe(false)
+  })
+})
+
+describe('toolForPath', () => {
+  const mounts = ['/', '/mnt/nas']
+  it('keeps diskus when no other filesystem is mounted below the path', () => {
+    expect(toolForPath('diskus', '/home', mounts)).toBe('diskus')
+  })
+  it('switches diskus to du when another filesystem is mounted below the path', () => {
+    expect(toolForPath('diskus', '/mnt', mounts)).toBe('du')
+  })
+  it('does not treat a sibling with a shared prefix as below the path', () => {
+    expect(toolForPath('diskus', '/mn', mounts)).toBe('diskus')
+  })
+  it('leaves du as du', () => {
+    expect(toolForPath('du', '/mnt', mounts)).toBe('du')
   })
 })
 
@@ -57,5 +108,21 @@ describe('probeCommand / parseProbe', () => {
   it('parses probe output into a set of names', () => {
     expect(parseProbe('diskus\ndu\n')).toEqual(new Set(['diskus', 'du']))
     expect(parseProbe('')).toEqual(new Set())
+  })
+})
+
+describe('levelEntry', () => {
+  const mounts = ['/mnt/nas']
+
+  it('marks directories and files so the renderer only drills into folders', () => {
+    expect(levelEntry({ name: 'etc', path: '/etc', type: 'dir', sizeBytes: 4096 }, mounts))
+      .toEqual({ name: 'etc', path: '/etc', type: 'dir', sizeKb: 0 })
+    expect(levelEntry({ name: 'vmlinuz', path: '/vmlinuz', type: 'file', sizeBytes: 20480 }, mounts))
+      .toEqual({ name: 'vmlinuz', path: '/vmlinuz', type: 'file', sizeKb: 20 })
+  })
+
+  it('keeps the mount status on a foreign mount point', () => {
+    expect(levelEntry({ name: 'nas', path: '/mnt/nas', type: 'dir', sizeBytes: 0 }, mounts))
+      .toEqual({ name: 'nas', path: '/mnt/nas', type: 'dir', sizeKb: 0, status: 'mount' })
   })
 })

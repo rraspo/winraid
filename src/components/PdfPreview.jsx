@@ -1,29 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
-import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
+import { UnfoldHorizontal, UnfoldVertical } from 'lucide-react'
+import SegmentedControl from './ui/SegmentedControl'
+import { pageCssWidth } from '../utils/pdfFit'
+import { openPdf } from '../utils/pdfjsLoader'
+import { describePdfError } from '../utils/pdfError'
 import styles from './PdfPreview.module.css'
 
-// The legacy build, not the default one: pdf.js calls
-// Uint8Array.prototype.toHex() while fingerprinting a document, and this
-// Electron's Chromium does not implement it yet — opening any PDF died with
-// "toHex is not a function". Only the legacy build carries the polyfill, and
-// it has to be legacy on both sides, since the failing call happens in the
-// worker where a polyfill loaded here would never reach it. Revisit once
-// Electron ships a Chromium new enough to have the method natively.
-let _pdfjsPromise = null
-function getPdfjs() {
-  if (!_pdfjsPromise) {
-    _pdfjsPromise = import('pdfjs-dist/legacy/build/pdf.mjs').then((lib) => {
-      lib.GlobalWorkerOptions.workerSrc = workerUrl
-      return lib
-    })
-  }
-  return _pdfjsPromise
-}
+const FIT_OPTIONS = [
+  { value: 'width', label: <><UnfoldHorizontal size={14} aria-hidden="true" /> Fit width</> },
+  { value: 'page',  label: <><UnfoldVertical size={14} aria-hidden="true" /> Fit page</> },
+]
+
+// The last fit chosen sticks for the rest of the session, so the next PDF
+// opens the way the previous one was being read.
+let _lastFit = 'width'
 
 // One page — rendered to a canvas only once it scrolls near the viewport.
-function PdfPage({ pdf, pageNumber, width }) {
+function PdfPage({ pdf, pageNumber, fit, box, estimate }) {
   const ref = useRef(null)
   const [show, setShow] = useState(false)
+  const [pageSize, setPageSize] = useState(null)
+  const width = pageCssWidth(fit, box, pageSize ?? estimate)
 
   useEffect(() => {
     const el = ref.current
@@ -42,8 +39,9 @@ function PdfPage({ pdf, pageNumber, width }) {
     ;(async () => {
       const page = await pdf.getPage(pageNumber)
       if (cancelled) return
-      const dpr   = window.devicePixelRatio || 1
       const base  = page.getViewport({ scale: 1 })
+      if (!pageSize) { setPageSize({ width: base.width, height: base.height }); return }
+      const dpr   = window.devicePixelRatio || 1
       const vp    = page.getViewport({ scale: (width / base.width) * dpr })
       const canvas = ref.current?.querySelector('canvas')
       if (!canvas) return
@@ -53,33 +51,52 @@ function PdfPage({ pdf, pageNumber, width }) {
       try { await task.promise } catch { /* render cancelled */ }
     })()
     return () => { cancelled = true; try { task?.cancel?.() } catch { /* ignore */ } }
-  }, [show, width, pdf, pageNumber])
+  }, [show, width, pdf, pageNumber, pageSize])
 
-  // Letter-ish placeholder height so pages don't all collapse (and intersect) at once.
-  const placeholder = width ? Math.round(width * 1.3) : 600
+  // Until a page is measured it takes the first page's shape, so pages don't
+  // all collapse (and intersect) at once.
+  const shape = pageSize ?? estimate
+  const placeholder = width && shape ? Math.round(width * (shape.height / shape.width)) : 600
   return (
-    <div ref={ref} className={styles.page} style={{ minHeight: show ? undefined : placeholder }}>
+    <div ref={ref} className={styles.page} style={{ width, minHeight: show ? undefined : placeholder }}>
       <canvas />
     </div>
   )
 }
 
-export default function PdfPreview({ src }) {
-  const rootRef = useRef(null)
-  const [pdf,   setPdf]   = useState(null)
-  const [error, setError] = useState('')
-  const [width, setWidth] = useState(0)
+export default function PdfPreview({ src, remotePath }) {
+  const scrollRef = useRef(null)
+  const [pdf,      setPdf]      = useState(null)
+  const [error,    setError]    = useState('')
+  const [box,      setBox]      = useState({ width: 0, height: 0 })
+  const [fit,      setFit]      = useState(_lastFit)
+  const [estimate, setEstimate] = useState(null)
 
-  // Track available width so pages render at the right size.
+  // Track the scroll area's inner size so pages render at the right size.
   useEffect(() => {
-    const el = rootRef.current
+    const el = scrollRef.current
     if (!el) return
-    const measure = () => setWidth(Math.max(0, Math.min(900, el.clientWidth - 32)))
+    const measure = () => {
+      const pad = parseFloat(getComputedStyle(el).paddingLeft) || 0
+      setBox({ width: Math.max(0, el.clientWidth - 2 * pad), height: Math.max(0, el.clientHeight - 2 * pad) })
+    }
     measure()
     const ro = new ResizeObserver(measure)
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
+
+  // Keep the reading position when the fit changes: the same fraction of the
+  // document stays at the top.
+  function changeFit(next) {
+    const el = scrollRef.current
+    const fraction = el && el.scrollHeight > 0 ? el.scrollTop / el.scrollHeight : 0
+    _lastFit = next
+    setFit(next)
+    requestAnimationFrame(() => {
+      if (el) el.scrollTop = fraction * el.scrollHeight
+    })
+  }
 
   // Fetch the bytes via the nas-stream URL and open the document.
   useEffect(() => {
@@ -88,28 +105,45 @@ export default function PdfPreview({ src }) {
     ;(async () => {
       try {
         setError(''); setPdf(null)
-        const pdfjs = await getPdfjs()
         const res = await fetch(src)
         if (!res.ok) throw new Error(`Failed to fetch PDF (HTTP ${res.status})`)
         const data = await res.arrayBuffer()
         if (cancelled) return
-        doc = await pdfjs.getDocument({ data }).promise
+        doc = await openPdf({ data }).then((task) => task.promise)
         if (cancelled) { doc.destroy?.(); return }
+        const first = (await doc.getPage(1)).getViewport({ scale: 1 })
+        if (cancelled) return
+        setEstimate({ width: first.width, height: first.height })
         setPdf(doc)
       } catch (e) {
-        if (!cancelled) setError(e?.message || 'Failed to load PDF')
+        if (cancelled) return
+        setError(describePdfError(e))
+        // The on-screen line is for the user; the log line is for diagnosing
+        // a file that opens elsewhere but not here. Path and error only,
+        // never document content.
+        window.winraid?.log?.write?.({
+          scope: 'pdf-preview',
+          level: 'error',
+          message: e?.message || 'Failed to load PDF',
+          details: { name: e?.name, path: remotePath },
+        })
       }
     })()
     return () => { cancelled = true; doc?.destroy?.() }
-  }, [src])
+  }, [src, remotePath])
 
   return (
-    <div ref={rootRef} className={styles.root}>
-      {error && <div className={styles.error}>{error}</div>}
-      {!error && !pdf && <div className={styles.status}>Loading PDF…</div>}
-      {pdf && width > 0 && Array.from({ length: pdf.numPages }, (_, i) => (
-        <PdfPage key={i + 1} pdf={pdf} pageNumber={i + 1} width={width} />
-      ))}
+    <div className={styles.root}>
+      <div className={styles.toolbar}>
+        <SegmentedControl aria-label="Page fit" options={FIT_OPTIONS} value={fit} onChange={changeFit} />
+      </div>
+      <div ref={scrollRef} className={styles.scroll}>
+        {error && <div className={styles.error}>{error}</div>}
+        {!error && !pdf && <div className={styles.status}>Loading PDF…</div>}
+        {pdf && box.width > 0 && Array.from({ length: pdf.numPages }, (_, i) => (
+          <PdfPage key={i + 1} pdf={pdf} pageNumber={i + 1} fit={fit} box={box} estimate={estimate} />
+        ))}
+      </div>
     </div>
   )
 }

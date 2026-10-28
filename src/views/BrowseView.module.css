@@ -212,7 +212,7 @@
 
 .crumbDropTarget {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent) !important;
+  color: var(--accentText) !important;
 }
 
 /* ── Sort dropdown ────────────────────────────────────────────────────────── */
@@ -287,7 +287,7 @@
 }
 
 .sortOptionActive {
-  color: var(--accent);
+  color: var(--accentText);
   font-weight: 500;
 }
 
@@ -298,7 +298,7 @@
 .optionCheck {
   margin-left: auto;
   flex-shrink: 0;
-  color: var(--accent);
+  color: var(--accentText);
 }
 
 /* ── Search input (toolbar) ──────────────────────────────────────────────── */
@@ -416,7 +416,7 @@
 .viewOption:hover { background: var(--hover); color: var(--text); }
 
 .viewOptionActive {
-  color: var(--accent);
+  color: var(--accentText);
   font-weight: 500;
 }
 
@@ -490,7 +490,7 @@
 .footerHint { white-space: nowrap; }
 
 .footerCheckout {
-  color: var(--accentHi);
+  color: var(--accentText);
   white-space: nowrap;
   transition: opacity var(--transition);
 }
@@ -605,7 +605,7 @@
 .dropOverlayLabel {
   font-size: 16px;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accentText);
   background: color-mix(in srgb, var(--bg) 65%, transparent);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);

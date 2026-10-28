@@ -316,7 +316,7 @@
 }
 
 .connNoticeIcon {
-  color: var(--accent);
+  color: var(--accentText);
   flex-shrink: 0;
 }
 
@@ -381,7 +381,7 @@
   white-space: nowrap;
 }
 
-.req { color: var(--accent); }
+.req { color: var(--accentText); }
 
 .hintTrigger {
   display: inline-flex;
@@ -396,11 +396,10 @@
   color: var(--text3);
   cursor: help;
   flex-shrink: 0;
-  opacity: 0.55;
-  transition: opacity var(--transition);
+  transition: color var(--transition);
 }
 
-.hintTrigger:hover { opacity: 1; }
+.hintTrigger:hover { color: var(--text2); }
 
 .inputRow {
   display: flex;
@@ -411,7 +410,7 @@
   width: 100%;
   padding: 7px 10px;
   background: var(--surface2);
-  border: 1px solid var(--stroke);
+  border: 1px solid var(--outline);
   border-radius: var(--radius-md);
   color: var(--text);
   font-size: var(--font-size-md);

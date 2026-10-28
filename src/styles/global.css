@@ -96,6 +96,13 @@ textarea {
   -webkit-appearance: none;
 }
 
+/* Chromium's default placeholder gray is not themed and falls under AA on
+   dark surfaces; the muted token clears it on every surface in both. */
+::placeholder {
+  color: var(--text3);
+  opacity: 1;
+}
+
 /* =============================================================================
    Focus ring
    ============================================================================= */
@@ -115,12 +122,12 @@ textarea {
    ============================================================================= */
 
 a {
-  color: var(--accentHi);
+  color: var(--accentText);
   text-decoration: none;
 }
 
 a:hover {
-  color: var(--accentHi);
+  color: var(--accentText);
   text-decoration: underline;
 }
 
@@ -149,7 +156,7 @@ a:hover {
    ============================================================================= */
 
 .text-muted  { color: var(--text-muted); }
-.text-accent { color: var(--accent); }
+.text-accent { color: var(--accentText); }
 .text-success { color: var(--success); }
 .text-error  { color: var(--error); }
 .text-warning { color: var(--warning); }

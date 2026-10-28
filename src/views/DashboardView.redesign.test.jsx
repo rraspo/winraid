@@ -16,7 +16,7 @@ import DashboardView from './DashboardView'
 //   - four stat tiles, each <article aria-label="<label>"> in this order:
 //     "Files synced" (queue.stats().lifetimeCompleted), "In queue"
 //     (PENDING + TRANSFERRING jobs), "Watchers" ("<watching> of <total>"),
-//     "Failed" (ERROR jobs) whose tile holds a "view in queue" control
+//     "Failed" (ERROR jobs) whose tile holds a "view in activity" control
 //     calling onNavigate('queue')
 //   - a "Recent activity" section listing activityEntries by title,
 //     "No activity yet" when empty
@@ -109,10 +109,17 @@ describe('DashboardView redesign', () => {
     expect(order).toEqual(['Files synced', 'In queue', 'Watchers', 'Failed'])
   })
 
-  it('links the Failed tile to the queue', async () => {
+  it('links Recent activity to the full history on the Activity screen', async () => {
+    const { onNavigate } = mount()
+    const section = screen.getByRole('region', { name: 'Recent activity' })
+    fireEvent.click(within(section).getByRole('button', { name: 'View all' }))
+    expect(onNavigate).toHaveBeenCalledWith('queue')
+  })
+
+  it('links the Failed tile to the Activity screen', async () => {
     const { onNavigate } = mount()
     await waitFor(() => expect(within(tile('Failed')).getByText('1')).toBeInTheDocument())
-    fireEvent.click(within(tile('Failed')).getByText('view in queue'))
+    fireEvent.click(within(tile('Failed')).getByText('view in activity'))
     expect(onNavigate).toHaveBeenCalledWith('queue')
   })
 

@@ -10,15 +10,15 @@ describe('describeActivity', () => {
   })
 
   it('move (file): opens the destination dir and highlights the file', () => {
-    const a = describeActivity('move', { name: 'photo.jpg', srcDir: '/media/a', dstDir: '/media/archive', isDir: false })
+    const a = describeActivity('move', { name: 'photo.jpg', srcDir: '/media/a', dstDir: '/media/archive' })
     expect(a.title).toBe('Moved photo.jpg')
     expect(a.detail).toBe('→ /media/archive')
     expect(a.nav).toEqual({ kind: 'remote', path: '/media/archive', highlight: 'photo.jpg' })
   })
 
-  it('move (folder): opens into the moved folder', () => {
-    const a = describeActivity('move', { name: 'Trip', srcDir: '/media/a', dstDir: '/media/archive', isDir: true })
-    expect(a.nav).toEqual({ kind: 'remote', path: '/media/archive/Trip' })
+  it('move (folder): opens the destination dir and highlights the folder', () => {
+    const a = describeActivity('move', { name: 'Trip', srcDir: '/media/a', dstDir: '/media/archive' })
+    expect(a.nav).toEqual({ kind: 'remote', path: '/media/archive', highlight: 'Trip' })
   })
 
   it('copy: opens the destination dir and highlights the copy', () => {

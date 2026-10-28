@@ -7,16 +7,29 @@
    `--accent` custom property set on the root element.
    ============================================================================= */
 
+/* Accent — static fallback on the root only. App sets --accent and
+   --onAccent inline on the root element from the resolved Settings >
+   Appearance choice; they are never declared in a theme scope, so a nested
+   [data-theme] scope (Quick Look, move picker) inherits the live values
+   instead of resetting them. */
+:root {
+  --accent:   #CA5010;
+  --onAccent: #FFFFFF;
+}
+
 /* Dark theme (default) */
 :root,
 [data-theme="dark"] {
-  /* Accent — the default is a static fallback; App sets --accent and
-     --onAccent on the root element from the resolved Settings > Appearance
-     choice, so every token below that derives from --accent recolors live. */
-  --accent:    #CA5010;
+  /* Derived from --accent, so they must recompute in every theme scope. */
   --accentHi:  color-mix(in oklab, var(--accent) 55%, white);
-  --onAccent:  #FFFFFF;
-  --btnAccent: color-mix(in oklab, var(--accent) 85%, white);
+  /* The button fill is the accent itself: App picks --onAccent against
+     --accent, so a lightened fill would put a white label under 4.5:1. */
+  --btnAccent: var(--accent);
+  /* Accent for text and glyphs. --accent is a fill and sits near 3:1 on
+     dark surfaces, so text keeps the hue but lifts lightness to a floor;
+     the chroma cap keeps the lifted color inside sRGB so it is not
+     clipped back down. Clears 4.5:1 on every surface for every accent. */
+  --accentText: oklch(from var(--accent) max(l, 0.76) min(c, 0.15) h);
 
   /* Surfaces */
   --bg:         #202020;
@@ -26,11 +39,17 @@
   /* Borders */
   --stroke:     rgba(255, 255, 255, 0.07);
   --strokeSoft: rgba(255, 255, 255, 0.045);
+  /* Outline of an interactive control (radio, checkbox, input, select,
+     segmented). Opaque and >= 3:1 on every surface; --stroke stays for
+     decorative dividers only. */
+  --outline:    #8A8A8A;
 
   /* Text */
   --text:  #FFFFFF;
   --text2: #C9C9C9;
-  --text3: #8F8F8F;
+  /* Muted text still has to clear WCAG AA (4.5:1) on --bg, --card and
+     --surface2; tokens.contrast.test.js holds every theme to that. */
+  --text3: #A0A0A0;
 
   /* Interaction states */
   --hover:  rgba(255, 255, 255, 0.05);
@@ -54,6 +73,9 @@
 [data-theme="light"] {
   --accentHi:  var(--accent);
   --btnAccent: var(--accent);
+  /* Light text needs a lightness ceiling instead: gold or sky accents are
+     unreadable on a light page at their own lightness. */
+  --accentText: oklch(from var(--accent) min(l, 0.47) min(c, 0.15) h);
 
   --bg:       #F3F3F3;
   --card:     #FFFFFF;
@@ -61,17 +83,20 @@
 
   --stroke:     rgba(0, 0, 0, 0.08);
   --strokeSoft: rgba(0, 0, 0, 0.05);
+  --outline:    #858585;
 
   --text:  #1B1B1B;
   --text2: #4B4B4B;
-  --text3: #8A8A8A;
+  --text3: #696969;
 
   --hover:  rgba(0, 0, 0, 0.04);
   --active: rgba(0, 0, 0, 0.07);
 
-  --ok:   #0F7B0F;
-  --warn: #9D5D00;
-  --err:  #C42B1C;
+  /* Dark enough to stay at 4.5:1 on an 18% tint of themselves (badges, log
+     levels, the danger confirm), not just on a plain surface. */
+  --ok:   #006900;
+  --warn: #8A4C00;
+  --err:  #B21204;
 
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
 }
@@ -135,8 +160,13 @@
    Every pre-redesign token name is kept, pointing at the closest token above,
    so existing CSS modules keep working unchanged until each screen migrates
    to the new names directly.
+   Declared on every theme scope, not just :root: a custom property that
+   references var() is resolved where it is declared and inherited as a
+   finished value, so aliases declared only at the root would keep the app
+   theme's colors inside a nested [data-theme] scope.
    ============================================================================= */
-:root {
+:root,
+[data-theme] {
   /* Surfaces */
   --bg-base:    var(--bg);
   --bg-panel:   var(--bg);

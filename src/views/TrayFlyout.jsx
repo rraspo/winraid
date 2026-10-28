@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Folder, FolderOpen } from 'lucide-react'
+import { useAppearance } from '../hooks/useAppearance'
 import Tooltip from '../components/ui/Tooltip'
 import iconSrc from '../../assets/winraid_icon_32x32.png'
 import styles from './TrayFlyout.module.css'
@@ -24,6 +25,7 @@ function isToday(timestamp) {
 // menu. It stays mounted while hidden between opens, so every read here is
 // re-run on `tray.onOpened` as well as on mount.
 export default function TrayFlyout() {
+  useAppearance()
   const [version, setVersion] = useState('')
   const [connections, setConnections] = useState([])
   const [watcherStates, setWatcherStates] = useState({})

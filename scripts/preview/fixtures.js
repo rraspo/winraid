@@ -154,6 +154,7 @@ export const REMOTE_ENTRIES = {
     { name: 'sunrise.jpg', type: 'file', size: 4_200_000, modified: NOW - 2 * MINUTES },
     { name: 'poster.png', type: 'file', size: 1_800_000, modified: NOW - 6 * HOURS },
     { name: 'family-trip.mp4', type: 'file', size: 250_000_000, modified: NOW - 90 * 1000 },
+    { name: 'morning-mix.mp3', type: 'file', size: 8_600_000, modified: NOW - 2 * HOURS },
     { name: 'loop.gif', type: 'file', size: 3_400_000, modified: NOW - 1 * DAYS },
     { name: 'manual.pdf', type: 'file', size: 912_000, modified: NOW - 3 * DAYS },
     { name: 'notes.txt', type: 'file', size: 2_100, modified: NOW - 4 * DAYS },
@@ -234,6 +235,26 @@ export const BACKUP_BY_CONNECTION = {
 }
 
 export const PLAY_DEFAULTS = { recursive: true, shuffle: true }
+
+// One download job per end of the panel's range: mid-transfer, finished,
+// and failed.
+export const DOWNLOAD_JOBS = [
+  {
+    id: 'dl-running', connectionId: 'atlas', label: 'photos', destination: 'C:\\Users\\user\\Downloads\\photos',
+    state: 'running', filesDone: 37, filesTotal: 124, bytesDone: 412_000_000, bytesTotal: 1_380_000_000,
+    currentFile: 'IMG_0412.jpg', error: null,
+  },
+  {
+    id: 'dl-done', connectionId: 'atlas', label: 'manual.pdf', destination: 'C:\\Users\\user\\Downloads\\manual.pdf',
+    state: 'done', filesDone: 1, filesTotal: 1, bytesDone: 911_974, bytesTotal: 911_974,
+    currentFile: null, error: null,
+  },
+  {
+    id: 'dl-failed', connectionId: 'atlas', label: 'family-trip.mp4', destination: 'C:\\Users\\user\\Downloads\\family-trip.mp4',
+    state: 'failed', filesDone: 0, filesTotal: 1, bytesDone: 98_000_000, bytesTotal: 249_960_000,
+    currentFile: null, error: 'Connection lost',
+  },
+]
 
 export const APPEARANCE = { theme: 'dark', accent: 'system' }
 
