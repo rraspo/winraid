@@ -8,8 +8,10 @@ import { shouldPruneEmptyDirs, deletesLocalAfterUpload } from './folder-mode.js'
 import { deleteLocalFile } from './local-delete.js'
 
 // Remote directory a job's file lands in (for the upload activity's nav target).
+// Same base the backends write to: a drag-and-drop job lands under the folder
+// it was dropped on, a watched file under the connection's remote root.
 function uploadDestDir(conn, job) {
-  const base = conn?.sftp?.remotePath ?? conn?.smb?.remotePath ?? ''
+  const base = job.remoteDest ?? conn?.sftp?.remotePath ?? conn?.smb?.remotePath ?? ''
   const full = `${base}/${job.relPath ?? job.filename}`.replace(/\/+/g, '/')
   return full.slice(0, full.lastIndexOf('/')) || '/'
 }
@@ -185,7 +187,7 @@ async function processJob(job) {
     const errorAt    = Date.now()
     const friendly   = friendlyError(err)
     const connName   = conn?.name ?? job.connectionId?.slice(0, 8) ?? '?'
-    const remoteBase = conn?.sftp?.remotePath ?? conn?.smb?.remotePath ?? '?'
+    const remoteBase = job.remoteDest ?? conn?.sftp?.remotePath ?? conn?.smb?.remotePath ?? '?'
     const remotePath = remoteBase !== '?'
       ? `${remoteBase}/${job.relPath ?? job.filename}`.replace(/\/+/g, '/')
       : '?'
