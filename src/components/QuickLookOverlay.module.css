@@ -692,6 +692,11 @@
 .previewAreaZoom   { cursor: zoom-in; }
 .previewAreaScroll { cursor: ew-resize; }
 
+/* The overlay reaches the window's bottom edge, where the frameless window's
+   native resize border would win a drag on the crop selection's bottom
+   handle. A status-bar-high margin keeps every handle clear of it. */
+.previewAreaCropping { padding-block: var(--statusbar-height); }
+
 /* ── Image ───────────────────────────────────────────────────────────────── */
 .mediaWrap {
   position: relative;

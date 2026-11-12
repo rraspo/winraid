@@ -7,10 +7,16 @@ import QuickLookOverlay from './QuickLookOverlay'
 
 // react-image-crop renders a div wrapper; we don't need its full behavior in
 // tests. Clicking the wrapper simulates the user finishing a drag: it fires
-// onComplete with a fixed CSS-pixel selection.
+// onComplete with a fixed CSS-pixel selection. The current selection and
+// aspect are exposed as data attributes so tests can read them.
 vi.mock('react-image-crop', () => ({
-  default: ({ children, onComplete }) => (
-    <div data-testid="react-crop" onClick={() => onComplete?.({ unit: 'px', x: 10, y: 10, width: 100, height: 50 })}>
+  default: ({ children, onComplete, crop, aspect }) => (
+    <div
+      data-testid="react-crop"
+      data-crop={crop ? JSON.stringify(crop) : ''}
+      data-aspect={aspect ?? ''}
+      onClick={() => onComplete?.({ unit: 'px', x: 10, y: 10, width: 100, height: 50 })}
+    >
       {children}
     </div>
   ),
@@ -65,6 +71,15 @@ describe('QuickLookOverlay — Crop button', () => {
     expect(screen.getByText('Save copy')).toBeInTheDocument()
     expect(screen.getByText('Overwrite')).toBeInTheDocument()
     expect(screen.getByTestId('react-crop')).toBeInTheDocument()
+  })
+
+  it('keeps the crop handles clear of the window\'s resize border', async () => {
+    render(<QuickLookOverlay {...baseProps} file={imageFile} />)
+    await act(async () => {})
+    const area = document.querySelector('[class*="previewArea"]')
+    expect(area.className).not.toMatch(/previewAreaCropping/)
+    fireEvent.click(screen.getByLabelText('Crop image'))
+    expect(area.className).toMatch(/previewAreaCropping/)
   })
 
   it('exits crop mode when Cancel is clicked', async () => {
@@ -832,13 +847,43 @@ describe('QuickLookOverlay video crop flow', () => {
     expect(screen.getByTestId('trim-setup-modal')).toBeInTheDocument()
   })
 
-  it('disables Save until a selection is made', async () => {
+  it('disables Save until the video has loaded', async () => {
     await openVideoCrop()
     expect(screen.getByRole('button', { name: 'Save copy' })).toBeDisabled()
     expect(screen.getByRole('button', { name: 'Overwrite' })).toBeDisabled()
     await selectRegion()
     expect(screen.getByRole('button', { name: 'Save copy' })).not.toBeDisabled()
     expect(screen.getByRole('button', { name: 'Overwrite' })).not.toBeDisabled()
+  })
+
+  // Same as image crop: the whole frame starts selected, so the user only
+  // drags the edges in.
+  it('pre-selects the whole frame once the video has loaded', async () => {
+    await openVideoCrop()
+    fireEvent.loadedMetadata(sizeVideo())
+    await act(async () => {})
+    expect(JSON.parse(screen.getByTestId('react-crop').dataset.crop))
+      .toEqual({ unit: 'px', x: 0, y: 0, width: 960, height: 540 })
+    expect(screen.getByRole('button', { name: 'Save copy' })).not.toBeDisabled()
+  })
+
+  it('offers the image crop aspect choices and fits the selection to the one picked', async () => {
+    await openVideoCrop()
+    fireEvent.loadedMetadata(sizeVideo())
+    await act(async () => {})
+    for (const label of ['Free', '1:1', '4:3', '3:2', '16:9']) {
+      expect(screen.getByRole('button', { name: label })).toBeInTheDocument()
+    }
+    fireEvent.click(screen.getByRole('button', { name: '1:1' }))
+    await act(async () => {})
+    const wrapper = screen.getByTestId('react-crop')
+    expect(wrapper.dataset.aspect).toBe('1')
+    expect(JSON.parse(wrapper.dataset.crop)).toEqual({ unit: 'px', x: 210, y: 0, width: 540, height: 540 })
+  })
+
+  it('keeps the crop handles clear of the window\'s resize border', async () => {
+    await openVideoCrop()
+    expect(document.querySelector('[class*="previewArea"]').className).toMatch(/previewAreaCropping/)
   })
 
   it('saves a copy with the selection scaled to source pixels', async () => {

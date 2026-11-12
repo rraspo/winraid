@@ -201,7 +201,11 @@ function ImagePreview({ src, size, zoom, pan, mediaRef, onContextMenu }) {
   )
 }
 
-function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onLoad, onContextMenu }) {
+// Crop mode for images and videos alike. The media is capped to the measured
+// stage in pixels because a percentage max size cannot reach through
+// ReactCrop's inline-block wrapper; without the cap a video renders at its
+// native size and overflows the stage.
+function CropPreview({ crop, onChange, onComplete, aspect, renderMedia }) {
   const wrapRef = useRef(null)
   const [bounds, setBounds] = useState({ w: 0, h: 0 })
 
@@ -218,7 +222,7 @@ function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onL
     return () => ro.disconnect()
   }, [])
 
-  const imgStyle = bounds.w > 0
+  const mediaStyle = bounds.w > 0
     ? { maxWidth: bounds.w, maxHeight: bounds.h }
     : { visibility: 'hidden' }
 
@@ -230,29 +234,7 @@ function CropImagePreview({ src, crop, onChange, onComplete, aspect, imgRef, onL
         onComplete={onComplete}
         {...(aspect !== undefined ? { aspect } : {})}
       >
-        <img
-          ref={imgRef}
-          src={src}
-          alt=""
-          className={styles.cropImage}
-          draggable={false}
-          onLoad={onLoad}
-          style={imgStyle}
-          onContextMenu={onContextMenu}
-        />
-      </ReactCrop>
-    </div>
-  )
-}
-
-// Spatial video crop: ReactCrop wraps a paused, controls-less video element so
-// the user can drag a selection rect over the current frame the same way the
-// image crop mode drags one over an <img>.
-function CropVideoPreview({ src, crop, onChange, onComplete, videoRef }) {
-  return (
-    <div className={styles.mediaWrap}>
-      <ReactCrop crop={crop} onChange={onChange} onComplete={onComplete}>
-        <video ref={videoRef} src={src} className={styles.previewVideo} />
+        {renderMedia(mediaStyle)}
       </ReactCrop>
     </div>
   )
@@ -1019,6 +1001,9 @@ export default function QuickLookOverlay({
   // runEngineGate). Entry is initiated via enterVideoCropMode above the gate.
   function beginVideoCrop() {
     mediaRef.current?.pause?.()
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+    panRef.current = { x: 0, y: 0 }
     setVideoCropFile(file)
     setVideoCrop(undefined)
     setVideoCropSelection(null)
@@ -1112,24 +1097,44 @@ export default function QuickLookOverlay({
   }
 
   // Reset crop selection to fit the loaded image
-  function handleCropImageLoad(e) {
-    const { width, height } = e.currentTarget
+  // Crop starts with the whole frame selected (or the largest centered
+  // region of the chosen aspect), so the user only drags the edges in.
+  function initialCropSelection(width, height) {
     const aspect = CROP_ASPECTS[cropAspect].value
-    const c = aspect ? centeredAspectCrop(width, height, aspect) : fullImageCrop(width, height)
+    return aspect ? centeredAspectCrop(width, height, aspect) : fullImageCrop(width, height)
+  }
+
+  function handleCropImageLoad(e) {
+    const c = initialCropSelection(e.currentTarget.width, e.currentTarget.height)
     setCrop(c)
     setCompCrop(c)
   }
 
+  function handleVideoCropLoad(e) {
+    const c = initialCropSelection(e.currentTarget.clientWidth, e.currentTarget.clientHeight)
+    setVideoCrop(c)
+    setVideoCropSelection(c)
+  }
+
   // Recompute crop selection when aspect changes
   useEffect(() => {
-    if (!cropping) return
-    const img = cropImgRef.current
-    if (!img || !img.width) return
-    const aspect = CROP_ASPECTS[cropAspect].value
-    const c = aspect ? centeredAspectCrop(img.width, img.height, aspect) : fullImageCrop(img.width, img.height)
-    setCrop(c)
-    setCompCrop(c)
-  }, [cropAspect, cropping])
+    if (cropping) {
+      const img = cropImgRef.current
+      if (!img || !img.width) return
+      const c = initialCropSelection(img.width, img.height)
+      setCrop(c)
+      setCompCrop(c)
+    } else if (videoCropping) {
+      const video = videoCropRef.current
+      // Before metadata the element is a placeholder box; handleVideoCropLoad
+      // makes the first selection once the frame size is known.
+      if (!video || !video.videoWidth) return
+      const c = initialCropSelection(video.clientWidth, video.clientHeight)
+      setVideoCrop(c)
+      setVideoCropSelection(c)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refit only when the aspect or the crop mode changes
+  }, [cropAspect, cropping, videoCropping])
 
   // Clean up rotation blob URLs on unmount or when leaving crop
   useEffect(() => () => rotatedUrlsRef.current.forEach((u) => URL.revokeObjectURL(u)), [])
@@ -1515,29 +1520,64 @@ export default function QuickLookOverlay({
     </div>
   ) : null
 
+  function renderCropAspectButtons(disabled) {
+    return (
+      <>
+        <span className={styles.cropToolbarLabel}>Aspect</span>
+        {CROP_ASPECTS.map((a, i) => (
+          <button
+            key={a.label}
+            className={[styles.cropAspectBtn, i === cropAspect ? styles.cropAspectBtnActive : ''].filter(Boolean).join(' ')}
+            onClick={() => setCropAspect(i)}
+            disabled={disabled}
+          >
+            {a.label}
+          </button>
+        ))}
+      </>
+    )
+  }
+
   function renderPreview() {
     if (cropping && type === 'image') {
       return (
-        <CropImagePreview
-          src={cropSrc}
+        <CropPreview
           crop={crop}
           onChange={(c) => setCrop(c)}
           onComplete={(c) => setCompCrop(c)}
           aspect={CROP_ASPECTS[cropAspect].value}
-          imgRef={cropImgRef}
-          onLoad={handleCropImageLoad}
-          onContextMenu={handleImageContextMenu}
+          renderMedia={(mediaStyle) => (
+            <img
+              ref={cropImgRef}
+              src={cropSrc}
+              alt=""
+              className={styles.cropImage}
+              draggable={false}
+              onLoad={handleCropImageLoad}
+              style={mediaStyle}
+              onContextMenu={handleImageContextMenu}
+            />
+          )}
         />
       )
     }
+    // A paused, controls-less video: the selection is drawn over its current frame.
     if (videoCropping && type === 'video') {
       return (
-        <CropVideoPreview
-          src={src}
+        <CropPreview
           crop={videoCrop}
           onChange={(c) => setVideoCrop(c)}
           onComplete={(c) => setVideoCropSelection(c)}
-          videoRef={videoCropRef}
+          aspect={CROP_ASPECTS[cropAspect].value}
+          renderMedia={(mediaStyle) => (
+            <video
+              ref={videoCropRef}
+              src={src}
+              className={styles.cropImage}
+              onLoadedMetadata={handleVideoCropLoad}
+              style={mediaStyle}
+            />
+          )}
         />
       )
     }
@@ -1696,6 +1736,7 @@ export default function QuickLookOverlay({
         )}
         {videoCropping && (
           <div className={styles.cropToolbar}>
+            {renderCropAspectButtons(videoCropSaving)}
             <button className={styles.cropCancelBtn} onClick={exitVideoCropMode} disabled={videoCropSaving}>
               Cancel
             </button>
@@ -1711,17 +1752,7 @@ export default function QuickLookOverlay({
         )}
         {cropping && (
           <div className={styles.cropToolbar}>
-            <span className={styles.cropToolbarLabel}>Aspect</span>
-            {CROP_ASPECTS.map((a, i) => (
-              <button
-                key={a.label}
-                className={[styles.cropAspectBtn, i === cropAspect ? styles.cropAspectBtnActive : ''].filter(Boolean).join(' ')}
-                onClick={() => setCropAspect(i)}
-                disabled={cropSaving || cropRotating}
-              >
-                {a.label}
-              </button>
-            ))}
+            {renderCropAspectButtons(cropSaving || cropRotating)}
             <Tooltip tip="Rotate 90°" side="bottom">
               <button
                 className={styles.fileMenuBtn}
@@ -1778,6 +1809,7 @@ export default function QuickLookOverlay({
           className={[
             styles.previewArea,
             trimming ? '' : (wheelMode === 'zoom' ? styles.previewAreaZoom : styles.previewAreaScroll),
+            (cropping || videoCropping) ? styles.previewAreaCropping : '',
           ].filter(Boolean).join(' ')}
           style={zoom > 1 && !trimming ? { cursor: 'crosshair' } : undefined}
         >
