@@ -275,7 +275,8 @@ describe('PlayOverlay wall', () => {
   it('shuffle mode promotes tiles through Math.random', async () => {
     setup({ shuffle: true })
     await mount()
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    // The first draw picks the opening tile (a.jpg); the rest promote the wall.
+    const spy = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999)
     try {
       emit([image('/photos/a.jpg'), image('/photos/b.jpg'), image('/photos/c.jpg'), image('/photos/d.jpg')])
     } finally {

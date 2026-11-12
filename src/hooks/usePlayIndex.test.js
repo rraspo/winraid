@@ -61,6 +61,39 @@ describe('usePlayIndex', () => {
     expect(result.current.index).toBe(0)
   })
 
+  it('shuffle opens on a random file, not the one the scan sends first', async () => {
+    window.winraid.config.get.mockResolvedValue({ recursive: false, shuffle: true })
+    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    try {
+      const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+      await act(async () => {})
+      // The walker sends the alphabetically first file on its own for a fast
+      // first paint, then the rest of the folder.
+      act(() => onMediaFoundCb?.({ files: [{ path: '/photos/a.jpg', size: 0, mtime: 0, type: 'image' }] }))
+      expect(result.current.playlist).toHaveLength(0)
+      act(() => onMediaFoundCb?.({ files: [
+        { path: '/photos/b.jpg', size: 0, mtime: 0, type: 'image' },
+        { path: '/photos/c.jpg', size: 0, mtime: 0, type: 'image' },
+      ] }))
+      expect(result.current.playlist.map((file) => file.path)).toEqual(['/photos/c.jpg'])
+      expect(result.current.index).toBe(0)
+      expect(result.current.poolSize).toBe(2)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('shuffle still opens a folder that holds a single file once the scan finishes', async () => {
+    window.winraid.config.get.mockResolvedValue({ recursive: false, shuffle: true })
+    const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
+    await act(async () => {})
+    act(() => onMediaFoundCb?.({ files: [{ path: '/photos/only.jpg', size: 0, mtime: 0, type: 'image' }] }))
+    act(() => onMediaDoneCb?.())
+    expect(result.current.playlist.map((file) => file.path)).toEqual(['/photos/only.jpg'])
+    expect(result.current.poolSize).toBe(0)
+    expect(result.current.hasMore).toBe(false)
+  })
+
   it('sets scanning=false when onMediaDone fires', async () => {
     const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
     await act(async () => {})
@@ -248,7 +281,8 @@ describe('usePlayIndex', () => {
     })
     // Force Math.random to always return 0.999 — randomPick picks the last
     // index of the pool array each time.
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    // The first draw picks the opener (pool[0] = /a.jpg); the rest drive the walk.
+    const spy = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999)
     try {
       const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
       await act(async () => {})
@@ -381,7 +415,8 @@ describe('usePlayIndex', () => {
       },
     })
     // Math.random=0.5 in a 4-element pool → Math.floor(0.5 * 4) = 2 → pool[2].
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    // The first draw picks the opener (pool[0] = /a.jpg); the rest drive the walk.
+    const spy = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.5)
     try {
       const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
       await act(async () => {})
@@ -470,7 +505,8 @@ describe('usePlayIndex', () => {
       },
     })
     // Math.random=0.999 → randomPick lands on last index of the pool each call.
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    // The first draw picks the opener (pool[0] = /a.jpg); the rest drive the walk.
+    const spy = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999)
     try {
       const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
       await act(async () => {})
@@ -540,7 +576,8 @@ describe('usePlayIndex', () => {
       },
     })
     // Math.random=0.999 → last index of a 2-element pool.
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    // The first draw picks the opener (pool[0] = /a.jpg); the rest drive the walk.
+    const spy = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999)
     try {
       const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
       await act(async () => {})
@@ -647,12 +684,13 @@ describe('usePlayIndex fill/goTo', () => {
     window.winraid.config.get.mockResolvedValue({ recursive: false, shuffle: true })
     const { result } = renderHook(() => usePlayIndex('conn1', '/photos'))
     await act(async () => {})
-    act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']))
-    // Always pick the last pool entry: pool after seed is [b, c, d] -> d,
-    // then [b, c] -> c, then [b] -> b.
-    const spy = vi.spyOn(Math, 'random').mockReturnValue(0.999)
+    // The first draw picks the opener (pool[0] = /a.jpg). Then always pick
+    // the last pool entry: [b, c, d] -> d, then [b, c] -> c, then [b] -> b.
+    const spy = vi.spyOn(Math, 'random').mockReturnValueOnce(0).mockReturnValue(0.999)
     let randomCalls = 0
     try {
+      act(() => emit(['/a.jpg', '/b.jpg', '/c.jpg', '/d.jpg']))
+      spy.mockClear()
       act(() => result.current.fill(3))
       randomCalls = spy.mock.calls.length
     } finally {

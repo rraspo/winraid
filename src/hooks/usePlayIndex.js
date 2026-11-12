@@ -49,6 +49,13 @@ export function usePlayIndex(connId, path, startFile = null) {
   const shuffleRef = useRef(shuffle)
   shuffleRef.current = shuffle
 
+  // First file of a scan: a random one in shuffle, the first to arrive in
+  // sequential (the walker emits each folder in alphabetic order).
+  function openOn(pool) {
+    const opener = shuffleRef.current ? randomPick(pool) : pool[0]
+    return { trail: [opener], pool: removeFirstMatch(pool, opener), index: 0 }
+  }
+
   // Read defaults from config once on mount.
   useEffect(() => {
     let cancelled = false
@@ -92,17 +99,20 @@ export function usePlayIndex(connId, path, startFile = null) {
         ])
         const fresh = incoming.filter((f) => !seen.has(f.path))
         if (fresh.length === 0) return s
-        if (s.trail.length === 0) {
-          return {
-            trail: [fresh[0]],
-            pool:  [...s.pool, ...fresh.slice(1)],
-            index: 0,
-          }
-        }
-        return { ...s, pool: [...s.pool, ...fresh] }
+        const pool = [...s.pool, ...fresh]
+        if (s.trail.length > 0) return { ...s, pool }
+        // The walker sends the alphabetically first file on its own for a
+        // fast first paint, so shuffle waits for a second file before picking
+        // its opener; otherwise every shuffled Play would open on that file.
+        if (shuffleRef.current && pool.length < 2) return { ...s, pool }
+        return openOn(pool)
       })
     })
-    const unsubDone  = window.winraid?.remote.onMediaDone(() => setScanning(false))
+    const unsubDone  = window.winraid?.remote.onMediaDone(() => {
+      setScanning(false)
+      // A scan that found a single file never reached shuffle's second file.
+      setState((s) => (s.trail.length > 0 || s.pool.length === 0 ? s : openOn(s.pool)))
+    })
     const unsubError = window.winraid?.remote.onMediaError(({ path: errPath, msg }) => {
       if (errPath === scanPath) {
         setError(msg)
