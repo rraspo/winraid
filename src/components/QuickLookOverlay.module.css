@@ -564,6 +564,11 @@
   transform: translate(-50%, -50%) scale(1.15);
 }
 
+/* The handle the frame-step buttons move. */
+.trimHandle[data-active="true"] {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent), var(--shadow);
+}
+
 .trimHandle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

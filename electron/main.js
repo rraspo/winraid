@@ -48,7 +48,7 @@ import { createLimiter } from './limiter.js'
 import { shQuote } from './shell-quote.js'
 import { buildRemoteTreeCommand } from './remote-tree-cmd.js'
 import { isWithinBase } from './path-guard.js'
-import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe, FFMPEG_PINNED_VERSION } from './video-trim.js'
+import { runTrim, shellFromArgs, probeFfmpegCommand, parseFfmpegProbe, FFMPEG_PINNED_VERSION, ffmpegStreamProbeArgs, parseVideoFrameRate } from './video-trim.js'
 import { supportsDisplayRotation, parseRotation, combineRotation, probeRotationCommand, ffmpegRotateCommand, ffmpegRotateArgs } from './video-rotate.js'
 import { runCrop } from './video-crop.js'
 import { findLocalFfmpeg, downloadFfmpeg, validateFfmpegBinary } from './ffmpeg-local.js'
@@ -2247,6 +2247,29 @@ function registerIPC() {
   }
 
   // -- Remote: trim a video via ffmpeg stream-copy over SSH exec -------------
+  // Frame rate of a remote video, for stepping the trim handles one frame at
+  // a time. Read from the NAS ffmpeg's stream table; without one (or on any
+  // failure) it is null and the trim bar steps at an assumed rate, which only
+  // affects stepping: the cut itself snaps to the real frames.
+  ipcMain.handle('remote:video-frame-rate', async (_e, connectionId, remotePath) => {
+    if (!validateRemotePath(remotePath)) return { ok: false, error: 'Invalid remote path' }
+    try {
+      const conn = await _getConnConfig(connectionId)
+      if (conn?.type !== 'sftp') return { ok: true, fps: null }
+      const sftp = await _poolGet(connectionId)
+      const client = sftp ? _sftpPool.get(connectionId)?.client : null
+      if (!client) return { ok: true, fps: null }
+      _poolTouch(connectionId)
+      const probe = await _detectFfmpeg(connectionId, client)
+      if (!probe.available) return { ok: true, fps: null }
+      const { stderr } = await execWithTimeout(client, shellFromArgs(ffmpegStreamProbeArgs({ input: remotePath })), 15_000)
+      return { ok: true, fps: parseVideoFrameRate(stderr) }
+    } catch (err) {
+      log('warn', `Frame rate probe failed: ${remotePath} — ${err.message}`)
+      return { ok: true, fps: null }
+    }
+  })
+
   ipcMain.handle('remote:trim-video', async (_e, connectionId, opts) => {
     const { path, outPath, start, end } = opts ?? {}
     if (!validateRemotePath(path) || !validateRemotePath(outPath)) return { ok: false, error: 'Invalid remote path' }

@@ -284,6 +284,7 @@ window.winraid = {
     onMediaError: (callback) => channels.mediaError.subscribe(callback),
 
     trimVideo: () => Promise.resolve({ ok: true, outPath: '' }),
+    videoFrameRate: () => Promise.resolve({ ok: true, fps: 30000 / 1001 }),
     rotateVideo: () => Promise.resolve({ ok: true, outPath: '' }),
     cropVideo: () => Promise.resolve({ ok: true, outPath: '' }),
     // 'nas' (server-side ffmpeg, no local-trim consent needed) rather than

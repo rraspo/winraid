@@ -283,8 +283,60 @@ describe('QuickLookOverlay trim toolbar', () => {
   it('adjusts a handle with arrow keys for keyboard accessibility', async () => {
     await enterTrim(100) // out defaults to 100s (01:40)
     const endHandle = screen.getByRole('slider', { name: 'Trim end' })
-    fireEvent.keyDown(endHandle, { key: 'ArrowLeft' })
+    fireEvent.keyDown(endHandle, { key: 'ArrowLeft', shiftKey: true })
     expect(screen.getByTestId('trim-out').textContent).toContain('01:39')
+  })
+
+  it('reads the video frame rate when trim opens', async () => {
+    await enterTrim()
+    expect(window.winraid.remote.videoFrameRate).toHaveBeenCalledWith('c1', expect.any(String))
+  })
+
+  it('steps the start handle one frame with Next frame and shows that frame', async () => {
+    window.winraid.remote.videoFrameRate.mockResolvedValue({ ok: true, fps: 25 })
+    const video = await enterTrim(12)
+    fireEvent.click(screen.getByRole('button', { name: 'Next frame' }))
+    // Frame 1 at 25 fps, aimed at its middle (1.5 / 25) so the preview
+    // cannot land on a neighbour.
+    expect(screen.getByTestId('trim-in').textContent).toBe('00:00.06')
+    expect(video.currentTime).toBeCloseTo(0.06, 6)
+  })
+
+  it('steps the end handle once it is the one last used', async () => {
+    window.winraid.remote.videoFrameRate.mockResolvedValue({ ok: true, fps: 25 })
+    await enterTrim(12)
+    fireEvent.focus(screen.getByRole('slider', { name: 'Trim end' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Previous frame' }))
+    expect(screen.getByTestId('trim-out').textContent).toBe('00:11.98')
+    expect(screen.getByTestId('trim-in').textContent).toBe('00:00.00')
+  })
+
+  it('moves a focused handle one frame per arrow key', async () => {
+    window.winraid.remote.videoFrameRate.mockResolvedValue({ ok: true, fps: 25 })
+    await enterTrim(12)
+    const startHandle = screen.getByRole('slider', { name: 'Trim start' })
+    fireEvent.keyDown(startHandle, { key: 'ArrowRight' })
+    fireEvent.keyDown(startHandle, { key: 'ArrowRight' })
+    expect(screen.getByTestId('trim-in').textContent).toBe('00:00.10')
+    fireEvent.keyDown(startHandle, { key: 'ArrowLeft' })
+    expect(screen.getByTestId('trim-in').textContent).toBe('00:00.06')
+  })
+
+  it('steps at 30 fps when the frame rate cannot be read', async () => {
+    window.winraid.remote.videoFrameRate.mockResolvedValue({ ok: true, fps: null })
+    await enterTrim(12)
+    fireEvent.click(screen.getByRole('button', { name: 'Next frame' }))
+    expect(screen.getByTestId('trim-in').textContent).toBe('00:00.05')
+  })
+
+  it('never steps a handle past the other one or the ends of the video', async () => {
+    window.winraid.remote.videoFrameRate.mockResolvedValue({ ok: true, fps: 25 })
+    await enterTrim(12)
+    fireEvent.click(screen.getByRole('button', { name: 'Previous frame' }))
+    expect(screen.getByTestId('trim-in').textContent).toBe('00:00.00')
+    fireEvent.focus(screen.getByRole('slider', { name: 'Trim end' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Next frame' }))
+    expect(screen.getByTestId('trim-out').textContent).toBe('00:12.00')
   })
 
   it('renders one timeline below the video instead of a second slider in the header', async () => {

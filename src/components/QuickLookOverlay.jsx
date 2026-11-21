@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, RotateCcw, Loader, Camera, Scissors, Play, Pause, AlertCircle, FolderOpen } from 'lucide-react'
+import { X, ChevronLeft, ChevronRight, File, Music, MoreHorizontal, Check, Crop, RotateCw, RotateCcw, Loader, Camera, Scissors, Play, Pause, AlertCircle, FolderOpen, StepBack, StepForward } from 'lucide-react'
 import ReactCrop from 'react-image-crop'
 import 'react-image-crop/dist/ReactCrop.css'
 import Tooltip from './ui/Tooltip'
@@ -64,6 +64,23 @@ function fmtClock(sec) {
   const m = Math.floor((s % 3600) / 60)
   const ss = String(s % 60).padStart(2, '0')
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${String(m).padStart(2, '0')}:${ss}`
+}
+
+// Trim In/Out times, to the hundredth: one frame step must visibly move them.
+function fmtTrimClock(sec) {
+  const hundredths = Math.max(0, Math.floor((sec || 0) * 100 + 1e-6))
+  return `${fmtClock(hundredths / 100)}.${String(hundredths % 100).padStart(2, '0')}`
+}
+
+// Frame rate the trim handles step at while a video's own is unknown. Only
+// stepping uses it: the server snaps every cut to the video's real frames.
+const DEFAULT_FRAME_RATE = 30
+
+// Time of the frame `steps` away from the one shown at `time`, aimed at the
+// middle of that frame so the preview cannot settle on a neighbour.
+function frameStepTime(time, steps, fps) {
+  const shownFrame = Math.floor(time * fps + 1e-6)
+  return (shownFrame + steps + 0.5) / fps
 }
 
 // Capture the current frame of a <video> element to a Blob in the given format.
@@ -587,6 +604,11 @@ export default function QuickLookOverlay({
   const [trimSaving, setTrimSaving] = useState(false)
   const [trimPos,     setTrimPos]     = useState(0)
   const [trimPlaying, setTrimPlaying] = useState(false)
+  // The handle the frame-step buttons move: whichever was last grabbed or
+  // focused, the start by default.
+  const [trimActive,  setTrimActive]  = useState('start')
+  // { path, fps } of the video being trimmed; fps null when unreadable.
+  const [trimFrameRate, setTrimFrameRate] = useState(null)
   const [trimSetup,   setTrimSetup]   = useState(null)  // null | { phase: 'prompt'|'downloading', canLocalTrim?, pct?, error? }
   const pendingEditIntentRef = useRef('trim')  // 'trim' | 'rotate' | 'crop' — which feature the engine gate should open once ready
   const [rotating,     setRotating]     = useState(false)
@@ -656,7 +678,14 @@ export default function QuickLookOverlay({
     setTrimDur(dur)
     setTrimPos(Number.isFinite(v?.currentTime) ? v.currentTime : 0)
     setTrimPlaying(false)
+    setTrimActive('start')
     setTrimming(true)
+    if (type === 'video') {
+      const trimmedPath = file.path
+      window.winraid?.remote.videoFrameRate?.(connectionId, trimmedPath)
+        .then((res) => setTrimFrameRate({ path: trimmedPath, fps: res?.fps ?? null }))
+        .catch(() => setTrimFrameRate({ path: trimmedPath, fps: null }))
+    }
   }
 
   // Gate on an available trim/rotate engine before letting the user pick a
@@ -827,6 +856,7 @@ export default function QuickLookOverlay({
     return (e) => {
       if (trimSaving) return
       e.preventDefault()
+      setTrimActive(which)
       trimDragRef.current = which
       e.currentTarget.setPointerCapture?.(e.pointerId)
     }
@@ -853,24 +883,43 @@ export default function QuickLookOverlay({
     e.currentTarget.releasePointerCapture?.(e.pointerId)
   }
 
-  // Keyboard accessibility: arrow keys nudge the focused handle (Shift = 5s).
+  const trimFps = (trimFrameRate?.path === trimFile?.path && trimFrameRate?.fps) || DEFAULT_FRAME_RATE
+
+  // Moves a handle to `time`, kept between the other handle and the ends of
+  // the media, and shows that moment in the preview.
+  function moveTrimHandle(which, time) {
+    if (which === 'start') {
+      const v = Math.max(0, Math.min(time, trimOut))
+      setTrimIn(v)
+      seekPreview(v)
+    } else {
+      const v = Math.min(trimDur, Math.max(time, trimIn))
+      setTrimOut(v)
+      seekPreview(v)
+    }
+  }
+
+  function stepTrimFrame(which, steps) {
+    const current = which === 'start' ? trimIn : trimOut
+    moveTrimHandle(which, frameStepTime(current, steps, trimFps))
+  }
+
+  // Keyboard: arrows move the focused handle one frame on a video (Shift = 1 s)
+  // and one second on audio (Shift = 5 s).
   function handleHandleKey(which) {
     return (e) => {
-      const step = e.shiftKey ? 5 : 1
-      let delta = 0
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') delta = -step
-      else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') delta = step
+      let direction = 0
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') direction = -1
+      else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') direction = 1
       else return
       e.preventDefault()
-      if (which === 'start') {
-        const v = Math.max(0, Math.min(trimIn + delta, trimOut))
-        setTrimIn(v)
-        seekPreview(v)
-      } else {
-        const v = Math.min(trimDur, Math.max(trimOut + delta, trimIn))
-        setTrimOut(v)
-        seekPreview(v)
+      setTrimActive(which)
+      if (type === 'video' && !e.shiftKey) {
+        stepTrimFrame(which, direction)
+        return
       }
+      const seconds = type === 'video' ? 1 : (e.shiftKey ? 5 : 1)
+      moveTrimHandle(which, (which === 'start' ? trimIn : trimOut) + direction * seconds)
     }
   }
 
@@ -1448,7 +1497,33 @@ export default function QuickLookOverlay({
         >
           {trimPlaying ? <Pause size={14} /> : <Play size={14} />}
         </button>
-        <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtClock(trimIn)}</b></span>
+        {type === 'video' && (
+          <>
+            <Tooltip tip={`Previous frame (${trimActive === 'start' ? 'start' : 'end'})`}>
+              <button
+                type="button"
+                className={styles.trimPlayBtn}
+                onClick={() => stepTrimFrame(trimActive, -1)}
+                disabled={trimSaving}
+                aria-label="Previous frame"
+              >
+                <StepBack size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip tip={`Next frame (${trimActive === 'start' ? 'start' : 'end'})`}>
+              <button
+                type="button"
+                className={styles.trimPlayBtn}
+                onClick={() => stepTrimFrame(trimActive, 1)}
+                disabled={trimSaving}
+                aria-label="Next frame"
+              >
+                <StepForward size={14} />
+              </button>
+            </Tooltip>
+          </>
+        )}
+        <span className={styles.trimTime}>In <b data-testid="trim-in">{fmtTrimClock(trimIn)}</b></span>
         <div
           className={styles.trimTrack}
           data-testid="trim-track"
@@ -1475,8 +1550,10 @@ export default function QuickLookOverlay({
             aria-valuemin={0}
             aria-valuemax={Math.round(trimDur)}
             aria-valuenow={Math.round(trimIn)}
-            aria-valuetext={fmtClock(trimIn)}
+            aria-valuetext={fmtTrimClock(trimIn)}
+            data-active={type === 'video' && trimActive === 'start' ? 'true' : undefined}
             disabled={trimSaving}
+            onFocus={() => setTrimActive('start')}
             onPointerDown={handleDragDown('start')}
             onPointerMove={handleDragMove('start')}
             onPointerUp={handleDragUp}
@@ -1491,15 +1568,17 @@ export default function QuickLookOverlay({
             aria-valuemin={0}
             aria-valuemax={Math.round(trimDur)}
             aria-valuenow={Math.round(trimOut)}
-            aria-valuetext={fmtClock(trimOut)}
+            aria-valuetext={fmtTrimClock(trimOut)}
+            data-active={type === 'video' && trimActive === 'end' ? 'true' : undefined}
             disabled={trimSaving}
+            onFocus={() => setTrimActive('end')}
             onPointerDown={handleDragDown('end')}
             onPointerMove={handleDragMove('end')}
             onPointerUp={handleDragUp}
             onKeyDown={handleHandleKey('end')}
           />
         </div>
-        <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtClock(trimOut)}</b></span>
+        <span className={styles.trimTime}>Out <b data-testid="trim-out">{fmtTrimClock(trimOut)}</b></span>
       </div>
       <div className={styles.trimCardFooter}>
         <span className={styles.trimSummary}>
