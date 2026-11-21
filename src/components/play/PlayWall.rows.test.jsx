@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, act } from '@testing-library/react'
+import { render, screen, act, fireEvent, waitFor } from '@testing-library/react'
 import PlayWall from './PlayWall'
 import { probeMediaRatio } from './probeMediaRatio'
 
@@ -34,7 +34,15 @@ class ResizeObserverStub {
 }
 
 let pendingProbes
+let savedConfig
 beforeEach(() => {
+  savedConfig = {}
+  window.winraid = {
+    config: {
+      get: vi.fn((key) => Promise.resolve(savedConfig[key])),
+      set: vi.fn((key, value) => { savedConfig[key] = value; return Promise.resolve({}) }),
+    },
+  }
   intersectionObservers.length = 0
   pendingProbes = new Map()
   vi.stubGlobal('IntersectionObserver', IntersectionObserverStub)
@@ -45,6 +53,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  delete window.winraid
 })
 
 function image(path) { return { path, size: 100, mtime: 0, type: 'image' } }
@@ -132,5 +141,43 @@ describe('PlayWall justified rows', () => {
     await resolveProbe('a.jpg', 1)
     intersect(screen.getByTestId('play-wall-sentinel'))
     expect(fill).toHaveBeenCalledWith(24)
+  })
+})
+
+describe('PlayWall tile size', () => {
+  function slider() {
+    return screen.getByRole('slider', { name: 'Tile size' })
+  }
+
+  it('opens at a 360px row height', async () => {
+    renderWall([image('/media/a.jpg')])
+    await resolveProbe('a.jpg', 1)
+    expect(slider().value).toBe('360')
+    expect(tileBox('a.jpg').height).toBe(360)
+  })
+
+  it('resizes the rows as the slider moves', async () => {
+    renderWall([image('/media/a.jpg')])
+    await resolveProbe('a.jpg', 1)
+    fireEvent.change(slider(), { target: { value: '520' } })
+    expect(tileBox('a.jpg').height).toBe(520)
+    expect(tileBox('a.jpg').width).toBe(520)
+  })
+
+  it('restores the saved size', async () => {
+    savedConfig.playWall = { rowHeight: 220 }
+    renderWall([image('/media/a.jpg')])
+    await resolveProbe('a.jpg', 1)
+    await waitFor(() => expect(slider().value).toBe('220'))
+    expect(tileBox('a.jpg').height).toBe(220)
+  })
+
+  it('saves the size once the slider settles', async () => {
+    renderWall([image('/media/a.jpg')])
+    await resolveProbe('a.jpg', 1)
+    fireEvent.change(slider(), { target: { value: '400' } })
+    fireEvent.change(slider(), { target: { value: '440' } })
+    await waitFor(() => expect(window.winraid.config.set).toHaveBeenCalledWith('playWall', { rowHeight: 440 }))
+    expect(window.winraid.config.set).toHaveBeenCalledTimes(1)
   })
 })

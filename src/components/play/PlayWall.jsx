@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ArrowLeft, List, Loader, Maximize2, Play, Shuffle, Square, CheckSquare } from 'lucide-react'
+import { ArrowLeft, List, Loader, Maximize2, Play, Shuffle, Square, CheckSquare, ZoomIn, ZoomOut } from 'lucide-react'
 import Tooltip from '../ui/Tooltip'
 import ConnectionPicker from '../ConnectionPicker'
 import BulkSelectionBar from '../BulkSelectionBar'
@@ -12,9 +12,15 @@ import { buildPathSegments } from '../../utils/pathSegments'
 import overlayStyles from '../PlayOverlay.module.css'
 import styles from './PlayWall.module.css'
 
-// Justified rows: tiles share a row height near ROW_TARGET_HEIGHT, and a
+// Justified rows: tiles share a row height near the chosen tile size, and a
 // row may stretch or shrink by ROW_STRETCH_LIMIT to span the wall exactly.
-const ROW_TARGET_HEIGHT   = 280
+// The size is the person's choice (the Tile size slider), saved under
+// `playWall` once the slider settles.
+const ROW_HEIGHT_DEFAULT  = 360
+const ROW_HEIGHT_MIN      = 180
+const ROW_HEIGHT_MAX      = 640
+const ROW_HEIGHT_STEP     = 20
+const ROW_HEIGHT_SAVE_MS  = 400
 const ROW_STRETCH_LIMIT   = 0.25
 const TILE_GAP            = 12
 // Lays the wall out before it has been measured (first paint).
@@ -72,6 +78,34 @@ export default function PlayWall({
   const scrollContainerRef = useRef(null)
   const sentinelRef        = useRef(null)
   const [containerWidth, setContainerWidth] = useState(0)
+  const [rowHeight,      setRowHeight]      = useState(ROW_HEIGHT_DEFAULT)
+  const rowHeightChangedRef = useRef(false)
+
+  useEffect(() => {
+    let cancelled = false
+    window.winraid?.config.get('playWall')
+      .then((saved) => {
+        const height = Number(saved?.rowHeight)
+        if (cancelled || rowHeightChangedRef.current || !Number.isFinite(height)) return
+        setRowHeight(Math.min(ROW_HEIGHT_MAX, Math.max(ROW_HEIGHT_MIN, height)))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // Saved once the slider stops moving, not on every step of a drag.
+  useEffect(() => {
+    if (!rowHeightChangedRef.current) return undefined
+    const timer = setTimeout(() => {
+      window.winraid?.config.set('playWall', { rowHeight })
+    }, ROW_HEIGHT_SAVE_MS)
+    return () => clearTimeout(timer)
+  }, [rowHeight])
+
+  function handleRowHeightChange(event) {
+    rowHeightChangedRef.current = true
+    setRowHeight(Number(event.target.value))
+  }
   // Keyed by remote path, shared between image thumbnails and video
   // players so either kind of tile can report the real proportions of
   // its media once known; the ratio survives a video player being
@@ -206,11 +240,11 @@ export default function PlayWall({
     const items = placedFiles.map((file) => ({ ratio: mediaRatios.get(file.path) || fallbackRatio(file) }))
     return layoutJustifiedRows(items, {
       width:        isMeasured ? containerWidth : FALLBACK_WALL_WIDTH,
-      targetHeight: ROW_TARGET_HEIGHT,
+      targetHeight: rowHeight,
       tolerance:    ROW_STRETCH_LIMIT,
       gap:          TILE_GAP,
     })
-  }, [placedFiles, mediaRatios, isMeasured, containerWidth])
+  }, [placedFiles, mediaRatios, isMeasured, containerWidth, rowHeight])
 
   const isEmpty    = !scanning && playlist.length === 0
   const totalKnown = playlist.length + poolSize
@@ -253,6 +287,22 @@ export default function PlayWall({
               onSetDefault={onSetDefault}
             />
           )}
+          <Tooltip tip="Tile size" side="bottom">
+            <div className={styles.sizeControl}>
+              <ZoomOut size={13} aria-hidden="true" />
+              <input
+                type="range"
+                className={styles.sizeSlider}
+                aria-label="Tile size"
+                min={ROW_HEIGHT_MIN}
+                max={ROW_HEIGHT_MAX}
+                step={ROW_HEIGHT_STEP}
+                value={rowHeight}
+                onChange={handleRowHeightChange}
+              />
+              <ZoomIn size={13} aria-hidden="true" />
+            </div>
+          </Tooltip>
           <Tooltip tip={shuffle ? 'Sequential order' : 'Shuffle'} side="bottom">
             <button
               type="button"
