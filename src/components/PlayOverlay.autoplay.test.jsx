@@ -175,14 +175,16 @@ describe('PlayOverlay wall autoplay', () => {
     await mount()
     emit([video('/photos/clip.mp4')])
     act(() => setInView(tile('clip.mp4'), true))
-    const before = tile('clip.mp4').style.height
+    // Justified rows keep the row height and give the tile the width its
+    // shape needs: a 16:9 guess narrows to a square.
+    const before = tile('clip.mp4').style.width
     const player = tile('clip.mp4').querySelector('video')
     Object.defineProperty(player, 'videoWidth',  { value: 600, configurable: true })
     Object.defineProperty(player, 'videoHeight', { value: 600, configurable: true })
     fireEvent(player, new window.Event('loadedmetadata'))
-    const after = tile('clip.mp4').style.height
+    const after = tile('clip.mp4').style.width
     expect(after).not.toBe(before)
-    expect(after).toBe(tile('clip.mp4').style.width)
+    expect(after).toBe(tile('clip.mp4').style.height)
   })
 
   it('remembers a video ratio after its player is dropped', async () => {

@@ -4,7 +4,7 @@ import PlayOverlay, { WALL_PAGE_SIZE } from './PlayOverlay'
 import { createWinraidMock } from '../__mocks__/winraid'
 import * as toast from '../services/toast'
 
-// Contract under test — the Play overlay is a scrollable masonry wall of
+// Contract under test — the Play overlay is a scrollable wall, in justified rows, of
 // every file the media scan finds, in queue order (shuffle or sequential),
 // paged from the pool. Clicking a tile opens that file in the Quick Look
 // viewer, which walks the same order and carries every editing tool Quick
