@@ -4,6 +4,7 @@ import {
   FFMPEG_WIN64_CANDIDATES, FFMPEG_PINNED_VERSION,
   ffmpegKeyframeProbeArgs, ffmpegStreamProbeArgs, ffmpegReencodeArgs, ffmpegTailSegmentArgs, ffmpegConcatArgs,
   parseKeyframeTimes, parseVideoStreamInfo, encoderForCodec, planTrim,
+  ffmpegFrameProbeArgs, snapCutToFrames, parseVideoFrameRate,
   shellFromArgs, runTrim, ffmpegAudioTrimArgs, parseAudioCodec, audioCodecArgs,
 } from './video-trim.js'
 
@@ -160,11 +161,11 @@ describe('planTrim', () => {
   const encoder = encoderForCodec('h264')
 
   it('stream-copies when the cut already lands on a keyframe', () => {
-    expect(planTrim({ start: 10, end: 20, keyframes: [10, 15], encoder })).toEqual({ mode: 'copy' })
+    expect(planTrim({ start: 10, end: 20, keyframes: [10, 15], encoder })).toEqual({ mode: 'copy', at: 10 })
   })
 
   it('tolerates sub-frame float drift on the keyframe match', () => {
-    expect(planTrim({ start: 10.004, end: 20, keyframes: [10, 15], encoder })).toEqual({ mode: 'copy' })
+    expect(planTrim({ start: 10.004, end: 20, keyframes: [10, 15], encoder })).toEqual({ mode: 'copy', at: 10 })
   })
 
   it('splits at the first keyframe after the cut point', () => {
@@ -269,17 +270,28 @@ describe('runTrim', () => {
   const SHOWINFO = '[Parsed_showinfo_0 @ 0x1] n: 0 pts: 153600 pts_time:10 iskey:1 type:I'
   const STREAMS  = 'ffmpeg version 7.1 Copyright (c) 2000-2024\n  Stream #0:0: Video: h264 (avc1 / 0x31637661), yuv420p(progressive), 640x360'
 
-  // Fake ffmpeg: answers the two probes from canned output, succeeds otherwise.
+  // Fake ffmpeg: answers the probes from canned output, succeeds otherwise.
+  // Frame probes (showinfo without -skip_frame) are kept out of `calls` so
+  // the indices below count only the stream probe, keyframe probe and cuts.
   function makeExec(overrides = {}) {
     const calls = []
+    const frameCalls = []
     const exec = vi.fn(async (args) => {
+      if (args.includes('showinfo') && !args.includes('-skip_frame')) {
+        frameCalls.push(args)
+        return { code: 0, stdout: '', stderr: overrides.frames?.(args) ?? '' }
+      }
       calls.push(args)
       if (args.includes('showinfo')) return { code: 0, stdout: '', stderr: overrides.showinfo ?? SHOWINFO }
       if (args.length === 3) return { code: 1, stdout: '', stderr: overrides.streams ?? STREAMS }
       const fail = overrides.failOn?.(args)
       return fail ? { code: 1, stdout: '', stderr: fail } : { code: 0, stdout: '', stderr: '' }
     })
-    return { exec, calls }
+    return { exec, calls, frameCalls }
+  }
+
+  function showinfoFrames(times) {
+    return times.map((time, index) => `[Parsed_showinfo_0 @ 0x1] n: ${index} pts_time:${time} iskey:0`).join('\n')
   }
 
   const base = { input: '/v/in.mp4', output: '/v/.tmp-out.mp4', start: 7.1, end: 12.1 }
@@ -294,6 +306,9 @@ describe('runTrim', () => {
     const [, , head, tail, concat] = calls
     expect(head).toContain('libx264')
     expect(head).toContain('/v/.tmp-out-head.ts')
+    // The head stops short of the keyframe the tail starts on, or ffmpeg
+    // writes that frame into both and it plays twice at the seam.
+    expect(head.join(' ')).toContain('-to 9.998')
     expect(tail.join(' ')).toContain('-ss 10.000')
     expect(tail.join(' ')).toContain('-output_ts_offset 2.900')
     expect(concat).toContain('concat:/v/.tmp-out-head.ts|/v/.tmp-out-tail.ts')
@@ -381,6 +396,58 @@ describe('runTrim', () => {
     const res = await runTrim({ ...base, exec, remove: vi.fn(), log: vi.fn() })
 
     expect(res).toEqual({ ok: true, mode: 'copy', degraded: true })
+  })
+
+  it('snaps the cut to the frames the preview showed: the In frame first, the Out frame last', async () => {
+    // 30 fps around both cut points. 7.12 shows the frame at 7.1; 12.11
+    // shows the frame at 12.1, which is the last one kept.
+    const frames = (args) => {
+      const from = Number(args[args.indexOf('-ss') + 1])
+      return from < 9
+        ? showinfoFrames([7.0667, 7.1, 7.1333, 7.1667])
+        : showinfoFrames([12.0667, 12.1, 12.1333, 12.1667])
+    }
+    const { exec, calls, frameCalls } = makeExec({ frames })
+    await runTrim({ ...base, start: 7.12, end: 12.11, exec, remove: vi.fn() })
+
+    expect(frameCalls).toHaveLength(2)
+    const head = calls[2].join(' ')
+    expect(head).toContain('-ss 7.100 -copyts')
+    const tail = calls[3].join(' ')
+    // Halfway between the Out frame (12.1) and the next (12.1333).
+    expect(tail).toContain('-t 2.116')
+    expect(tail).toContain('-output_ts_offset 2.900')
+  })
+
+  it('keeps the requested times when the frame probe finds nothing or fails', async () => {
+    const { exec, calls } = makeExec({ frames: () => '' })
+    await runTrim({ ...base, exec, remove: vi.fn() })
+    expect(calls[2].join(' ')).toContain('-ss 7.100 -copyts')
+
+    const failing = makeExec()
+    const exec2 = vi.fn(async (args) => {
+      if (args.includes('showinfo') && !args.includes('-skip_frame')) throw new Error('probe timed out')
+      return failing.exec(args)
+    })
+    const res = await runTrim({ ...base, exec: exec2, remove: vi.fn(), log: vi.fn() })
+    expect(res).toEqual({ ok: true, mode: 'smart' })
+  })
+
+  it('never rounds a cut time up past the frame it starts on', async () => {
+    // 2 / 29.97 = 0.066733: rounding to the nearest millisecond (0.067)
+    // would skip that frame, so cut times round down.
+    const { exec, calls } = makeExec({ showinfo: '', frames: () => showinfoFrames([0.033367, 0.066733, 0.1001]) })
+    await runTrim({ ...base, start: 0.07, end: 0.5, exec, remove: vi.fn() })
+    expect(calls[2].join(' ')).toContain('-ss 0.066 -copyts')
+  })
+
+  it('seeks a keyframe-aligned stream copy past the keyframe so it cannot land on the one before', async () => {
+    const { exec, calls } = makeExec({ showinfo: '[Parsed_showinfo_0 @ 0x1] n: 0 pts_time:10 iskey:1' })
+    const res = await runTrim({ ...base, start: 10, end: 12, exec, remove: vi.fn() })
+    expect(res).toEqual({ ok: true, mode: 'copy' })
+    const copy = calls[2].join(' ')
+    expect(copy).toContain('-ss 10.001 -i')
+    expect(copy).toContain('-t 2.000')
   })
 
   it('reports a failing stream copy rather than pretending it worked', async () => {
@@ -504,5 +571,52 @@ describe('runTrim on audio', () => {
     const { exec } = makeExec({ cut: { code: 1, stdout: '', stderr: 'Invalid data found when processing input' } })
     const res = await runTrim({ ...base, input: '/m/song.mp3', exec, remove: vi.fn() })
     expect(res).toEqual({ ok: false, error: 'Invalid data found when processing input' })
+  })
+})
+
+describe('frame snapping', () => {
+  it('probes every frame within half a second of the cut point', () => {
+    expect(ffmpegFrameProbeArgs({ input: '/v/in.mp4', at: 7.1 })).toEqual([
+      '-nostdin', '-hide_banner',
+      '-ss', '6.600', '-i', '/v/in.mp4',
+      '-copyts', '-to', '7.600',
+      '-an', '-sn', '-vf', 'showinfo', '-f', 'null', '-',
+    ])
+    expect(ffmpegFrameProbeArgs({ input: '/v/in.mp4', at: 0.2 })[3]).toBe('0.000')
+  })
+
+  it('starts on the frame shown at the start time and ends halfway past the frame shown at the end', () => {
+    // ffmpeg keeps a frame that starts exactly on the end time, so the end
+    // sits half a frame clear of both the Out frame and the one after it.
+    const frames = [1.0, 1.0333, 1.0667, 1.1]
+    const cut = snapCutToFrames({ start: 1.05, end: 1.04, startFrames: frames, endFrames: frames })
+    expect(cut.start).toBe(1.0333)
+    expect(cut.end).toBeCloseTo(1.05, 6)
+  })
+
+  it('keeps a time when no frame brackets it', () => {
+    expect(snapCutToFrames({ start: 0.5, end: 9.99, startFrames: [1, 2], endFrames: [9, 9.5] })).toEqual({ start: 0.5, end: 9.99 })
+  })
+})
+
+describe('parseVideoFrameRate', () => {
+  it('reads the frame rate of the video stream', () => {
+    const stderr = 'Stream #0:0[0x1](und): Video: h264 (High) (avc1 / 0x31637661), yuv420p(tv, bt709, progressive), 1920x1080, 9873 kb/s, 29.97 fps, 29.97 tbr, 30k tbn (default)'
+    expect(parseVideoFrameRate(stderr)).toBeCloseTo(30000 / 1001, 6)
+  })
+
+  it('maps the NTSC rates ffmpeg prints rounded to their exact values', () => {
+    expect(parseVideoFrameRate('Video: h264, yuv420p, 1920x1080, 23.98 fps, 23.98 tbr')).toBeCloseTo(24000 / 1001, 6)
+    expect(parseVideoFrameRate('Video: h264, yuv420p, 1920x1080, 59.94 fps, 59.94 tbr')).toBeCloseTo(60000 / 1001, 6)
+    expect(parseVideoFrameRate('Video: hevc, yuv420p, 1920x1080, 60 fps, 60 tbr')).toBe(60)
+  })
+
+  it('falls back to tbr when no fps is printed', () => {
+    expect(parseVideoFrameRate('Video: vp9, yuv420p, 1280x720, 25 tbr, 1k tbn')).toBe(25)
+  })
+
+  it('ignores an audio stream and returns null without a video stream', () => {
+    expect(parseVideoFrameRate('Stream #0:1: Audio: aac, 48000 Hz, stereo')).toBeNull()
+    expect(parseVideoFrameRate('')).toBeNull()
   })
 })

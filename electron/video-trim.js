@@ -2,8 +2,23 @@ import { shQuote } from './shell-quote.js'
 import { isAudioFile } from '../src/utils/fileTypes.js'
 import { parseRotation, supportsDisplayRotation, rotationInputArgs, rotationOutputArgs } from './video-rotate.js'
 
-// Seconds formatted for ffmpeg's -ss/-t (plain seconds, millisecond precision).
-const fmtSecs = (n) => Number(n).toFixed(3)
+// Seconds formatted for ffmpeg's -ss/-t (plain seconds, millisecond precision),
+// rounded down: a cut point sits on a frame's own timestamp, and rounding it
+// up past that timestamp would drop the frame. The micro-offset absorbs float
+// noise (2.0999999999999996 is 2.100, not 2.099).
+const fmtSecs = (n) => (Math.floor(Number(n) * 1000 + 1e-6) / 1000).toFixed(3)
+
+// How far either side of a cut point to read frame timestamps.
+const FRAME_PROBE_MARGIN = 0.5
+
+// A stream copy's input seek lands on the keyframe at or before -ss, so a
+// copy that starts on a keyframe seeks just past it, never to the one before.
+const KEYFRAME_SEEK_NUDGE = 0.001
+
+// The re-encoded head ends this far before the keyframe the copied tail
+// starts on: ffmpeg keeps a frame that starts exactly on -to, which would put
+// that keyframe in both segments. 2 ms is under half a frame up to 240 fps.
+const HEAD_SEAM_MARGIN = 0.002
 
 // How far a cut point may sit from a keyframe and still count as landing on it.
 // 10 ms is under half a frame at 60 fps, so a cut the user placed on a keyframe
@@ -27,6 +42,62 @@ const rotationOut = (rotation) => (rotation.degrees ? rotationOutputArgs(rotatio
 // An ffmpeg argv rendered as one SSH exec command line.
 export function shellFromArgs(args) {
   return ['ffmpeg', ...args.map((arg) => (BARE_TOKEN.test(arg) ? arg : shQuote(arg)))].join(' ')
+}
+
+// Every frame's timestamp within FRAME_PROBE_MARGIN of a cut point. Decoding
+// (not just demuxing, unlike the keyframe probe) is what yields every frame;
+// -copyts keeps the timestamps on the source timeline.
+export function ffmpegFrameProbeArgs({ input, at }) {
+  return [
+    '-nostdin', '-hide_banner',
+    '-ss', fmtSecs(Math.max(0, at - FRAME_PROBE_MARGIN)), '-i', input,
+    '-copyts', '-to', fmtSecs(at + FRAME_PROBE_MARGIN),
+    '-an', '-sn', '-vf', 'showinfo', '-f', 'null', '-',
+  ]
+}
+
+// The preview shows, at time t, the frame whose timestamp is the last one at
+// or before t. The cut starts on the frame shown at `start` and keeps the
+// frame shown at `end` as its last. ffmpeg also keeps a frame that starts
+// exactly on the end time, so the end sits halfway between the Out frame and
+// the next one. A time no probed frame brackets is kept as it is.
+export function snapCutToFrames({ start, end, startFrames, endFrames }) {
+  const shownAtStart = startFrames.filter((time) => time <= start).at(-1)
+  const shownAtEnd = endFrames.filter((time) => time <= end).at(-1)
+  const afterEnd = endFrames.find((time) => time > end)
+  const snappedEnd = shownAtEnd !== undefined && afterEnd !== undefined ? (shownAtEnd + afterEnd) / 2 : end
+  return { start: shownAtStart ?? start, end: snappedEnd }
+}
+
+async function snapToShownFrames({ input, start, end, exec, log }) {
+  try {
+    const startProbe = await exec(ffmpegFrameProbeArgs({ input, at: start }))
+    const endProbe = await exec(ffmpegFrameProbeArgs({ input, at: end }))
+    return snapCutToFrames({
+      start, end,
+      startFrames: parseFrameTimes(startProbe.stderr),
+      endFrames: parseFrameTimes(endProbe.stderr),
+    })
+  } catch (err) {
+    log('warn', `Frame probe failed, cutting at the requested times: ${err.message}`)
+    return { start, end }
+  }
+}
+
+// ffmpeg prints NTSC rates rounded ("29.97 fps"); frame stepping drifts a
+// frame every few minutes on the rounded value, so map them to the exact one.
+const NTSC_RATES = { '23.98': 24000 / 1001, '29.97': 30000 / 1001, '59.94': 60000 / 1001, '119.88': 120000 / 1001 }
+const VIDEO_STREAM_LINE = /\bVideo:.*$/m
+
+// Frames per second of the first video stream in a bare -i stream table, from
+// its "fps" field (the average rate), else "tbr". Null without a video stream.
+export function parseVideoFrameRate(stderr) {
+  const line = VIDEO_STREAM_LINE.exec(String(stderr ?? ''))?.[0]
+  if (!line) return null
+  const match = /([0-9]+(?:\.[0-9]+)?) fps/.exec(line) ?? /([0-9]+(?:\.[0-9]+)?) tbr/.exec(line)
+  if (!match) return null
+  const rate = NTSC_RATES[match[1]] ?? Number(match[1])
+  return rate > 0 ? rate : null
 }
 
 // Stream-copy trim argv. -ss before -i is a fast input seek; -t is a duration
@@ -113,7 +184,8 @@ export function ffmpegKeyframeProbeArgs({ input, start, window }) {
 
 const SHOWINFO_PTS = /pts_time:\s*([0-9]+(?:\.[0-9]+)?)/
 
-// Keyframe times (seconds) out of showinfo stderr. Only showinfo lines count --
+// Frame times (seconds) out of showinfo stderr -- every frame showinfo saw,
+// so keyframes only under the keyframe probe. Only showinfo lines count --
 // ffmpeg's own progress lines carry times too.
 export function parseKeyframeTimes(stderr) {
   return String(stderr ?? '')
@@ -130,6 +202,8 @@ export function parseKeyframeTimes(stderr) {
 // non-zero ("at least one output file must be specified") -- the caller reads
 // stderr, not the code. The banner is kept: it carries the version, which
 // decides how rotation is written back.
+const parseFrameTimes = (stderr) => parseKeyframeTimes(stderr)
+
 export function ffmpegStreamProbeArgs({ input }) {
   return ['-nostdin', '-i', input]
 }
@@ -162,7 +236,8 @@ export function encoderForCodec(codec) {
 // [start, splitAt) and copies the rest; 'reencode' re-encodes the selection
 // because no keyframe falls inside it.
 export function planTrim({ start, end, keyframes, encoder, tolerance = KEYFRAME_TOLERANCE }) {
-  if (keyframes.some((time) => Math.abs(time - start) <= tolerance)) return { mode: 'copy' }
+  const onKeyframe = keyframes.find((time) => Math.abs(time - start) <= tolerance)
+  if (onKeyframe !== undefined) return { mode: 'copy', at: onKeyframe }
   if (!encoder) return { mode: 'copy' }
 
   const splitAt = keyframes.find((time) => time > start + tolerance && time < end - tolerance)
@@ -257,12 +332,17 @@ const stderrTail = (stderr) => (stderr || '').trim().split('\n').slice(-3).join(
 // local-fallback (spawn) paths: exec(argv) -> { code, stderr } and remove()
 // operate on the machine the cut runs on.
 export async function runTrim({ input, output, start, end, exec, remove, log = () => {} }) {
-  const copyTrim = async () => {
-    const { code, stderr } = await exec(ffmpegTrimArgs({ input, output, start, duration: end - start }))
+  // `keyframe`, when the cut starts on one, is where the copy begins exactly.
+  const copyTrim = async (keyframe) => {
+    const seek = keyframe === undefined ? start : keyframe + KEYFRAME_SEEK_NUDGE
+    const duration = end - (keyframe ?? start)
+    const { code, stderr } = await exec(ffmpegTrimArgs({ input, output, start: seek, duration }))
     return code === 0 ? { ok: true, mode: 'copy' } : { ok: false, error: stderrTail(stderr) || `ffmpeg exited ${code}` }
   }
 
   if (isAudioFile(input)) return runAudioTrim({ input, output, start, end, exec, log })
+
+  ;({ start, end } = await snapToShownFrames({ input, start, end, exec, log }))
 
   let plan = { mode: 'copy' }
   let encoder = null
@@ -283,7 +363,7 @@ export async function runTrim({ input, output, start, end, exec, remove, log = (
     return { ...(await copyTrim()), degraded: true }
   }
 
-  if (plan.mode === 'copy') return copyTrim()
+  if (plan.mode === 'copy') return copyTrim(plan.at)
 
   const degrade = async (reason) => {
     log('warn', `Exact cut unavailable, cutting on the nearest keyframe instead: ${reason}`)
@@ -301,7 +381,7 @@ export async function runTrim({ input, output, start, end, exec, remove, log = (
   const tailPath = sibling(output, '-tail', '.ts')
   try {
     const head = await exec(ffmpegReencodeArgs({
-      input, output: headPath, start, end: plan.splitAt, encoder, pixFmt, rotation, segment: true,
+      input, output: headPath, start, end: plan.splitAt - HEAD_SEAM_MARGIN, encoder, pixFmt, rotation, segment: true,
     }))
     if (head.code !== 0) return degrade(stderrTail(head.stderr) || `ffmpeg exited ${head.code}`)
 
