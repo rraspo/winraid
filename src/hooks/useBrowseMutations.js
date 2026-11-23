@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import * as remoteFS from '../services/remoteFS'
+import * as moveProgress from '../services/moveProgress'
 
 function joinRemote(base, name) {
   return base === '/' ? `/${name}` : `${base}/${name}`
@@ -287,11 +288,13 @@ export function useBrowseMutations({
     selection.clearSelection()
     let ok = 0, fail = 0
     const movedNames = new Set()
+    const progressId = moveProgress.begin({ connectionId: selectedId, total })
     try {
       for (let index = 0; index < targets.length; index++) {
         if (cancelledRef.current) break
         setBulkProgress({ kind: 'move', done: index, total })
         const entry = targets[index]
+        moveProgress.report(progressId, { done: index, name: entry.name })
         const srcPath = joinRemote(path, entry.name)
         const dstPath = joinRemote(dest, entry.name)
         if (srcPath === dstPath) continue
@@ -300,6 +303,7 @@ export function useBrowseMutations({
         else fail++
       }
     } finally {
+      moveProgress.end(progressId)
       setOpInFlight(false)
       setBulkProgress(null)
     }

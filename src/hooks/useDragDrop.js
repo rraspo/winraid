@@ -20,7 +20,7 @@ function joinRemote(base, name) {
 export function useDragDrop({ selected, entries, selectedId, path, viewMode, fetchDir, navigate = () => {}, setStatus, clearSelection = () => {} }) {
   const [dragSource,   setDragSource]   = useState(null)
   const [dragPos,      setDragPos]      = useState(null)
-  const [moveInFlight, setMoveInFlight] = useState(null)
+  const [moveInFlight, setMoveInFlight] = useState(null)   // { done, total, name } while a drop moves files
 
   const dragSourceRef     = useRef(null)
   const dragPosRef        = useRef(null)
@@ -175,10 +175,10 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     setDragPos(null)
     clearSelection()
 
-    setMoveInFlight(itemsToMove[0].name)
+    setMoveInFlight({ done: 0, total: itemsToMove.length, name: itemsToMove[0].name })
     let status = null
     try {
-      status = await moveEntries(selectedId, itemsToMove, targetDirPath)
+      status = await moveEntries(selectedId, itemsToMove, targetDirPath, { onProgress: setMoveInFlight })
     } finally {
       setMoveInFlight(null)
       await fetchDir(pathRef.current)

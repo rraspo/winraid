@@ -1,3 +1,4 @@
+import * as moveProgress from './moveProgress'
 import * as remoteFS from './remoteFS'
 
 function joinRemote(base, name) {
@@ -20,18 +21,26 @@ export function movableEntries(entries, targetDirPath) {
 }
 
 // Moves dragged entries into `targetDirPath` on one connection. Returns the
-// { ok, msg } status to show, or null when the drop moves nothing.
-export async function moveEntries(connectionId, entries, targetDirPath) {
+// { ok, msg } status to show, or null when the drop moves nothing. The move
+// shows in the shell while it runs; `onProgress({ done, total, name })`
+// also hears each item, for a caller that shows it in place.
+export async function moveEntries(connectionId, entries, targetDirPath, { onProgress } = {}) {
   const itemsToMove = movableEntries(entries, targetDirPath)
   if (itemsToMove.length === 0) return null
 
+  const total = itemsToMove.length
+  const progressId = moveProgress.begin({ connectionId, total })
   let failMsg = null
   try {
-    for (const item of itemsToMove) {
+    for (let index = 0; index < total; index++) {
+      const item = itemsToMove[index]
+      moveProgress.report(progressId, { done: index, name: item.name })
+      onProgress?.({ done: index, total, name: item.name })
       const res = await window.winraid?.remote.move(connectionId, item.entryPath, joinRemote(targetDirPath, item.name))
       if (!res?.ok && failMsg === null) failMsg = res?.error || 'Move failed'
     }
   } finally {
+    moveProgress.end(progressId)
     const folders = new Set([targetDirPath, ...itemsToMove.map((item) => parentOf(item.entryPath))])
     remoteFS.foldersChanged(connectionId, [...folders])
   }

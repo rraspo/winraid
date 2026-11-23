@@ -3,6 +3,7 @@ import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import PlayOverlay, { WALL_PAGE_SIZE } from './PlayOverlay'
 import { createWinraidMock } from '../__mocks__/winraid'
 import * as toast from '../services/toast'
+import * as moveProgress from '../services/moveProgress'
 
 // Contract under test — the play wall is an organizing surface: tiles can
 // be selected and the selection deleted or moved without leaving Play, and
@@ -67,6 +68,7 @@ afterEach(() => {
   globalThis.IntersectionObserver = savedIntersectionObserver
   globalThis.ResizeObserver       = savedResizeObserver
   toast.clearAll()
+  moveProgress.clearAll()
   delete window.winraid
 })
 
@@ -444,6 +446,25 @@ describe('PlayOverlay wall bulk move', () => {
     expect(reported).toEqual(expect.arrayContaining(['/photos/a.jpg', '/archive/a.jpg', '/photos/c.jpg', '/archive/c.jpg']))
     expect(toastMessages('success')).toContain('Moved 2 items to /archive')
     expect(window.winraid.remote.mediaScan).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the move in the shell item by item while it runs, and clears it after', async () => {
+    await mountWith(threeImages(), defaultProps)
+    const seen = []
+    window.winraid.remote.move.mockImplementation(async () => {
+      seen.push(moveProgress.getSnapshot().map(({ connectionId, total, done, name }) => ({ connectionId, total, done, name })))
+      return { ok: true }
+    })
+    ctrlClick('a.jpg')
+    ctrlClick('c.jpg')
+    openMove()
+    setDestination('/archive')
+    await confirmMove()
+    expect(seen).toEqual([
+      [{ connectionId: 'c1', total: 2, done: 0, name: 'a.jpg' }],
+      [{ connectionId: 'c1', total: 2, done: 1, name: 'c.jpg' }],
+    ])
+    expect(moveProgress.getSnapshot()).toEqual([])
   })
 
   it('moving inside a recursive scan keeps the tiles with their new paths', async () => {

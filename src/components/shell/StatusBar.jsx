@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import * as moveProgress from '../../services/moveProgress'
 import styles from './StatusBar.module.css'
 
 const EMPTY_CONN_SET = new Set()
@@ -44,6 +45,20 @@ export default function StatusBar({
     return `${prefix} · ${names.join(', ')}`
   }, [transferCount, queueDepth, batchTotal, progressed, batchConnections, connections])
 
+  // Moves of files on the NAS, from any screen or tab, added up: they are
+  // renames on the server, not queue jobs, so they have no queue to link to.
+  const moves = useSyncExternalStore(moveProgress.subscribe, moveProgress.getSnapshot)
+  const moveLabel = useMemo(() => {
+    if (moves.length === 0) return null
+    const total = moves.reduce((sum, move) => sum + move.total, 0)
+    const done  = moves.reduce((sum, move) => sum + move.done, 0)
+    const connMap = {}
+    for (const c of connections) connMap[c.id] = c.name
+    const names = [...new Set(moves.map((move) => connMap[move.connectionId]).filter(Boolean))]
+    const prefix = `Moving ${Math.min(done + 1, total)} of ${total}`
+    return names.length === 0 ? prefix : `${prefix} · ${names.join(', ')}`
+  }, [moves, connections])
+
   let label
   if (!anyWatching) {
     label = 'All scanners stopped'
@@ -53,9 +68,9 @@ export default function StatusBar({
     label = watchingCount === 1 ? 'Scanning for changes' : `${watchingCount} scanners active`
   }
 
-  // Busy while a transfer is in flight or a watcher is enqueueing — otherwise
+  // Busy while a transfer or a move is in flight or a watcher is enqueueing — otherwise
   // reflect whether anything is watching at all.
-  const dotStatus = (enqueueing || transferCount > 0) ? 'busy' : anyWatching ? 'watching' : 'stopped'
+  const dotStatus = (enqueueing || transferCount > 0 || moveLabel) ? 'busy' : anyWatching ? 'watching' : 'stopped'
 
   const updateReady = updateStatus?.status === 'ready' ? updateStatus : null
 
@@ -68,6 +83,7 @@ export default function StatusBar({
           {` · ${transferLabel}`}
         </button>
       )}
+      {moveLabel && <span className={styles.label}>{` · ${moveLabel}`}</span>}
       <div className={styles.spacer} />
       {updateReady && (
         <button

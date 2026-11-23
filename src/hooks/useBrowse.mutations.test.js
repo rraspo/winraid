@@ -8,6 +8,7 @@ import { useSelection } from './useSelection'
 vi.mock('../services/remoteFS')
 import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
+import * as moveProgress from '../services/moveProgress'
 
 const CONNECTIONS = [{
   id: 'conn1', name: 'NAS', type: 'sftp', icon: 'server',
@@ -203,6 +204,33 @@ describe('handleBulkMove', () => {
     await act(async () => result.current.setBulkMoveDest('/media/archive'))
     await act(() => result.current.handleBulkMove())
     expect(remoteFS.update).toHaveBeenCalledWith('conn1', expect.any(String), expect.any(Function))
+  })
+})
+
+describe('handleBulkMove progress', () => {
+  it('shows the move in the shell item by item and clears it after', async () => {
+    remoteFS.list.mockResolvedValue([
+      { name: 'a.jpg', type: 'file', size: 100, modified: 0 },
+      { name: 'b.jpg', type: 'file', size: 200, modified: 0 },
+    ])
+    const seen = []
+    window.winraid.remote.move.mockImplementation(async () => {
+      seen.push(moveProgress.getSnapshot().map(({ connectionId, total, done, name }) => ({ connectionId, total, done, name })))
+      return { ok: true }
+    })
+    const { result, unmount } = renderHook(() =>
+      useBrowse({ connectionsProp: CONNECTIONS, connectionId: 'conn1' })
+    )
+    cleanup = unmount
+    await waitFor(() => expect(result.current.entries.length).toBe(2))
+    await act(async () => result.current.toggleSelectAll())
+    await act(async () => result.current.setBulkMoveDest('/media/archive'))
+    await act(() => result.current.handleBulkMove())
+    expect(seen).toEqual([
+      [{ connectionId: 'conn1', total: 2, done: 0, name: 'a.jpg' }],
+      [{ connectionId: 'conn1', total: 2, done: 1, name: 'b.jpg' }],
+    ])
+    expect(moveProgress.getSnapshot()).toEqual([])
   })
 })
 

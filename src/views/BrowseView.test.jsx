@@ -253,6 +253,26 @@ describe('BrowseView', () => {
     expect(toast.getSnapshot().some((t) => /Moved readme\.txt/.test(t.msg))).toBe(true)
   })
 
+  it('counts the items of a multi-file drag move in the overlay as they go', async () => {
+    const pending = []
+    window.winraid.remote.move = vi.fn().mockImplementation(() => new Promise((resolve) => { pending.push(resolve) }))
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+    setInternalDrag({ connectionId: 'conn-1', entries: [
+      { name: 'a.jpg', type: 'file', entryPath: '/mnt/user/other/a.jpg' },
+      { name: 'b.jpg', type: 'file', entryPath: '/mnt/user/other/b.jpg' },
+      { name: 'c.jpg', type: 'file', entryPath: '/mnt/user/other/c.jpg' },
+    ] })
+    const dirRow = screen.getByText('Documents').closest('.row')
+    fireEvent.drop(dirRow, { dataTransfer: { types: ['application/x-winraid-internal'] } })
+    expect(await screen.findByText('Moving 1 of 3 · a.jpg')).toBeInTheDocument()
+    await act(async () => { pending[0]({ ok: true }) })
+    expect(screen.getByText('Moving 2 of 3 · b.jpg')).toBeInTheDocument()
+    await act(async () => { pending[1]({ ok: true }) })
+    await act(async () => { pending[2]({ ok: true }) })
+    expect(screen.queryByText(/Moving \d of 3/)).toBeNull()
+  })
+
   it('refetches directory listing on move error (rollback)', async () => {
     window.winraid.remote.move = vi.fn().mockResolvedValue({
       ok: false,

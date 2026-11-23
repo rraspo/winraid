@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { moveEntries } from './moveEntries'
 import * as remoteFS from './remoteFS'
+import * as moveProgress from './moveProgress'
 
 const A = { name: 'a.txt', entryPath: '/foo/a.txt' }
 const B = { name: 'b.txt', entryPath: '/foo/b.txt' }
@@ -10,7 +11,39 @@ beforeEach(() => {
   window.winraid = { remote: { move: vi.fn().mockResolvedValue({ ok: true }) } }
 })
 
+afterEach(() => moveProgress.clearAll())
+
 describe('moveEntries', () => {
+  it('shows the move while it runs, item by item, and clears it after', async () => {
+    const seen = []
+    window.winraid.remote.move.mockImplementation(async () => {
+      seen.push(moveProgress.getSnapshot().map(({ connectionId, total, done, name }) => ({ connectionId, total, done, name })))
+      return { ok: true }
+    })
+    const onProgress = vi.fn()
+    await moveEntries('conn-1', [A, B], '/bar', { onProgress })
+    expect(seen).toEqual([
+      [{ connectionId: 'conn-1', total: 2, done: 0, name: 'a.txt' }],
+      [{ connectionId: 'conn-1', total: 2, done: 1, name: 'b.txt' }],
+    ])
+    expect(onProgress.mock.calls).toEqual([[{ done: 0, total: 2, name: 'a.txt' }], [{ done: 1, total: 2, name: 'b.txt' }]])
+    expect(moveProgress.getSnapshot()).toEqual([])
+  })
+
+  it('clears the move even when the NAS call throws', async () => {
+    window.winraid.remote.move.mockRejectedValue(new Error('gone'))
+    await expect(moveEntries('conn-1', [A], '/bar')).rejects.toThrow('gone')
+    expect(moveProgress.getSnapshot()).toEqual([])
+  })
+
+  it('registers nothing for a drop that moves nothing', async () => {
+    const listener = vi.fn()
+    const unsubscribe = moveProgress.subscribe(listener)
+    await moveEntries('conn-1', [A], '/foo')
+    unsubscribe()
+    expect(listener).not.toHaveBeenCalled()
+  })
+
   it('moves every entry into the target folder and labels the result', async () => {
     const result = await moveEntries('conn-1', [A, B], '/bar')
     expect(window.winraid.remote.move).toHaveBeenCalledWith('conn-1', '/foo/a.txt', '/bar/a.txt')

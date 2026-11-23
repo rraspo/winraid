@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import StatusBar from './StatusBar'
 import { createWinraidMock } from '../../__mocks__/winraid'
+import * as moveProgress from '../../services/moveProgress'
 
 // Contract under test — the 30px bottom bar of the shell: a status dot and
 // one line of text on the left (watchers, then transfers), and on the right
@@ -63,7 +64,10 @@ function dot() {
 }
 
 beforeEach(setup)
-afterEach(() => { delete window.winraid })
+afterEach(() => {
+  delete window.winraid
+  moveProgress.clearAll()
+})
 
 describe('StatusBar', () => {
   it('reports stopped scanners with a stopped dot', async () => {
@@ -108,6 +112,29 @@ describe('StatusBar', () => {
   it('uses the singular label for one transfer outside a batch', async () => {
     await mount({ activeTransfers: new Map([['job1', 'c2']]), queueDepth: 0, batchTotal: 1, batchConnections: new Set(['c2']) })
     expect(bar().textContent).toContain('Transferring · Vault')
+  })
+
+  it('shows a running move with its count and connection, and goes busy', async () => {
+    await mount({ watcherStatus: { c1: { watching: true, state: 'idle' } } })
+    expect(bar().textContent).not.toContain('Moving')
+    let id
+    act(() => { id = moveProgress.begin({ connectionId: 'c1', total: 340 }) })
+    act(() => moveProgress.report(id, { done: 11, name: 'IMG_0012.jpg' }))
+    expect(bar().textContent).toContain('Scanning for changes · Moving 12 of 340 · Atlas')
+    expect(dot().getAttribute('data-status')).toBe('busy')
+    act(() => moveProgress.end(id))
+    expect(bar().textContent).not.toContain('Moving')
+    expect(dot().getAttribute('data-status')).toBe('watching')
+  })
+
+  it('adds up moves running at once', async () => {
+    await mount()
+    act(() => {
+      const first = moveProgress.begin({ connectionId: 'c1', total: 10 })
+      moveProgress.report(first, { done: 4, name: 'a' })
+      moveProgress.begin({ connectionId: 'c2', total: 5 })
+    })
+    expect(bar().textContent).toContain('Moving 5 of 15 · Atlas, Vault')
   })
 
   it('shows the running version', async () => {

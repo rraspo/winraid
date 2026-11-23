@@ -599,7 +599,11 @@ export default function BrowseView({
       {moveInFlight && (
         <div className={styles.moveOverlay} data-theme="dark">
           <Loader size={24} className={styles.spinning} />
-          <span className={styles.moveOverlayText}>Moving {moveInFlight}</span>
+          <span className={styles.moveOverlayText}>
+            {moveInFlight.total > 1
+              ? `Moving ${moveInFlight.done + 1} of ${moveInFlight.total} · ${moveInFlight.name}`
+              : `Moving ${moveInFlight.name}`}
+          </span>
         </div>
       )}
 

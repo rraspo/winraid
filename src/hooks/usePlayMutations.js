@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import * as toast from '../services/toast'
+import * as moveProgress from '../services/moveProgress'
 
 // Root-safe join, mirroring the same helper used by the browse-side bulk
 // operations: a root of "/" gets the name appended directly, anything else
@@ -76,27 +77,33 @@ export function usePlayMutations({ connectionId, removePaths, relocatePaths, dro
     let failedCount = 0
     const touchedPaths = []
     let lastSucceededTo = null
-    for (let index = 0; index < pairs.length; index++) {
-      setInFlight({ kind: 'move', done: index, total })
-      const { from, to } = pairs[index]
-      const result = await window.winraid.remote.move(connectionId, from, to)
-      if (result?.ok) {
-        const destinationFolder = dirOf(to)
-        if (isWithinScan(destinationFolder, scanRoot, recursive)) {
-          relocatePaths([{ from, to }])
+    const progressId = moveProgress.begin({ connectionId, total })
+    try {
+      for (let index = 0; index < pairs.length; index++) {
+        setInFlight({ kind: 'move', done: index, total })
+        const { from, to } = pairs[index]
+        moveProgress.report(progressId, { done: index, name: from.slice(from.lastIndexOf('/') + 1) })
+        const result = await window.winraid.remote.move(connectionId, from, to)
+        if (result?.ok) {
+          const destinationFolder = dirOf(to)
+          if (isWithinScan(destinationFolder, scanRoot, recursive)) {
+            relocatePaths([{ from, to }])
+          } else {
+            removePaths([from])
+          }
+          dropFromSelection([from])
+          succeededCount++
+          lastSucceededTo = to
+          touchedPaths.push(from, to)
         } else {
-          removePaths([from])
+          failedCount++
         }
-        dropFromSelection([from])
-        succeededCount++
-        lastSucceededTo = to
-        touchedPaths.push(from, to)
-      } else {
-        failedCount++
       }
+    } finally {
+      moveProgress.end(progressId)
+      inFlightRef.current = false
+      setInFlight(null)
     }
-    inFlightRef.current = false
-    setInFlight(null)
     if (failedCount > 0) {
       toast.show({ msg: `Moved ${succeededCount}, failed ${failedCount}`, type: 'error' })
     } else if (isSingle) {
