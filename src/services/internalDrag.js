@@ -15,6 +15,18 @@ export function getInternalDrag() {
   return current
 }
 
+// Tabs that started a drag hear when it is over, wherever it ended: the
+// browser's dragend fires on the dragged row, and a move can take that row
+// out of the listing before the event arrives.
+const clearedListeners = new Set()
+
+export function onInternalDragCleared(listener) {
+  clearedListeners.add(listener)
+  return () => clearedListeners.delete(listener)
+}
+
 export function clearInternalDrag() {
+  if (current == null) return
   current = null
+  for (const listener of clearedListeners) listener()
 }

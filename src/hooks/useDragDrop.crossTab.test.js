@@ -87,6 +87,32 @@ describe('dragging between tabs', () => {
     expect(window.winraid.remote.move).not.toHaveBeenCalled()
   })
 
+  // The move takes the dragged row out of the source tab's listing, so the
+  // browser's dragend (fired on that row) may never reach the source tab:
+  // it has to learn the drag is over from the drop itself.
+  it('clears the source tab drag preview when the drop lands in another tab', async () => {
+    const source = renderTab({ path: '/foo', entries: FOO_ENTRIES })
+    const target = renderTab({ path: '/bar', entries: BAR_ENTRIES })
+
+    act(() => source.result.current.handleDragStart({ ...dragStartEvent(), clientX: 10, clientY: 10 }, FOO_ENTRIES[0], '/foo/a.txt'))
+    expect(source.result.current.dragSource).not.toBeNull()
+
+    await act(async () => {
+      await target.result.current.handleDrop({ preventDefault: vi.fn() }, '/bar')
+    })
+    expect(source.result.current.dragSource).toBeNull()
+    expect(source.result.current.dragPos).toBeNull()
+  })
+
+  it('clears the source tab drag preview when the drop lands on a tab header', () => {
+    const source = renderTab({ path: '/foo', entries: FOO_ENTRIES })
+    act(() => source.result.current.handleDragStart({ ...dragStartEvent(), clientX: 10, clientY: 10 }, FOO_ENTRIES[0], '/foo/a.txt'))
+    // The tab strip hands the drop to App, which takes the drag and clears it.
+    act(() => clearInternalDrag())
+    expect(source.result.current.dragSource).toBeNull()
+    expect(source.result.current.dragPos).toBeNull()
+  })
+
   it('forgets the drag once it ends, so a later drop elsewhere moves nothing', async () => {
     const source = renderTab({ path: '/foo', entries: FOO_ENTRIES })
     const target = renderTab({ path: '/bar', entries: BAR_ENTRIES })

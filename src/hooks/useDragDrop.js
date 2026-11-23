@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { setInternalDrag, getInternalDrag, clearInternalDrag } from '../services/internalDrag'
+import { setInternalDrag, getInternalDrag, clearInternalDrag, onInternalDragCleared } from '../services/internalDrag'
 import { movableEntries, moveEntries } from '../services/moveEntries'
 
 // Suppress the browser's native drag image — we render our own React
@@ -92,10 +92,15 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     }
   }, [selected, entries, path, selectedId])
 
-  const handleDragEnd = useCallback(() => {
-    clearInternalDrag()
+  // Drops this tab's drag preview and hover marks. Only refs and state
+  // setters, so it is stable across renders.
+  const resetDragVisuals = useCallback(() => {
     dragSourceRef.current = null
     dragPosRef.current = null
+    if (dragRafRef.current) {
+      cancelAnimationFrame(dragRafRef.current)
+      dragRafRef.current = null
+    }
     setDragSource(null)
     setDragPos(null)
     if (dropTargetPathRef.current !== null) {
@@ -105,6 +110,17 @@ export function useDragDrop({ selected, entries, selectedId, path, viewMode, fet
     }
     clearTimeout(dwellTimer.current)
   }, [])
+
+  // A drop in another tab, or on a tab header, ends the drag without this
+  // tab's dragged row necessarily receiving dragend.
+  useEffect(() => onInternalDragCleared(() => {
+    if (dragSourceRef.current) resetDragVisuals()
+  }), [resetDragVisuals])
+
+  const handleDragEnd = useCallback(() => {
+    clearInternalDrag()
+    resetDragVisuals()
+  }, [resetDragVisuals])
 
   const handleDragOverFolder = useCallback((e, folderPath) => {
     // The drag may have started in another tab; only one on this connection
