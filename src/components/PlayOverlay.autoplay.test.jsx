@@ -208,6 +208,18 @@ describe('PlayOverlay wall autoplay', () => {
     expect(tile('still.jpg').querySelector('img').getAttribute('src')).toMatch(/\?thumb=1/)
   })
 
+  it('a still image tile in view layers its full image over the thumbnail, and drops it when the viewer opens', async () => {
+    await mount()
+    emit([image('/photos/still.jpg')])
+    act(() => setInView(tile('still.jpg'), true))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)) })
+    const stillTile = tile('still.jpg')
+    const full = stillTile.querySelector('img[data-full]')
+    expect(full.getAttribute('src')).toBe('nas-stream://c1/photos/still.jpg')
+    fireEvent.click(stillTile)
+    expect(stillTile.querySelector('img[data-full]')).toBeNull()
+  })
+
   it('an upper-case .GIF is treated the same way', async () => {
     await mount()
     emit([image('/photos/LOOP.GIF')])

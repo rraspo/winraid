@@ -147,6 +147,35 @@
   object-fit: cover;
 }
 
+/* A still tile: the thumbnail, with the full image layered over it once
+   it has loaded. */
+.tileImageStack {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tileImageFull {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+
+.tileImageFull[data-loaded="true"] {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tileImageFull {
+    transition: opacity 200ms ease;
+  }
+}
+
 .tileVideoAnchor {
   display: block;
   width: 100%;

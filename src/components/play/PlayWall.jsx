@@ -4,6 +4,7 @@ import Tooltip from '../ui/Tooltip'
 import ConnectionPicker from '../ConnectionPicker'
 import BulkSelectionBar from '../BulkSelectionBar'
 import WallVideo from './WallVideo'
+import WallImage from './WallImage'
 import { nasStreamUrl } from '../../utils/nasStream'
 import { layoutJustifiedRows } from '../../utils/justifiedRows'
 import { probeMediaRatio } from './probeMediaRatio'
@@ -398,13 +399,20 @@ export default function PlayWall({
                         onPlayingChange={setTilePlaying}
                         playbackSuspended={hiddenFromViewer}
                       />
-                    ) : (
+                    ) : isGif ? (
                       <img
                         className={styles.tileImage}
                         src={tileImageSrc(connectionId, file, version)}
                         alt=""
                         loading="lazy"
                         onLoad={(event) => handleThumbLoad(file.path, event)}
+                      />
+                    ) : (
+                      <WallImage
+                        thumbSrc={tileImageSrc(connectionId, file, version)}
+                        fullSrc={withVersion(nasStreamUrl(connectionId, file.path), version)}
+                        onThumbLoad={(event) => handleThumbLoad(file.path, event)}
+                        suspended={hiddenFromViewer}
                       />
                     )}
                     {file.type === 'video' && (
