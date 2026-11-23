@@ -33,6 +33,8 @@ import PlayOverlay from '../components/PlayOverlay'
 import DragGhost from '../components/browse/DragGhost'
 import * as toast from '../services/toast'
 import * as remoteFS from '../services/remoteFS'
+import { getInternalDrag } from '../services/internalDrag'
+import { movableEntries } from '../services/moveEntries'
 import { createMediaMetaStore } from '../utils/mediaMetaStore'
 
 const MERGERFS_MSG = 'This directory is a mergerfs union mount — files cannot be uploaded or created here. Navigate into a share folder.'
@@ -416,15 +418,42 @@ export default function BrowseView({
       .flatMap(([favConnId, paths]) => (paths ?? []).map((favPath) => ({ connectionId: favConnId, path: favPath }))),
   ]
 
+  // Files dragged in from another tab can land anywhere in the view, not
+  // only on a folder: they move into the folder this tab is showing. Folder
+  // cards and breadcrumbs take their own drops first.
+  function acceptsInternalDropHere() {
+    const drag = getInternalDrag()
+    return drag != null && drag.connectionId === selectedId && movableEntries(drag.entries, path).length > 0
+  }
+
+  function handleViewDragOver(e) {
+    if (getInternalDrag() == null) {
+      handleExternalDragOver(e)
+      return
+    }
+    if (e.defaultPrevented || !acceptsInternalDropHere()) return
+    e.preventDefault()
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move'
+  }
+
+  function handleViewDrop(e) {
+    if (getInternalDrag() == null) {
+      handleExternalDrop(e)
+      return
+    }
+    if (e.defaultPrevented || !acceptsInternalDropHere()) return
+    browse.handleDrop(e, path)
+  }
+
   return (
     <div
       className={styles.container}
       style={style}
       data-testid="browse-container"
       onDragEnter={handleExternalDragEnter}
-      onDragOver={handleExternalDragOver}
+      onDragOver={handleViewDragOver}
       onDragLeave={handleExternalDragLeave}
-      onDrop={handleExternalDrop}
+      onDrop={handleViewDrop}
     >
 
 

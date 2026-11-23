@@ -5,6 +5,7 @@ import { createWinraidMock } from '../__mocks__/winraid'
 import BrowseView from './BrowseView'
 import * as remoteFS from '../services/remoteFS'
 import * as toast from '../services/toast'
+import { setInternalDrag, clearInternalDrag } from '../services/internalDrag'
 
 vi.mock('../components/PlayOverlay', () => ({
   default: ({ onClose, onMutated }) => (
@@ -66,6 +67,7 @@ beforeEach(() => {
 
 afterEach(() => {
   remoteFS.clearAll()
+  clearInternalDrag()
   toast.clearAll()
   delete window.winraid
   vi.restoreAllMocks()
@@ -276,6 +278,31 @@ describe('BrowseView', () => {
       expect(toast.getSnapshot().some((t) => t.msg === 'Cross-device rename not supported')).toBe(true)
       expect(window.winraid.remote.list).toHaveBeenCalled()
     })
+  })
+
+  it('moves files dragged from another tab into the open folder when dropped on its empty area', async () => {
+    window.winraid.remote.move = vi.fn().mockResolvedValue({ ok: true })
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+    // The drag began in another tab, showing another folder.
+    setInternalDrag({ connectionId: 'conn-1', entries: [{ name: 'a.jpg', type: 'file', entryPath: '/mnt/user/other/a.jpg' }] })
+    const view = screen.getByTestId('browse-container')
+    const internal = { dataTransfer: { types: ['application/x-winraid-internal'], dropEffect: 'none' } }
+    expect(fireEvent.dragOver(view, internal)).toBe(false)
+    await act(async () => { fireEvent.drop(view, internal) })
+    expect(window.winraid.remote.move).toHaveBeenCalledWith('conn-1', '/mnt/user/other/a.jpg', '/mnt/user/data/a.jpg')
+  })
+
+  it('leaves files where they are when they are dropped back on the folder they came from', async () => {
+    window.winraid.remote.move = vi.fn().mockResolvedValue({ ok: true })
+    render(<BrowseView onHistoryPush={() => {}} />)
+    await screen.findByText('Documents')
+    setInternalDrag({ connectionId: 'conn-1', entries: [{ name: 'readme.txt', type: 'file', entryPath: '/mnt/user/data/readme.txt' }] })
+    const view = screen.getByTestId('browse-container')
+    const internal = { dataTransfer: { types: ['application/x-winraid-internal'], dropEffect: 'none' } }
+    expect(fireEvent.dragOver(view, internal)).toBe(true)
+    await act(async () => { fireEvent.drop(view, internal) })
+    expect(window.winraid.remote.move).not.toHaveBeenCalled()
   })
 
   // ── Selection / checkboxes ─────────────────────────────────────────────

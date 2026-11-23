@@ -82,6 +82,20 @@ describe('TabBar — dropping files on a tab', () => {
     expect(dragOverAccepted(tab('t1'))).toBe(false)
   })
 
+  it('still takes the drop on a tab the dwell has just switched to', () => {
+    // Resting on t2 makes it the active tab; the pointer is still on its
+    // header, so releasing there must still move the files into its folder.
+    const { tab, onDropEntries } = renderBar({ activeTabId: 't2' })
+    expect(dragOverAccepted(tab('t2'))).toBe(true)
+    fireEvent.drop(tab('t2'), { dataTransfer: { types: [] } })
+    expect(onDropEntries).toHaveBeenCalledWith('t2')
+  })
+
+  it('refuses a tab showing the folder the files are already in, even when it is not in front', () => {
+    const { tab } = renderBar({ activeTabId: 't2' })
+    expect(dragOverAccepted(tab('t1'))).toBe(false)
+  })
+
   it('switches to a hovered tab after a short dwell', () => {
     const { tab, onActivate } = renderBar()
     fireEvent.dragOver(tab('t3'), { dataTransfer: { types: [] } })

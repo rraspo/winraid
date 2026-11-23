@@ -3,6 +3,7 @@ import { X, FileText } from 'lucide-react'
 import ConnectionIcon from './ConnectionIcon'
 import Tooltip from './ui/Tooltip'
 import { getInternalDrag } from '../services/internalDrag'
+import { movableEntries } from '../services/moveEntries'
 import styles from './TabBar.module.css'
 
 const DRAG_MIME = 'application/x-winraid-tab'
@@ -46,14 +47,16 @@ export default function TabBar({ openTabs, activeTabId, connections, dirtyTabs, 
   }
 
   // Files dragged out of a browse tab can land on another browse tab of the
-  // same connection — they move into the folder that tab is showing. The tab
-  // in front is refused: dropping there is just a drop into the view below.
+  // same connection — they move into the folder that tab is showing. Only a
+  // tab showing the folder the files already sit in is refused, not the tab
+  // in front: resting on a tab switches to it, and the pointer is still on
+  // its header when the files are released.
   function acceptsEntries(tab) {
     const drag = getInternalDrag()
     return drag != null
       && tab.type === 'browse'
-      && tab.id !== activeTabId
       && tab.location?.connectionId === drag.connectionId
+      && movableEntries(drag.entries, tab.location.path).length > 0
   }
 
   function clearEntriesHover() {
