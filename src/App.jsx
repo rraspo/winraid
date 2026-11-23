@@ -848,22 +848,21 @@ export default function App() {
                   active={activeTabId === tab.id && connEdit === null && playTarget === null}
                   browseRestore={browseRestoreByTab[tab.id] ?? null}
                   onBrowseRestoreConsumed={() => clearTabBrowseRestore(tab.id)}
-                  onLocationChange={(location) => setTabLocation(tab.id, location)}
-                  onHistoryPush={(entry) => {
-                    push(scopeKey, entry)
-                    if (entry.kind === 'browse' && entry.path) {
-                      const conn = connections.find((c) => c.id === tab.connId)
-                      const atRoot = entry.path === remoteRootOf(conn)
-                      // A path with no last segment ("/", which is what a tab
-                      // reports in the moment before its connection resolves)
-                      // has no folder to name it after. Clearing the label
-                      // rather than setting an empty one lets the tab fall
-                      // back to the connection's name, which is what it did
-                      // before it was labelled at all.
-                      const folder = lastPathSegment(entry.path)
-                      setTabLabel(tab.id, atRoot || !folder ? null : folder)
-                    }
+                  onLocationChange={(location) => {
+                    setTabLocation(tab.id, location)
+                    // Named from the folder shown rather than from history
+                    // pushes, so back and forward rename the tab too.
+                    const conn = connections.find((c) => c.id === location.connectionId)
+                    const atRoot = location.path === remoteRootOf(conn)
+                    // A path with no last segment ("/", which is what a tab
+                    // reports in the moment before its connection resolves)
+                    // has no folder to name it after. Clearing the label
+                    // rather than setting an empty one lets the tab fall
+                    // back to the connection's name.
+                    const folder = lastPathSegment(location.path)
+                    setTabLabel(tab.id, atRoot || !folder ? null : folder)
                   }}
+                  onHistoryPush={(entry) => push(scopeKey, entry)}
                   onBack={() => { const entry = back(scopeKey); if (entry) applyBrowseHistoryEntry(entry, tab.id) }}
                   onForward={() => { const entry = forward(scopeKey); if (entry) applyBrowseHistoryEntry(entry, tab.id) }}
                   canGoBack={canGoBack(scopeKey)}
