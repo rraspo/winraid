@@ -463,6 +463,7 @@ export default function BrowseView({
           connectionId={selectedId}
           remoteBasePath={cfgRemotePath}
           files={fileEntries}
+          playbackSuspended={!active}
           onNavigate={(f) => setSelectedFile(f)}
           onClose={() => {
             setShowQuickLook(false)
@@ -512,6 +513,7 @@ export default function BrowseView({
       {showPlay && (
         <PlayOverlay
           covering
+          playbackSuspended={!active}
           connectionId={selectedId}
           path={path}
           onClose={() => setShowPlay(false)}

@@ -249,4 +249,16 @@ describe('PlayOverlay wall autoplay', () => {
     act(() => setInView(tile('a.mp4'), true))
     expect(tile('a.mp4').querySelector('video')).toBeTruthy()
   })
+
+  it('pauses the viewer video when its Browse tab is hidden', async () => {
+    const { rerender } = await mount()
+    emit([video('/photos/a.mp4')])
+    fireEvent.click(tile('a.mp4'))
+    const viewerPlayer = screen.getByTestId('play-viewer').querySelector('video')
+    pauseSpy.mockClear()
+
+    rerender(<PlayOverlay {...defaultProps} playbackSuspended />)
+
+    expect(pauseSpy.mock.contexts).toContain(viewerPlayer)
+  })
 })

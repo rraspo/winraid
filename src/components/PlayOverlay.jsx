@@ -30,7 +30,7 @@ function toQuickLookFile(playFile, fileVersions) {
   }
 }
 
-export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null, connections, onSelectConnection, onOpenFolder, covering = false, defaultConnectionId = null, onSetDefault, trashByConnection = {} }) {
+export default function PlayOverlay({ connectionId, path, onClose, remoteBasePath, canServerEdit, onMutated, sftpCfg = null, connections, onSelectConnection, onOpenFolder, covering = false, defaultConnectionId = null, onSetDefault, trashByConnection = {}, playbackSuspended = false }) {
   const trashed = Boolean(trashByConnection?.[connectionId]?.folder)
   const [scanRoot, setScanRoot] = useState(path)
   // When the user navigates between folders via a breadcrumb, the file
@@ -309,6 +309,7 @@ export default function PlayOverlay({ connectionId, path, onClose, remoteBasePat
             onNextBeyondList={next}
             onFileChanged={bumpVersion}
             folderNavigation={{ activePath: scanRoot, onSelect: handleSegmentClick }}
+            playbackSuspended={playbackSuspended}
           />
         </div>
       )}

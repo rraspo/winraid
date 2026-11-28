@@ -493,6 +493,7 @@ function FileMenu({ file, onDelete, onOpenFolder, loop, onLoopChange, wheelMode,
 export default function QuickLookOverlay({
   file, connectionId, remoteBasePath, files, onNavigate, onClose, onDelete, onOpenFolder, canServerEdit,
   hasMoreBeyondList = false, onNextBeyondList, onFileChanged, folderNavigation,
+  playbackSuspended = false,
 }) {
   // Index of current file within the non-folder list
   const currentIdx = files.findIndex((f) => f.path === file.path)
@@ -630,6 +631,12 @@ export default function QuickLookOverlay({
   const trimRangeRef      = useRef({ in: 0, out: 0 })  // current selection for stable listeners
   const type = file ? fileType(file.name) : 'unknown'
   latestRef.current = { wheelMode, zoom, invertPan, handleNext, handlePrev, cropping, trimming, rotating, videoCropping, type, file }
+
+  // A hidden Browse tab stays mounted, so its media would keep playing out of
+  // sight. Pause it while suspended; never resume on return.
+  useEffect(() => {
+    if (playbackSuspended) mediaRef.current?.pause?.()
+  }, [playbackSuspended])
 
 
   function handleLoopChange(v) {
